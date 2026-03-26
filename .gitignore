@@ -1,0 +1,47 @@
+# Окружение
+.env
+.env.bak
+authorized_key.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+.cursor/
+
+# Node
+node_modules/
+dist/
+*.log
+
+# Chroma DB
+chroma_db/
+
+# Базы данных
+*.csv
+*.db
+*.sqlite
+
+# Логи
+logs/
+*.log
+
+101hotel_parser/
+
+# NeuralProphet training logs
+lightning_logs/
+backend/lightning_logs/
+
+# Test artifacts
+test_report*.json
+*_TEST_REPORT.md
+*_TEST_SUMMARY.md
+EXECUTIVE_SUMMARY.md
+TEST_REPORTS_INDEX.md

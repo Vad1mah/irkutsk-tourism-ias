@@ -1,0 +1,376 @@
+<mxfile host="app.diagrams.net" modified="2026-01-08T12:00:00.000Z" agent="Mozilla/5.0" version="21.0.0" type="device">
+  <diagram name="IDEF3 - Сценарий 1: Сбор данных" id="idef3-scenario1">
+    <mxGraphModel dx="1500" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="700" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        
+        <!-- Заголовок -->
+        <mxCell id="title1" value="СЦЕНАРИЙ 1: Фоновый сбор данных (декомпозиция 1.1)" style="text;html=1;fontSize=16;fontStyle=1;fontColor=#c45911;align=center;" vertex="1" parent="1">
+          <mxGeometry x="400" y="20" width="500" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- UOW 1.1.2 Запуск сбора - стиль как у преподавателя -->
+        <mxCell id="s1-uow2" value="Запуск&#xa;сбора данных" style="shape=process;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1;size=0.15;" vertex="1" parent="1">
+          <mxGeometry x="40" y="180" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="s1-uow2-num" value="1.1.2" style="text;html=1;fontSize=10;fontStyle=1;align=left;" vertex="1" parent="1">
+          <mxGeometry x="45" y="225" width="50" height="15" as="geometry" />
+        </mxCell>
+
+        <!-- J1 разветвление & -->
+        <mxCell id="s1-j1" value="&amp;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#333333;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="200" y="190" width="40" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="s1-j1-lbl" value="J1" style="text;html=1;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="205" y="230" width="30" height="15" as="geometry" />
+        </mxCell>
+
+        <!-- UOW 1.1.3 Сбор событий -->
+        <mxCell id="s1-uow3" value="Сбор данных&#xa;о событиях" style="shape=process;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1;size=0.15;" vertex="1" parent="1">
+          <mxGeometry x="300" y="100" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="s1-uow3-num" value="1.1.3" style="text;html=1;fontSize=10;fontStyle=1;align=left;" vertex="1" parent="1">
+          <mxGeometry x="305" y="145" width="50" height="15" as="geometry" />
+        </mxCell>
+
+        <!-- UOW 1.1.4 Сбор размещения -->
+        <mxCell id="s1-uow4" value="Сбор данных&#xa;о размещении" style="shape=process;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1;size=0.15;" vertex="1" parent="1">
+          <mxGeometry x="300" y="260" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="s1-uow4-num" value="1.1.4" style="text;html=1;fontSize=10;fontStyle=1;align=left;" vertex="1" parent="1">
+          <mxGeometry x="305" y="305" width="50" height="15" as="geometry" />
+        </mxCell>
+
+        <!-- J2 слияние & -->
+        <mxCell id="s1-j2" value="&amp;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#333333;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="480" y="190" width="40" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="s1-j2-lbl" value="J2" style="text;html=1;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="485" y="230" width="30" height="15" as="geometry" />
+        </mxCell>
+
+        <!-- J3 разветвление X (для ошибок) -->
+        <mxCell id="s1-j3" value="X" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#333333;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="580" y="190" width="40" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="s1-j3-lbl" value="J3" style="text;html=1;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="585" y="230" width="30" height="15" as="geometry" />
+        </mxCell>
+
+        <!-- UOW 1.1.5 Нормализация -->
+        <mxCell id="s1-uow5" value="Нормализация&#xa;и валидация" style="shape=process;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1;size=0.15;" vertex="1" parent="1">
+          <mxGeometry x="680" y="120" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="s1-uow5-num" value="1.1.5" style="text;html=1;fontSize=10;fontStyle=1;align=left;" vertex="1" parent="1">
+          <mxGeometry x="685" y="165" width="50" height="15" as="geometry" />
+        </mxCell>
+
+        <!-- UOW 1.1.6 Логирование ошибки -->
+        <mxCell id="s1-uow6" value="Логирование&#xa;ошибки" style="shape=process;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1;size=0.15;" vertex="1" parent="1">
+          <mxGeometry x="680" y="260" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="s1-uow6-num" value="1.1.6" style="text;html=1;fontSize=10;fontStyle=1;align=left;" vertex="1" parent="1">
+          <mxGeometry x="685" y="305" width="50" height="15" as="geometry" />
+        </mxCell>
+
+        <!-- J4 слияние X -->
+        <mxCell id="s1-j4" value="X" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#333333;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="860" y="190" width="40" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="s1-j4-lbl" value="J4" style="text;html=1;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="865" y="230" width="30" height="15" as="geometry" />
+        </mxCell>
+
+        <!-- UOW 1.1.7 Сохранение в YDB -->
+        <mxCell id="s1-uow7" value="Сохранение&#xa;в YDB" style="shape=process;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1;size=0.15;" vertex="1" parent="1">
+          <mxGeometry x="960" y="180" width="110" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="s1-uow7-num" value="1.1.7" style="text;html=1;fontSize=10;fontStyle=1;align=left;" vertex="1" parent="1">
+          <mxGeometry x="965" y="225" width="50" height="15" as="geometry" />
+        </mxCell>
+
+        <!-- UOW 1.1.8 Индексация в Chroma -->
+        <mxCell id="s1-uow8" value="Индексация&#xa;в Chroma" style="shape=process;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1;size=0.15;" vertex="1" parent="1">
+          <mxGeometry x="1130" y="180" width="110" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="s1-uow8-num" value="1.1.8" style="text;html=1;fontSize=10;fontStyle=1;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1135" y="225" width="50" height="15" as="geometry" />
+        </mxCell>
+
+        <!-- UOW 1.1.9 Завершение сбора -->
+        <mxCell id="s1-uow9" value="Завершение&#xa;сбора" style="shape=process;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1;size=0.15;" vertex="1" parent="1">
+          <mxGeometry x="1300" y="180" width="110" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="s1-uow9-num" value="1.1.9" style="text;html=1;fontSize=10;fontStyle=1;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1305" y="225" width="50" height="15" as="geometry" />
+        </mxCell>
+
+        <!-- Связи -->
+        <mxCell id="s1-l1" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="s1-uow2" target="s1-j1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s1-l2" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="s1-j1" target="s1-uow3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s1-l3" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="s1-j1" target="s1-uow4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s1-l4" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="s1-uow3" target="s1-j2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s1-l5" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="s1-uow4" target="s1-j2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s1-l6" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="s1-j2" target="s1-j3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s1-l7" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="s1-j3" target="s1-uow5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s1-l8" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="s1-j3" target="s1-uow6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s1-l9" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="s1-uow5" target="s1-j4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s1-l10" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="s1-uow6" target="s1-j4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s1-l11" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="s1-j4" target="s1-uow7">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s1-l12" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="s1-uow7" target="s1-uow8">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s1-l13" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="s1-uow8" target="s1-uow9">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- OBJECT irk.ru, culture38.ru -->
+        <mxCell id="s1-obj1" value="OBJECT/&#xa;irk.ru, culture38.ru" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="290" y="40" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="s1-obj1-l" style="endArrow=none;html=1;strokeWidth=1;dashed=1;strokeColor=#333333;" edge="1" parent="1" source="s1-obj1" target="s1-uow3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- OBJECT 101Hotels API -->
+        <mxCell id="s1-obj2" value="OBJECT/&#xa;101Hotels API" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="290" y="340" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="s1-obj2-l" style="endArrow=none;html=1;strokeWidth=1;dashed=1;strokeColor=#333333;" edge="1" parent="1" source="s1-obj2" target="s1-uow4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ELAB для J3 -->
+        <mxCell id="s1-elab" value="ELAB/ Если данные валидны →&#xa;Нормализация. Если ошибка&#xa;источника → Логирование" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=9;align=left;" vertex="1" parent="1">
+          <mxGeometry x="540" y="270" width="180" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="s1-elab-l" style="endArrow=none;html=1;strokeWidth=1;dashed=1;strokeColor=#333333;" edge="1" parent="1" source="s1-elab" target="s1-j3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- NOTE -->
+        <mxCell id="s1-note" value="NOTE/ Запускается по расписанию&#xa;(GitHub Actions, 1 раз в день)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=9;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1280" y="100" width="180" height="40" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram name="IDEF3 - Сценарий 2: Обработка запроса" id="idef3-scenario2">
+    <mxGraphModel dx="1700" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="800" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        
+        <!-- Заголовок -->
+        <mxCell id="title2" value="СЦЕНАРИЙ 2: Обработка запроса пользователя (декомпозиция 1.2)" style="text;html=1;fontSize=16;fontStyle=1;fontColor=#c45911;align=center;" vertex="1" parent="1">
+          <mxGeometry x="500" y="20" width="550" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- UOW 1.2.10 Получение запроса -->
+        <mxCell id="s2-uow10" value="Получение&#xa;запроса" style="shape=process;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1;size=0.15;" vertex="1" parent="1">
+          <mxGeometry x="40" y="250" width="110" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="s2-uow10-num" value="1.2.10" style="text;html=1;fontSize=10;fontStyle=1;align=left;" vertex="1" parent="1">
+          <mxGeometry x="45" y="295" width="55" height="15" as="geometry" />
+        </mxCell>
+
+        <!-- UOW 1.2.11 Поиск в RAG -->
+        <mxCell id="s2-uow11" value="Поиск контекста&#xa;в Chroma (RAG)" style="shape=process;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1;size=0.15;" vertex="1" parent="1">
+          <mxGeometry x="200" y="250" width="130" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="s2-uow11-num" value="1.2.11" style="text;html=1;fontSize=10;fontStyle=1;align=left;" vertex="1" parent="1">
+          <mxGeometry x="205" y="295" width="55" height="15" as="geometry" />
+        </mxCell>
+
+        <!-- UOW 1.2.12 Определение типа -->
+        <mxCell id="s2-uow12" value="Определение&#xa;типа запроса" style="shape=process;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1;size=0.15;" vertex="1" parent="1">
+          <mxGeometry x="380" y="250" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="s2-uow12-num" value="1.2.12" style="text;html=1;fontSize=10;fontStyle=1;align=left;" vertex="1" parent="1">
+          <mxGeometry x="385" y="295" width="55" height="15" as="geometry" />
+        </mxCell>
+
+        <!-- J5 разветвление X -->
+        <mxCell id="s2-j5" value="X" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#333333;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="550" y="260" width="40" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="s2-j5-lbl" value="J5" style="text;html=1;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="555" y="300" width="30" height="15" as="geometry" />
+        </mxCell>
+
+        <!-- UOW 1.2.13 Прогнозирование -->
+        <mxCell id="s2-uow13" value="Прогнозирование&#xa;(Prophet)" style="shape=process;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1;size=0.15;" vertex="1" parent="1">
+          <mxGeometry x="650" y="160" width="130" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="s2-uow13-num" value="1.2.13" style="text;html=1;fontSize=10;fontStyle=1;align=left;" vertex="1" parent="1">
+          <mxGeometry x="655" y="205" width="55" height="15" as="geometry" />
+        </mxCell>
+
+        <!-- UOW 1.2.14 Аналитика -->
+        <mxCell id="s2-uow14" value="Аналитика&#xa;исторических данных" style="shape=process;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1;size=0.15;" vertex="1" parent="1">
+          <mxGeometry x="650" y="340" width="130" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="s2-uow14-num" value="1.2.14" style="text;html=1;fontSize=10;fontStyle=1;align=left;" vertex="1" parent="1">
+          <mxGeometry x="655" y="385" width="55" height="15" as="geometry" />
+        </mxCell>
+
+        <!-- J6 слияние X -->
+        <mxCell id="s2-j6" value="X" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#333333;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="840" y="260" width="40" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="s2-j6-lbl" value="J6" style="text;html=1;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="845" y="300" width="30" height="15" as="geometry" />
+        </mxCell>
+
+        <!-- UOW 1.2.15 Генерация ответа -->
+        <mxCell id="s2-uow15" value="Генерация&#xa;ответа (LLM)" style="shape=process;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1;size=0.15;" vertex="1" parent="1">
+          <mxGeometry x="940" y="250" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="s2-uow15-num" value="1.2.15" style="text;html=1;fontSize=10;fontStyle=1;align=left;" vertex="1" parent="1">
+          <mxGeometry x="945" y="295" width="55" height="15" as="geometry" />
+        </mxCell>
+
+        <!-- J7 разветвление & -->
+        <mxCell id="s2-j7" value="&amp;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#333333;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1110" y="260" width="40" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="s2-j7-lbl" value="J7" style="text;html=1;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1115" y="300" width="30" height="15" as="geometry" />
+        </mxCell>
+
+        <!-- UOW 1.2.16 Визуализация -->
+        <mxCell id="s2-uow16" value="Визуализация&#xa;результатов" style="shape=process;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1;size=0.15;" vertex="1" parent="1">
+          <mxGeometry x="1210" y="160" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="s2-uow16-num" value="1.2.16" style="text;html=1;fontSize=10;fontStyle=1;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1215" y="205" width="55" height="15" as="geometry" />
+        </mxCell>
+
+        <!-- UOW 1.2.17 Сохранение -->
+        <mxCell id="s2-uow17" value="Сохранение&#xa;в историю" style="shape=process;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1;size=0.15;" vertex="1" parent="1">
+          <mxGeometry x="1210" y="340" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="s2-uow17-num" value="1.2.17" style="text;html=1;fontSize=10;fontStyle=1;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1215" y="385" width="55" height="15" as="geometry" />
+        </mxCell>
+
+        <!-- J8 слияние & -->
+        <mxCell id="s2-j8" value="&amp;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#333333;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1390" y="260" width="40" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="s2-j8-lbl" value="J8" style="text;html=1;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1395" y="300" width="30" height="15" as="geometry" />
+        </mxCell>
+
+        <!-- UOW 1.2.18 Завершение обработки -->
+        <mxCell id="s2-uow18" value="Завершение&#xa;обработки" style="shape=process;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1;size=0.15;" vertex="1" parent="1">
+          <mxGeometry x="1490" y="250" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="s2-uow18-num" value="1.2.18" style="text;html=1;fontSize=10;fontStyle=1;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1495" y="295" width="55" height="15" as="geometry" />
+        </mxCell>
+
+        <!-- Связи -->
+        <mxCell id="s2-l1" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="s2-uow10" target="s2-uow11">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s2-l2" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="s2-uow11" target="s2-uow12">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s2-l3" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="s2-uow12" target="s2-j5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s2-l4" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="s2-j5" target="s2-uow13">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s2-l5" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="s2-j5" target="s2-uow14">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s2-l6" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="s2-uow13" target="s2-j6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s2-l7" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="s2-uow14" target="s2-j6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s2-l8" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="s2-j6" target="s2-uow15">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s2-l9" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="s2-uow15" target="s2-j7">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s2-l10" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="s2-j7" target="s2-uow16">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s2-l11" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="s2-j7" target="s2-uow17">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s2-l12" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="s2-uow16" target="s2-j8">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s2-l13" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="s2-uow17" target="s2-j8">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s2-l14" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="s2-j8" target="s2-uow18">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- OBJECT Запрос пользователя -->
+        <mxCell id="s2-obj1" value="OBJECT/&#xa;Запрос пользователя" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="30" y="160" width="130" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="s2-obj1-l" style="endArrow=none;html=1;strokeWidth=1;dashed=1;strokeColor=#333333;" edge="1" parent="1" source="s2-obj1" target="s2-uow10">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- OBJECT Контекст из Chroma -->
+        <mxCell id="s2-obj2" value="OBJECT/&#xa;Контекст из Chroma" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="200" y="160" width="130" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="s2-obj2-l" style="endArrow=none;html=1;strokeWidth=1;dashed=1;strokeColor=#333333;" edge="1" parent="1" source="s2-obj2" target="s2-uow11">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- OBJECT Данные из YDB -->
+        <mxCell id="s2-obj3" value="OBJECT/&#xa;Данные из YDB + события" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="640" y="80" width="150" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="s2-obj3-l" style="endArrow=none;html=1;strokeWidth=1;dashed=1;strokeColor=#333333;" edge="1" parent="1" source="s2-obj3" target="s2-uow13">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ELAB для J5 -->
+        <mxCell id="s2-elab" value="ELAB/ X = Исключающее ИЛИ&#xa;Если запрос о будущем → Прогноз&#xa;Если о прошлом → Аналитика" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=9;align=left;" vertex="1" parent="1">
+          <mxGeometry x="500" y="340" width="200" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="s2-elab-l" style="endArrow=none;html=1;strokeWidth=1;dashed=1;strokeColor=#333333;" edge="1" parent="1" source="s2-elab" target="s2-j5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

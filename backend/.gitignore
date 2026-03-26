@@ -1,0 +1,28 @@
+# Окружение
+.env
+.env.local
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE
+.vscode/
+.idea/
+
+# Chroma DB
+chroma_db/
+
+# ML Models (потенциально большие файлы)
+models/*.pkl
+models/*.joblib
+models/*.json
+!models/.gitkeep
+
+# Credentials
+authorized_key.json
+*-key.json
+*.pem
+*.key
+
+# Логи
+*.log

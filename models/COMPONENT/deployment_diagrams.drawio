@@ -1,0 +1,243 @@
+<mxfile host="app.diagrams.net" modified="2025-01-04" agent="Cursor" version="21.0.0">
+  <!-- БП1: Фоновый сбор данных -->
+  <diagram id="bp1-deploy" name="БП1 Фоновый сбор данных">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="500" background="#ffffff">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        
+        <!-- Заголовок -->
+        <mxCell id="title1" value="Диаграмма развёртывания: БП1 Фоновый сбор данных" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="20" y="10" width="500" height="30" as="geometry"/>
+        </mxCell>
+        
+        <!-- Узел: Сервер приложений -->
+        <mxCell id="n1_app" value="«процессор»&#xa;:Сервер приложений" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.05;darkOpacity2=0.1;size=10;fillColor=#d5e8d4;strokeColor=#82b366;align=center;verticalAlign=top;spacingTop=8;fontStyle=4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="60" width="200" height="180" as="geometry"/>
+        </mxCell>
+        <mxCell id="c1_scheduler" value="scheduler.py" style="shape=component;align=center;spacingLeft=20;" vertex="1" parent="1">
+          <mxGeometry x="60" y="120" width="100" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="c1_parsers" value="parsers/" style="shape=component;align=center;spacingLeft=20;" vertex="1" parent="1">
+          <mxGeometry x="60" y="160" width="100" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="c1_rag" value="rag_indexer.py" style="shape=component;align=center;spacingLeft=20;" vertex="1" parent="1">
+          <mxGeometry x="60" y="200" width="100" height="30" as="geometry"/>
+        </mxCell>
+        
+        <!-- Узел: Сервер YDB -->
+        <mxCell id="n1_ydb" value="«база данных»&#xa;:Сервер YDB" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.05;darkOpacity2=0.1;size=10;fillColor=#f5f5f5;strokeColor=#666666;align=center;verticalAlign=top;spacingTop=8;fontStyle=4;" vertex="1" parent="1">
+          <mxGeometry x="320" y="60" width="160" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="db1_ydb" value="YDB" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=8;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="365" y="110" width="70" height="40" as="geometry"/>
+        </mxCell>
+        
+        <!-- Узел: Сервер Chroma -->
+        <mxCell id="n1_chroma" value="«база данных»&#xa;:Сервер Chroma" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.05;darkOpacity2=0.1;size=10;fillColor=#f5f5f5;strokeColor=#666666;align=center;verticalAlign=top;spacingTop=8;fontStyle=4;" vertex="1" parent="1">
+          <mxGeometry x="320" y="180" width="160" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="db1_chroma" value="Chroma" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=8;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="365" y="230" width="70" height="40" as="geometry"/>
+        </mxCell>
+        
+        <!-- Интернет -->
+        <mxCell id="cloud1" value="Интернет" style="ellipse;shape=cloud;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="560" y="180" width="120" height="70" as="geometry"/>
+        </mxCell>
+        
+        <!-- Внешние источники -->
+        <mxCell id="ext1_irk" value="irk.ru/afisha" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="740" y="60" width="100" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="ext1_culture" value="culture38.ru" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="740" y="120" width="100" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="ext1_hotels" value="101Hotels API" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="740" y="180" width="100" height="40" as="geometry"/>
+        </mxCell>
+        
+        <!-- Соединения -->
+        <mxCell id="conn1_1" style="endArrow=none;html=1;strokeWidth=2;" edge="1" parent="1" source="n1_app" target="n1_ydb">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="conn1_2" style="endArrow=none;html=1;strokeWidth=2;" edge="1" parent="1" source="n1_app" target="n1_chroma">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="conn1_3" value="HTTPS" style="endArrow=none;html=1;strokeWidth=2;exitX=1;exitY=0.75;entryX=0;entryY=0.5;" edge="1" parent="1" source="n1_app" target="cloud1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="conn1_4" style="endArrow=none;html=1;strokeWidth=1;dashed=1;" edge="1" parent="1" source="cloud1" target="ext1_irk">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="conn1_5" style="endArrow=none;html=1;strokeWidth=1;dashed=1;" edge="1" parent="1" source="cloud1" target="ext1_culture">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="conn1_6" style="endArrow=none;html=1;strokeWidth=1;dashed=1;" edge="1" parent="1" source="cloud1" target="ext1_hotels">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        
+      </root>
+    </mxGraphModel>
+  </diagram>
+  
+  <!-- БП2: Обработка запроса пользователя -->
+  <diagram id="bp2-deploy" name="БП2 Обработка запроса">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="500" background="#ffffff">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        
+        <!-- Заголовок -->
+        <mxCell id="title2" value="Диаграмма развёртывания: БП2 Обработка запроса пользователя" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="20" y="10" width="550" height="30" as="geometry"/>
+        </mxCell>
+        
+        <!-- Узел: Клиент -->
+        <mxCell id="n2_client" value="«процессор»&#xa;:Клиент" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.05;darkOpacity2=0.1;size=10;fillColor=#dae8fc;strokeColor=#6c8ebf;align=center;verticalAlign=top;spacingTop=8;fontStyle=4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="120" width="140" height="120" as="geometry"/>
+        </mxCell>
+        <mxCell id="c2_browser" value="Браузер&#xa;(React)" style="shape=component;align=center;spacingLeft=20;" vertex="1" parent="1">
+          <mxGeometry x="55" y="180" width="100" height="40" as="geometry"/>
+        </mxCell>
+        
+        <!-- Узел: Сервер приложений -->
+        <mxCell id="n2_app" value="«процессор»&#xa;:Сервер приложений" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.05;darkOpacity2=0.1;size=10;fillColor=#d5e8d4;strokeColor=#82b366;align=center;verticalAlign=top;spacingTop=8;fontStyle=4;" vertex="1" parent="1">
+          <mxGeometry x="260" y="60" width="200" height="200" as="geometry"/>
+        </mxCell>
+        <mxCell id="c2_api" value="api.py" style="shape=component;align=center;spacingLeft=20;" vertex="1" parent="1">
+          <mxGeometry x="280" y="120" width="80" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="c2_agent" value="agent.py" style="shape=component;align=center;spacingLeft=20;" vertex="1" parent="1">
+          <mxGeometry x="370" y="120" width="80" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="c2_prophet" value="forecasting.py" style="shape=component;align=center;spacingLeft=20;" vertex="1" parent="1">
+          <mxGeometry x="280" y="160" width="90" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="c2_rag" value="retriever.py" style="shape=component;align=center;spacingLeft=20;" vertex="1" parent="1">
+          <mxGeometry x="380" y="160" width="70" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="c2_llm" value="llm_client.py" style="shape=component;align=center;spacingLeft=20;" vertex="1" parent="1">
+          <mxGeometry x="320" y="200" width="90" height="30" as="geometry"/>
+        </mxCell>
+        
+        <!-- Узел: Сервер YDB -->
+        <mxCell id="n2_ydb" value="«база данных»&#xa;:Сервер YDB" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.05;darkOpacity2=0.1;size=10;fillColor=#f5f5f5;strokeColor=#666666;align=center;verticalAlign=top;spacingTop=8;fontStyle=4;" vertex="1" parent="1">
+          <mxGeometry x="540" y="60" width="140" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="db2_ydb" value="YDB" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=8;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="575" y="110" width="70" height="40" as="geometry"/>
+        </mxCell>
+        
+        <!-- Узел: Сервер Chroma -->
+        <mxCell id="n2_chroma" value="«база данных»&#xa;:Сервер Chroma" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.05;darkOpacity2=0.1;size=10;fillColor=#f5f5f5;strokeColor=#666666;align=center;verticalAlign=top;spacingTop=8;fontStyle=4;" vertex="1" parent="1">
+          <mxGeometry x="540" y="180" width="140" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="db2_chroma" value="Chroma" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=8;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="575" y="230" width="70" height="40" as="geometry"/>
+        </mxCell>
+        
+        <!-- Интернет -->
+        <mxCell id="cloud2" value="Интернет" style="ellipse;shape=cloud;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="760" y="180" width="120" height="70" as="geometry"/>
+        </mxCell>
+        
+        <!-- Внешний сервис -->
+        <mxCell id="ext2_giga" value="OpenRouter API" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="940" y="135" width="100" height="40" as="geometry"/>
+        </mxCell>
+        
+        <!-- Соединения -->
+        <mxCell id="conn2_1" value="HTTP" style="endArrow=none;html=1;strokeWidth=2;" edge="1" parent="1" source="n2_client" target="n2_app">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="conn2_2" style="endArrow=none;html=1;strokeWidth=2;" edge="1" parent="1" source="n2_app" target="n2_ydb">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="conn2_3" style="endArrow=none;html=1;strokeWidth=2;" edge="1" parent="1" source="n2_app" target="n2_chroma">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="conn2_4" value="HTTPS" style="endArrow=none;html=1;strokeWidth=2;exitX=1;exitY=0.75;entryX=0;entryY=0.5;" edge="1" parent="1" source="n2_app" target="cloud2">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="conn2_5" style="endArrow=none;html=1;strokeWidth=1;dashed=1;" edge="1" parent="1" source="cloud2" target="ext2_giga">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        
+      </root>
+    </mxGraphModel>
+  </diagram>
+  
+  <!-- БП3: Администрирование системы -->
+  <diagram id="bp3-deploy" name="БП3 Администрирование">
+    <mxGraphModel dx="1000" dy="700" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="900" pageHeight="450" background="#ffffff">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        
+        <!-- Заголовок -->
+        <mxCell id="title3" value="Диаграмма развёртывания: БП3 Администрирование системы" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="20" y="10" width="500" height="30" as="geometry"/>
+        </mxCell>
+        
+        <!-- Узел: Рабочая станция администратора -->
+        <mxCell id="n3_admin" value="«процессор»&#xa;:Рабочая станция" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.05;darkOpacity2=0.1;size=10;fillColor=#dae8fc;strokeColor=#6c8ebf;align=center;verticalAlign=top;spacingTop=8;fontStyle=4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="100" width="160" height="120" as="geometry"/>
+        </mxCell>
+        <mxCell id="c3_browser" value="Браузер&#xa;(Admin Panel)" style="shape=component;align=center;spacingLeft=20;" vertex="1" parent="1">
+          <mxGeometry x="55" y="165" width="120" height="40" as="geometry"/>
+        </mxCell>
+        
+        <!-- Узел: Сервер приложений -->
+        <mxCell id="n3_app" value="«процессор»&#xa;:Сервер приложений" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.05;darkOpacity2=0.1;size=10;fillColor=#d5e8d4;strokeColor=#82b366;align=center;verticalAlign=top;spacingTop=8;fontStyle=4;" vertex="1" parent="1">
+          <mxGeometry x="280" y="60" width="200" height="180" as="geometry"/>
+        </mxCell>
+        <mxCell id="c3_admin_api" value="admin_api.py" style="shape=component;align=center;spacingLeft=20;" vertex="1" parent="1">
+          <mxGeometry x="300" y="120" width="90" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="c3_monitor" value="monitor.py" style="shape=component;align=center;spacingLeft=20;" vertex="1" parent="1">
+          <mxGeometry x="300" y="160" width="90" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="c3_logger" value="logger.py" style="shape=component;align=center;spacingLeft=20;" vertex="1" parent="1">
+          <mxGeometry x="400" y="120" width="70" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="c3_config" value="config.py" style="shape=component;align=center;spacingLeft=20;" vertex="1" parent="1">
+          <mxGeometry x="400" y="160" width="70" height="30" as="geometry"/>
+        </mxCell>
+        
+        <!-- Узел: Сервер YDB -->
+        <mxCell id="n3_ydb" value="«база данных»&#xa;:Сервер YDB" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.05;darkOpacity2=0.1;size=10;fillColor=#f5f5f5;strokeColor=#666666;align=center;verticalAlign=top;spacingTop=8;fontStyle=4;" vertex="1" parent="1">
+          <mxGeometry x="560" y="100" width="140" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="db3_ydb" value="YDB" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=8;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="595" y="155" width="70" height="45" as="geometry"/>
+        </mxCell>
+        
+        <!-- Интернет -->
+        <mxCell id="cloud3" value="Интернет" style="ellipse;shape=cloud;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="560" y="260" width="120" height="70" as="geometry"/>
+        </mxCell>
+        
+        <!-- Внешние сервисы для мониторинга -->
+        <mxCell id="ext3_sources" value="Внешние источники&#xa;(мониторинг)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="740" y="270" width="120" height="50" as="geometry"/>
+        </mxCell>
+        
+        <!-- Соединения -->
+        <mxCell id="conn3_1" value="HTTP" style="endArrow=none;html=1;strokeWidth=2;" edge="1" parent="1" source="n3_admin" target="n3_app">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="conn3_2" style="endArrow=none;html=1;strokeWidth=2;" edge="1" parent="1" source="n3_app" target="n3_ydb">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="conn3_3" value="HTTPS" style="endArrow=none;html=1;strokeWidth=2;" edge="1" parent="1" source="n3_app" target="cloud3">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="conn3_4" style="endArrow=none;html=1;strokeWidth=1;dashed=1;" edge="1" parent="1" source="cloud3" target="ext3_sources">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

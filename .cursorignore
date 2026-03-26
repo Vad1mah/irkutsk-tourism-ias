@@ -1,0 +1,30 @@
+# Add directories or file patterns to ignore during indexing
+# Данные парсера (большие CSV)
+101hotel_parser/tables/
+101hotel_parser/databases/*.csv
+101hotel_parser/logs/
+
+# Python
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Node
+node_modules/
+.next/
+dist/
+build/
+
+# IDE & System
+.vscode/
+*.log
+
+# Secrets
+# .env
+# .env.local
+# authorized_key.json
+
+# Документация (уже проиндексирована)
+teachers_materials/*.pdf
+# *.docx

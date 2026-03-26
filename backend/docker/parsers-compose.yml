@@ -1,0 +1,97 @@
+# Docker Compose для парсеров ИАС Туризм
+# Запуск: docker-compose -f docker/parsers-compose.yml up -d
+
+services:
+  # PostgreSQL база данных
+  postgres:
+    image: postgres:16-alpine
+    container_name: tourism-postgres
+    environment:
+      POSTGRES_USER: tourism
+      POSTGRES_PASSWORD: tourism_pass
+      POSTGRES_DB: tourism
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tourism"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis для кэширования
+  redis:
+    image: redis:7-alpine
+    container_name: tourism-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  # Парсер отелей 101hotels (ежедневно в 6:00 UTC)
+  parser-hotels:
+    build:
+      context: ..
+      dockerfile: docker/parsers.Dockerfile
+    container_name: tourism-parser-hotels
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://tourism:tourism_pass@postgres:5432/tourism
+      - DB_BACKEND=postgresql
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["--parser", "hotels"]
+    restart: "no"
+
+  # Парсер событий (все источники)
+  parser-events:
+    build:
+      context: ..
+      dockerfile: docker/parsers.Dockerfile
+    container_name: tourism-parser-events
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://tourism:tourism_pass@postgres:5432/tourism
+      - DB_BACKEND=postgresql
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["--parser", "events"]
+    restart: "no"
+
+  # Парсер погоды OpenMeteo
+  parser-weather:
+    build:
+      context: ..
+      dockerfile: docker/parsers.Dockerfile
+    container_name: tourism-parser-weather
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://tourism:tourism_pass@postgres:5432/tourism
+      - DB_BACKEND=postgresql
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["--parser", "weather"]
+    restart: "no"
+
+  # Планировщик (cron для регулярного запуска)
+  scheduler:
+    build:
+      context: ..
+      dockerfile: docker/parsers.Dockerfile
+    container_name: tourism-scheduler
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://tourism:tourism_pass@postgres:5432/tourism
+      - DB_BACKEND=postgresql
+      - REDIS_HOST=redis
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    command: ["--scheduler"]
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:

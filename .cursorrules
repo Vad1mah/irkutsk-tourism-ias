@@ -1,0 +1,206 @@
+---
+description: 
+alwaysApply: true
+---
+
+# PROJECT RULES: Tourism Analytics System
+
+## Общие правила
+- Всегда отвечай на русском языке
+- Используй context7 для поиска актуальной документации библиотек
+- Экономь токены — пиши кратко и по делу
+- Не добавляй v2/v3 суффиксы к именам
+- Не пиши длинные комментарии в стиле AI
+
+## Структура проекта
+```
+tourism-analytics/
+├── backend/              # FastAPI + Python
+│   ├── app/
+│   │   ├── parsers/      # 8 парсеров событий + утилиты (17 файлов)
+│   │   ├── services/     # 16 сервисов (ML, LLM, кэш, агенты)
+│   │   ├── routers/      # 7 API роутеров (59 endpoints)
+│   │   ├── models/       # Pydantic schemas
+│   │   ├── db/           # SQLAlchemy ORM + session
+│   │   ├── middleware/    # Rate limiting
+│   │   ├── dependencies/  # DI + API key auth
+│   │   ├── constants.py  # Централизованные константы
+│   │   └── scheduler.py  # APScheduler
+│   └── requirements.txt
+├── frontend/             # React + TypeScript + Vite
+│   └── src/
+│       ├── pages/        # 8 страниц (Home, Chat, Analytics, Events, Map, Forecast, HotelDetail, About)
+│       ├── components/   # Layout, UI (Button, Card, Badge, Input, ErrorState)
+│       └── api/          # Типизированный API клиент (fetch)
+├── docs/                 # Вся документация проекта
+│   ├── research/         # Исследования (LLM, парсеры, модели)
+│   ├── vkr/              # Текст и структура ВКР
+│   ├── project/          # Управление проектом (ТЗ, WBS, риски, ТЭО)
+│   ├── presentation/     # Презентации
+│   └── assignments/      # Выполненные задания
+├── models/               # UML/IDEF модели
+│   ├── ACTIVITY, BP, CLASS, COMPONENT, DOMAIN
+│   ├── IDEF1, IDEF3
+│   ├── REQ, ROBUSTNESS, SEQUENCE
+│   └── UC, UI
+├── 101hotel_parser/      # Отдельный парсер 101Hotels (курсовая)
+└── Individual_task/      # Задание на практику
+```
+
+## Backend (Python/FastAPI)
+
+### Стиль кода
+- Type hints обязательны для аргументов и возвращаемых значений
+- Используй абсолютные импорты, не относительные
+- Используй Pydantic модели вместо dict
+- Google-style docstrings без типов (типы в аннотациях)
+- Приватные функции-хелперы с префиксом _
+
+### Структура FastAPI
+```python
+from fastapi import APIRouter
+router = APIRouter(prefix="/api/hotels", tags=["hotels"])
+
+from pydantic import BaseModel
+class HotelResponse(BaseModel): ...
+```
+
+### Асинхронность
+- Все I/O операции async/await
+- aiohttp для HTTP запросов
+- Используй asyncio.gather для параллельных запросов
+- Синхронные ML-модели — через asyncio.to_thread()
+
+### База данных PostgreSQL 16
+- PostgreSQL через SQLAlchemy 2.0 + asyncpg (Docker)
+- data_service — фабрика для работы с PostgreSQL
+- ORM модели: Hotel, HotelStatistic, Event, QueryHistory, Forecast (с updated_at)
+- FK + CHECK constraints, batch inserts (upsert)
+
+### LLM провайдеры (текущее состояние)
+- **Mistral** — основной (1B токенов/мес, работает из РФ)
+- **Groq** — быстрый (Llama 3.3 70B, требует VPN)
+- **GigaChat** — корпоративный (Pro/Max, русский язык)
+- **DeepSeek** — резервный (работает из РФ)
+- **OpenRouter** — резервный (100+ моделей)
+- **Gemini** — резервный (требует VPN)
+- Конфигурация: LLM_PROVIDER в .env
+
+### Парсеры (app/parsers/)
+- 8 парсеров событий: irk, culture38, zeroevent, yandex, kassir, culture_rf, telegram, major
+- hotels_101hotels — данные 101Hotels (региональный парсинг)
+- hotels_xotelo — данные Xotelo/TripAdvisor (cross-reference)
+- weather_openmeteo — погода Open-Meteo API
+- ai_extractor — LLM-извлечение структурированных данных
+- anti_detection — обход блокировок
+- health_monitor — мониторинг состояния парсеров
+- base — базовый класс BaseParser
+
+### Прогнозирование (app/services/)
+- Prophet — классический, с holidays и регрессорами
+- NeuralProphet — нейросетевой, авторегрессия + events
+- XGBoost/LightGBM — gradient boosting, 25+ фичей
+- Ensemble — взвешенное объединение всех моделей (async + кэш)
+- Feature Engineering — календарные, лаговые, погодные, событийные фичи
+
+### AI агенты (LangGraph)
+- main_agent — туристическая аналитика, RAG, 5 tools (search_hotels, search_events, get_weather, forecast_occupancy, get_statistics)
+- forecast_agent — объяснимые прогнозы с LLM
+- MemorySaver + thread_id для контекста чата
+
+### Зависимости
+- FastAPI, uvicorn, pydantic, pydantic-settings
+- sqlalchemy[asyncio], asyncpg, alembic
+- chromadb (векторная БД)
+- prophet, neuralprophet, xgboost, lightgbm, scikit-learn
+- aiohttp, httpx, beautifulsoup4, lxml
+- openai, langchain-core, langgraph, langchain-gigachat, langchain-openai, langchain-mistralai
+- apscheduler, redis, telethon, tenacity
+
+## Frontend (React/TypeScript)
+
+### Стиль кода
+- Используй type вместо interface
+- Функциональные компоненты (function declaration, не arrow)
+- Hooks для состояния и эффектов
+
+### Структура компонентов
+```typescript
+type Props = {
+  title: string;
+  onSubmit: (data: FormData) => void;
+};
+
+export function QueryForm({ title, onSubmit }: Props) {
+  // ...
+}
+```
+
+### Стилизация
+- TailwindCSS 4 для стилей
+- Кастомные UI компоненты (Button, Card, Badge, Input, ErrorState)
+- Тёмная/светлая тема через CSS variables
+
+### API клиент
+```typescript
+const api = {
+  query: (text: string) => fetch('/api/query', { ... }),
+  hotels: () => fetch('/api/hotels'),
+};
+```
+
+### Страницы (8)
+- Home — AI-чат с агентом (подсказки, retry, localStorage)
+- Chat — SSE streaming чат
+- Analytics — Ensemble прогноз + KPI + корреляции + тепловая карта (объединяет Situation + Dashboard)
+- Events — каталог событий с фильтрацией
+- Map — аналитика регионов (карточки, treemap, radar, heatmap)
+- Forecast — прогнозирование (Ensemble + сравнение моделей + сезонность + feature importance)
+- HotelDetail — детальная карточка отеля (/hotels/:id)
+- About — описание системы для комиссии
+
+### Визуализации
+- Recharts — графики (AreaChart, BarChart, LineChart, RadarChart, Treemap)
+- ECharts — GeoMap карта отелей (Dashboard, tree-shaken)
+- Кастомный HeatmapGrid — тепловая карта загруженности
+
+## Соглашения об именовании
+
+### Python
+- snake_case для функций и переменных
+- PascalCase для классов и Pydantic моделей
+- UPPER_CASE для констант
+
+### TypeScript
+- camelCase для функций и переменных
+- PascalCase для компонентов и типов
+- UPPER_CASE для констант
+
+### API endpoints
+- kebab-case: /api/user-queries
+- REST: GET /hotels, POST /query, GET /events
+
+## Безопасность
+- Секреты только через .env (не коммитить!)
+- CORS настроен для фронтенда
+- Rate Limiting: Redis sliding window + in-memory fallback
+- API Key Auth: X-API-Key для parser/admin endpoints
+- Валидация всех входных данных через Pydantic
+- CSP/HSTS headers в nginx
+- Non-root Docker containers
+
+## Ключевая документация
+- `docs/project/PROJECT_STATUS.md` — текущий статус проекта
+- `docs/GLOBAL_AUDIT.md` — глобальный аудит (145 пунктов, 25.03.2026)
+- `docs/project/PROJECT_AUDIT.md` — аудит проекта (12.03.2026)
+- `docs/project/PG_MIGRATION_PLAN.md` — план миграции YDB → PostgreSQL (завершён)
+- `docs/research/PARSERS_AUDIT.md` — аудит парсеров
+- `docs/research/LLM_PROVIDERS_RESEARCH.md` — исследование LLM-провайдеров
+- `docs/research/MISTRAL_MODELS_RESEARCH.md` — исследование моделей Mistral
+
+## Завершённые миграции
+- **БД:** YDB → PostgreSQL 16 (SQLAlchemy 2.0 + asyncpg, docker-compose) — 22.02.2026
+- **Дашборды:** DataLens → Recharts + ECharts (встроенные в React) — 22.02.2026
+- **Агенты:** LangGraph + Command pattern — 22.02.2026
+- **Глобальный аудит:** 145 фиксов (async, security, DB, frontend, ML, parsers) — 25.03.2026
+ENV: Windows. Избегайте интерактивных оболочек. Для выполнения команд используйте конструкцию cmd /c [команда], чтобы процессы завершались автоматически и возвращали управление агенту.

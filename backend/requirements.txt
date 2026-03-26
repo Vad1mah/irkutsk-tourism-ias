@@ -1,0 +1,68 @@
+# FastAPI
+fastapi>=0.115.0,<0.130.0
+uvicorn[standard]>=0.32.0
+pydantic>=2.10.0
+pydantic-settings>=2.6.0
+python-dotenv>=1.0.1
+
+# Database
+sqlalchemy[asyncio]>=2.0.36
+asyncpg>=0.30.0
+alembic>=1.14.0
+
+# Vector DB
+chromadb>=0.5.23
+
+# Forecasting
+prophet>=1.3.0
+neuralprophet>=0.8.0
+holidays>=0.89
+
+# ML Models
+xgboost>=2.0.0
+lightgbm>=4.0.0
+scikit-learn>=1.4.0,<2.0.0
+numpy>=1.26.0,<3.0.0
+pandas>=2.0.0,<3.0.0
+
+# HTTP client
+aiohttp>=3.11.0
+httpx>=0.28.0
+beautifulsoup4>=4.12.3
+# lxml>=5.3.0  # Не используется (BS4 использует html.parser)
+
+# AI-powered scraping
+# crawl4ai>=0.8.0  # Установить отдельно: pip install crawl4ai && crawl4ai-setup
+# browser-use>=0.11.0  # AI browser automation
+# playwright>=1.49.0  # Закомментировано вместе с crawl4ai
+
+# Telegram
+telethon>=1.42.0
+
+# VK (опционально)
+# vk_api>=11.9.0
+
+# Scheduling
+apscheduler>=3.10.0
+
+# LLM
+openai>=1.57.0
+# tenacity>=9.0.0  # Не используется в проекте
+google-genai>=0.3.0
+groq>=0.4.0
+
+# LLM Integrations
+langchain-gigachat>=0.3.2
+langchain-openai>=0.3.0  # Для Groq через OpenAI-совместимый API
+langchain-mistralai>=0.2.0  # Нативная интеграция Mistral с tools
+
+# LangGraph Agent
+langgraph>=0.2.0
+langchain-core>=0.3.0
+
+# Caching
+redis>=5.0.0
+
+# Testing
+pytest>=8.0.0
+pytest-asyncio>=0.24.0

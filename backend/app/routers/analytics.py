@@ -1,0 +1,1380 @@
+"""API для продвинутой аналитики."""
+import asyncio
+import time
+from typing import Any, Literal
+from fastapi import APIRouter, HTTPException, Depends, Query
+from datetime import date, timedelta
+from collections import defaultdict
+import logging
+
+from app.constants import VALID_DISTRICTS, CITY_TO_DISTRICT, DEFAULT_DISTRICT, DISTRICT_CENTERS, SEASON_MONTHS
+from app.dependencies import (
+    DataServiceDep, WeatherServiceDep, EnsembleServiceDep, CacheServiceDep,
+)
+from pydantic import ValidationError
+from app.models.schemas import (
+    KPIResponse, CityHotels,
+    TripSummary, EventBrief, WeatherDay, BestDate,
+)
+
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/api/analytics", tags=["analytics"])
+
+TOURIST_DISTRICTS = set(VALID_DISTRICTS)
+
+_forecast_locks: dict[str, asyncio.Lock] = {}
+_forecast_results: dict[str, tuple[float, dict]] = {}
+_FORECAST_TTL = 300
+_MAX_CACHE = 50
+
+
+def _evict_expired(cache: dict, ttl: float) -> None:
+    now = time.time()
+    expired = [k for k, (ts, _) in cache.items() if now - ts > ttl]
+    for k in expired:
+        cache.pop(k, None)
+        _forecast_locks.pop(k, None)
+    if len(cache) >= _MAX_CACHE:
+        oldest = min(cache, key=lambda k: cache[k][0])
+        del cache[oldest]
+        _forecast_locks.pop(oldest, None)
+
+
+async def _get_shared_forecast(
+    data: Any,
+    weather_svc: Any,
+    ensemble_svc: Any,
+    district: str,
+    days: int,
+) -> dict:
+    """Ensemble прогноз с дедупликацией: второй запрос ждёт первый."""
+    key = f"{district}:{days}"
+    now = time.time()
+
+    if key in _forecast_results:
+        ts, result = _forecast_results[key]
+        if now - ts < _FORECAST_TTL:
+            return result
+
+    if key not in _forecast_locks:
+        _forecast_locks[key] = asyncio.Lock()
+
+    async with _forecast_locks[key]:
+        if key in _forecast_results:
+            ts, result = _forecast_results[key]
+            if now - ts < _FORECAST_TTL:
+                return result
+
+        history = await data.get_occupancy_by_district(district)
+        history_dicts = [
+            {"date": r["date"], "occupancy": r["avg_occupancy"]}
+            for r in history if r.get("avg_occupancy") is not None
+        ]
+        if len(history_dicts) < 14:
+            return {}
+
+        forecast_dates = [date.today() + timedelta(days=i) for i in range(days)]
+        weather_data = await weather_svc.get_weather_for_dates(forecast_dates)
+        result = await ensemble_svc.forecast_ensemble_async(
+            history=history_dicts,
+            days_ahead=days,
+            weather_data=weather_data,
+            method="weighted_average",
+            district=district,
+        )
+        _evict_expired(_forecast_results, _FORECAST_TTL)
+        _forecast_results[key] = (time.time(), result)
+        return result
+
+
+def _get_month_name(month: int) -> str:
+    """Получить название месяца."""
+    months = ["Янв", "Фев", "Мар", "Апр", "Май", "Июн", 
+              "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"]
+    return months[month - 1] if 1 <= month <= 12 else "?"
+
+
+def _get_season(month: int) -> str:
+    """Определить сезон по месяцу."""
+    for season, months in SEASON_MONTHS.items():
+        if month in months:
+            return season
+    return "autumn"
+
+
+@router.get("/correlation")
+async def get_correlation_data(
+    data: DataServiceDep,
+    cache: CacheServiceDep,
+    year: int | None = None,
+) -> dict[str, Any]:
+    """
+    Получить данные корреляции событий и загруженности из БД.
+
+    Args:
+        year: Год для фильтрации (None = все годы)
+
+    Включает информацию о пропущенных периодах данных.
+    """
+    cache_key = f"analytics:correlation:{year}"
+    cached = await cache.get(cache_key)
+    if cached:
+        return cached
+
+    if not data.is_connected:
+        raise HTTPException(503, "БД не подключена")
+
+    # Получаем статистику по месяцам (с фильтром по году если указан)
+    stats = await data.get_monthly_statistics(year=year)
+    events_data = await data.get_events_by_month(year=year)
+
+    # Определяем доступные годы для UI
+    all_stats = await data.get_monthly_statistics() if year else stats
+    available_years = sorted(set(
+        int(row.get("date_str", "")[:4]) 
+        for row in all_stats 
+        if row.get("date_str") and len(row.get("date_str", "")) >= 4
+    ))
+    
+    if not stats:
+        return {
+            "months": [],
+            "correlation_coefficient": None,
+            "avg_occupancy": None,
+            "peak_month": None,
+            "low_month": None,
+            "missing_periods": [],
+            "available_years": available_years,
+            "selected_year": year,
+            "message": f"Нет данных статистики{f' за {year} год' if year else ''}"
+        }
+    
+    # Агрегируем по месяцам
+    monthly_stats = defaultdict(lambda: {"occupancy": [], "price": [], "events": 0})
+    
+    for row in stats:
+        date_str = row.get("date_str", "")
+        if len(date_str) >= 7:  # "2025-01" -> month = "01"
+            try:
+                row_year = int(date_str[:4])
+                month = int(date_str[5:7])
+                # Фильтр по году (если указан)
+                if year and row_year != year:
+                    continue
+                monthly_stats[month]["occupancy"].append(row.get("avg_occupancy", 0) or 0)
+                monthly_stats[month]["price"].append(row.get("avg_price", 0) or 0)
+            except (ValueError, IndexError):
+                continue
+    
+    # Подсчёт событий по месяцам
+    for row in events_data:
+        date_str = row.get("date_str", "")
+        if len(date_str) >= 7:
+            try:
+                row_year = int(date_str[:4])
+                month = int(date_str[5:7])
+                if year and row_year != year:
+                    continue
+                monthly_stats[month]["events"] += row.get("events_count", 0) or 0
+            except (ValueError, IndexError):
+                continue
+    
+    # Формируем результат
+    months_data = []
+    missing_periods = []  # Пропущенные периоды
+    
+    for month in range(1, 13):
+        month_data = monthly_stats.get(month, {"occupancy": [], "price": [], "events": 0})
+        occupancies = month_data["occupancy"]
+        prices = month_data["price"]
+        
+        avg_occ = round(sum(occupancies) / len(occupancies), 1) if occupancies else 0
+        avg_price = round(sum(prices) / len(prices)) if prices else 0
+        
+        has_data = len(occupancies) > 0
+        
+        months_data.append({
+            "month": _get_month_name(month),
+            "occupancy": avg_occ,
+            "avgPrice": avg_price,
+            "events": month_data["events"],
+            "season": _get_season(month),
+            "hasData": has_data,  # Флаг наличия данных
+        })
+        
+        # Если нет данных — добавляем в missing_periods
+        if not has_data:
+            missing_periods.append({
+                "month": _get_month_name(month),
+                "monthIndex": month,
+                "reason": "Парсер был неактивен" if year == 2025 and month in [7, 8, 9] else "Нет данных",
+            })
+    
+    # Расчёт корреляции Пирсона
+    occupancies = [m["occupancy"] for m in months_data if m["occupancy"] > 0]
+    events = [m["events"] for m in months_data if m["occupancy"] > 0]
+    
+    correlation = 0.0
+    if len(occupancies) >= 2 and len(events) >= 2:
+        n = min(len(occupancies), len(events))
+        occupancies = occupancies[:n]
+        events = events[:n]
+        
+        mean_occ = sum(occupancies) / n
+        mean_evt = sum(events) / n
+        
+        numerator = sum((o - mean_occ) * (e - mean_evt) for o, e in zip(occupancies, events))
+        denom_occ = sum((o - mean_occ) ** 2 for o in occupancies) ** 0.5
+        denom_evt = sum((e - mean_evt) ** 2 for e in events) ** 0.5
+        
+        if denom_occ * denom_evt > 0:
+            correlation = round(numerator / (denom_occ * denom_evt), 2)
+    
+    # Пик и минимум (только из месяцев с данными)
+    valid_months = [m for m in months_data if m["occupancy"] > 0]
+    peak_month = max(valid_months, key=lambda x: x["occupancy"])["month"] if valid_months else None
+    low_month = min(valid_months, key=lambda x: x["occupancy"])["month"] if valid_months else None
+    
+    avg_occupancy = round(sum(m["occupancy"] for m in valid_months) / len(valid_months), 1) if valid_months else None
+    
+    result = {
+        "months": months_data,
+        "correlation_coefficient": correlation,
+        "avg_occupancy": avg_occupancy,
+        "peak_month": peak_month,
+        "low_month": low_month,
+        "missing_periods": missing_periods,
+        "data_coverage": f"{len(valid_months)}/12 месяцев",
+        "available_years": available_years,
+        "selected_year": year,
+    }
+    await cache.set(cache_key, result, ttl=300)
+    return result
+
+
+@router.get("/districts")
+async def get_districts_data(data: DataServiceDep, cache: CacheServiceDep) -> list[dict[str, Any]]:
+    """
+    Получить статистику по районам из БД.
+    Фильтруем только туристически значимые районы Байкала.
+    """
+    cache_key = "analytics:districts"
+    cached = await cache.get(cache_key)
+    if cached:
+        return cached
+
+    if not data.is_connected:
+        raise HTTPException(503, "БД не подключена")
+
+    # Сначала пробуем полную статистику
+    districts = await data.get_districts_statistics()
+
+    # Если нет статистики — берём хотя бы количество отелей
+    if not districts:
+        districts_basic = await data.get_hotels_by_district()
+        result = [
+            {
+                "district": row.get("district"),
+                "occupancy": 0,
+                "freeRooms": 0,
+                "totalRooms": 0,
+                "avgPrice": 0,
+                "hotelsCount": row.get("hotels_count", 0) or 0,
+            }
+            for row in districts_basic 
+            if row.get("district") and row.get("district") in TOURIST_DISTRICTS
+        ]
+        await cache.set(cache_key, result, ttl=120)
+        return result
+    
+    result = []
+    for row in districts:
+        district = row.get("district")
+        # Фильтруем только туристические районы
+        if not district or district not in TOURIST_DISTRICTS:
+            continue
+            
+        total_rooms = row.get("total_rooms", 0) or 0
+        free_rooms = row.get("free_rooms", 0) or 0
+        avg_occupancy = row.get("avg_occupancy", 0) or 0
+        avg_price = row.get("avg_price", 0) or 0
+        
+        count = row.get("hotels_count", 0) or 0
+        result.append({
+            "district": district,
+            "occupancy": round(avg_occupancy, 1),
+            "freeRooms": int(free_rooms),
+            "totalRooms": int(total_rooms),
+            "avgPrice": round(avg_price),
+            "hotelsCount": count,
+            "confidence": "high" if count >= 10 else "medium" if count >= 3 else "low",
+        })
+    
+    await cache.set(cache_key, result, ttl=120)
+    return result
+
+
+@router.get("/recommendations")
+async def get_recommendations(data: DataServiceDep, cache: CacheServiceDep) -> list[dict[str, Any]]:
+    """
+    Генерировать рекомендации на основе реальных данных из БД.
+    """
+    cache_key = "analytics:recommendations"
+    cached = await cache.get(cache_key)
+    if cached:
+        return cached
+
+    if not data.is_connected:
+        raise HTTPException(503, "БД не подключена")
+
+    # Получаем данные для анализа
+    districts = await data.get_districts_statistics()
+    stats = await data.get_monthly_statistics()
+    
+    recommendations = []
+    
+    # Анализ районов (только туристические)
+    if districts:
+        # Фильтруем только туристические районы
+        tourist_districts = [
+            d for d in districts 
+            if d.get("district") in TOURIST_DISTRICTS
+        ]
+        # Найти район с минимальной загрузкой для туристов
+        valid_districts = [d for d in tourist_districts if (d.get("avg_occupancy") or 0) > 0]
+        if valid_districts:
+            min_occ_district = min(valid_districts, key=lambda x: x.get("avg_occupancy", 100))
+            max_occ_district = max(valid_districts, key=lambda x: x.get("avg_occupancy", 0))
+            
+            if min_occ_district.get("district"):
+                recommendations.append({
+                    "type": "tourist",
+                    "title": f"Отдых в {min_occ_district['district']} районе",
+                    "description": f"Низкая загруженность ({round(min_occ_district.get('avg_occupancy', 0))}%) — больше свободных номеров и меньше очередей.",
+                    "period": "Сейчас",
+                    "savings": f"{100 - round(min_occ_district.get('avg_occupancy', 0))}% номеров свободно",
+                })
+            
+            if max_occ_district.get("district") and max_occ_district.get("avg_occupancy", 0) > 50:
+                recommendations.append({
+                    "type": "hotelier",
+                    "title": f"Высокий спрос в {max_occ_district['district']} районе",
+                    "description": f"Загруженность {round(max_occ_district.get('avg_occupancy', 0))}% — можно повысить цены.",
+                    "period": "Текущий период",
+                    "increase": f"+{round(max_occ_district.get('avg_occupancy', 0) / 5)}% к цене",
+                })
+    
+    # Анализ сезонности по данным
+    if stats:
+        monthly_avg = defaultdict(list)
+        for row in stats:
+            date_str = row.get("date_str", "")
+            if len(date_str) >= 7:
+                try:
+                    month = int(date_str[5:7])
+                    monthly_avg[month].append(row.get("avg_occupancy", 0) or 0)
+                except (ValueError, IndexError):
+                    continue
+        
+        if monthly_avg:
+            month_averages = {m: sum(v)/len(v) for m, v in monthly_avg.items() if v}
+            
+            if month_averages:
+                current_month = date.today().month
+                peak_month = max(month_averages, key=month_averages.get)
+                low_month = min(month_averages, key=month_averages.get)
+                
+                # Определяем временную привязку (прошёл месяц или нет)
+                def _month_period(m: int) -> str:
+                    if m > current_month:
+                        return _get_month_name(m)
+                    elif m == current_month:
+                        return f"{_get_month_name(m)} (сейчас)"
+                    else:
+                        return f"{_get_month_name(m)} (следующий год)"
+                
+                recommendations.append({
+                    "type": "tourist",
+                    "title": f"Лучшее время для поездки — {_get_month_name(low_month)}",
+                    "description": f"Минимальная загруженность ({round(month_averages[low_month])}%) и низкие цены.",
+                    "period": _month_period(low_month),
+                    "savings": f"до {round(100 - month_averages[low_month])}% экономии",
+                })
+                
+                recommendations.append({
+                    "type": "hotelier",
+                    "title": f"Пик сезона — {_get_month_name(peak_month)}",
+                    "description": f"Загруженность {round(month_averages[peak_month])}%. Оптимальное время для повышения цен.",
+                    "period": _month_period(peak_month),
+                    "increase": f"+{round(month_averages[peak_month] / 4)}% к цене",
+                })
+    
+    if not recommendations:
+        recommendations = [{
+            "type": "info",
+            "title": "Недостаточно данных",
+            "description": "Для генерации рекомендаций необходимо больше данных.",
+            "period": "—",
+        }]
+
+    await cache.set(cache_key, recommendations, ttl=300)
+    return recommendations
+
+
+@router.get("/kpi", response_model=KPIResponse)
+async def get_kpi(data: DataServiceDep, cache: CacheServiceDep) -> KPIResponse:
+    """
+    Получить ключевые метрики из БД.
+    """
+    cache_key = "analytics:kpi"
+    cached = await cache.get(cache_key)
+    if cached:
+        try:
+            return KPIResponse(**cached)
+        except (ValidationError, TypeError):
+            logger.warning("Corrupted KPI cache, recalculating")
+
+    if not data.is_connected:
+        raise HTTPException(503, "БД не подключена")
+
+    metrics = await data.get_total_metrics()
+    districts = await data.get_districts_statistics()
+
+    # Расчёт общих показателей
+    total_rooms = sum(d.get("total_rooms", 0) or 0 for d in districts) if districts else 0
+    free_rooms = sum(d.get("free_rooms", 0) or 0 for d in districts) if districts else 0
+    avg_occupancy = 0.0
+    avg_price = None
+    if districts:
+        occupancies = [d.get("avg_occupancy", 0) or 0 for d in districts if d.get("avg_occupancy")]
+        avg_occupancy = round(sum(occupancies) / len(occupancies), 1) if occupancies else 0.0
+        prices = [d.get("avg_price", 0) or 0 for d in districts if d.get("avg_price")]
+        avg_price = round(sum(prices) / len(prices)) if prices else None
+
+    result = KPIResponse(
+        total_hotels=metrics.get("total_hotels", 0) or 0,
+        total_cities=metrics.get("total_cities", 0) or 0,
+        total_events=metrics.get("total_events", 0) or 0,
+        total_rooms=total_rooms,
+        free_rooms=free_rooms,
+        avg_occupancy=avg_occupancy,
+        avg_price=avg_price,
+    )
+    await cache.set(cache_key, result.model_dump(), ttl=300)
+    return result
+
+
+@router.get("/events-impact")
+async def get_events_impact(data: DataServiceDep, cache: CacheServiceDep) -> list[dict[str, Any]]:
+    """Влияние событий на загруженность: сравнение в дни событий vs обычные дни."""
+    cache_key = f"analytics:events-impact:{DEFAULT_DISTRICT}"
+    cached = await cache.get(cache_key)
+    if cached:
+        return cached
+
+    if not data.is_connected:
+        raise HTTPException(503, "БД не подключена")
+
+    default_occ = await data.get_occupancy_by_district(DEFAULT_DISTRICT)
+    if not default_occ:
+        return []
+    occ_dates = [row["date"] for row in default_occ if row.get("date")]
+    if not occ_dates:
+        return []
+    data_start = min(occ_dates)
+    data_end = max(occ_dates)
+
+    events = await data.get_events(date_from=data_start, date_to=data_end)
+    if not events:
+        return []
+
+    district_occupancy_cache: dict[str, list[dict]] = {DEFAULT_DISTRICT: default_occ}
+
+    async def _get_district_occupancy(district: str) -> list[dict]:
+        if district not in district_occupancy_cache:
+            district_occupancy_cache[district] = await data.get_occupancy_by_district(district)
+        return district_occupancy_cache[district]
+
+    def _find_nearest_occupancy(occ_map: dict, target: date, max_delta: int = 3) -> float | None:
+        for delta in range(max_delta + 1):
+            for d in (target + timedelta(days=delta), target - timedelta(days=delta)):
+                if d in occ_map:
+                    return occ_map[d]
+        return None
+
+    seen_dates: set[date] = set()
+    diverse_events = []
+    for event in events:
+        ds = event.get("date_start")
+        if isinstance(ds, str):
+            try:
+                ds = date.fromisoformat(ds[:10])
+            except ValueError:
+                continue
+        if ds and ds not in seen_dates:
+            seen_dates.add(ds)
+            diverse_events.append(event)
+        if len(diverse_events) >= 30:
+            break
+
+    result = []
+    for event in diverse_events:
+        title = event.get("title", "")
+        location = event.get("location", "")
+        date_start = event.get("date_start")
+
+        if not date_start:
+            continue
+
+        district = DEFAULT_DISTRICT
+        if location:
+            loc_lower = location.lower()
+            for city, dist in CITY_TO_DISTRICT.items():
+                if city in loc_lower:
+                    district = dist
+                    break
+
+        if isinstance(date_start, str):
+            try:
+                date_start = date.fromisoformat(date_start[:10])
+            except ValueError:
+                continue
+
+        date_str = date_start.strftime("%d.%m") if isinstance(date_start, date) else str(date_start)[:10]
+
+        occupancy_data = await _get_district_occupancy(district)
+        occupancy_map = {row["date"]: row["avg_occupancy"] for row in occupancy_data}
+
+        event_day_occ = occupancy_map.get(date_start) or _find_nearest_occupancy(occupancy_map, date_start)
+        all_values = [v for v in occupancy_map.values() if v is not None]
+        avg_occ = round(sum(all_values) / len(all_values), 1) if all_values else None
+
+        impact = None
+        if event_day_occ is not None and avg_occ is not None:
+            impact = round(event_day_occ - avg_occ, 1)
+
+        if impact is None:
+            continue
+
+        result.append({
+            "event": title[:50] if title else "Событие",
+            "date": date_str,
+            "district": district,
+            "source": event.get("source_id", ""),
+            "occupancy_on_day": round(event_day_occ, 1) if event_day_occ else None,
+            "avg_occupancy": avg_occ,
+            "impact": impact,
+        })
+
+    result.sort(key=lambda x: abs(x.get("impact") or 0), reverse=True)
+    await cache.set(cache_key, result, ttl=300)
+    return result
+
+
+@router.get("/hotels-by-city", response_model=list[CityHotels])
+async def get_hotels_by_city(data: DataServiceDep) -> list[CityHotels]:
+    """Получить распределение отелей по городам."""
+    if not data.is_connected:
+        raise HTTPException(503, "БД не подключена")
+
+    hotels_data = await data.get_hotels_by_city()
+    return [CityHotels(city=row.get("city", ""), count=row.get("hotels_count", 0) or 0) for row in hotels_data if row.get("city")]
+
+
+@router.get("/hotels-by-district")
+async def get_hotels_by_district(data: DataServiceDep) -> list[dict[str, Any]]:
+    """
+    Получить распределение отелей по районам с ценами.
+    Возвращает: district, count, avg_price, avg_rating
+    """
+    if not data.is_connected:
+        raise HTTPException(503, "БД не подключена")
+
+    # Получаем количество отелей
+    district_counts = await data.get_hotels_by_district()
+
+    # Получаем статистику с ценами
+    district_stats = await data.get_districts_statistics()
+    
+    # Создаём словарь цен по районам
+    price_lookup = {
+        row.get("district"): row.get("avg_price", 0) or 0
+        for row in (district_stats or [])
+        if row.get("district")
+    }
+    
+    result = []
+    for row in district_counts:
+        district = row.get("district")
+        if not district or district not in TOURIST_DISTRICTS:
+            continue
+        result.append({
+            "district": district,
+            "count": row.get("hotels_count", 0) or 0,
+            "avg_price": price_lookup.get(district, None),
+            "avg_rating": row.get("avg_rating"),
+        })
+    
+    return result
+
+
+@router.get("/heatmap")
+async def get_heatmap_data(data: DataServiceDep, cache: CacheServiceDep, days: int = 14) -> dict[str, Any]:
+    """Получить данные для тепловой карты загруженности (районы x даты)."""
+    if days < 1 or days > 90:
+        raise HTTPException(400, "days должен быть от 1 до 90")
+
+    cache_key = f"analytics:heatmap:{days}"
+    cached = await cache.get(cache_key)
+    if cached:
+        return cached
+
+    if not data.is_connected:
+        raise HTTPException(503, "БД не подключена")
+
+    from datetime import timedelta
+
+    # Получаем данные по всем районам (только туристические)
+    districts_data = await data.get_districts_statistics()
+    if not districts_data:
+        return {"data": [], "districts": [], "dates": []}
+
+    # Фильтруем только туристические районы
+    districts = [
+        d.get("district") for d in districts_data
+        if d.get("district") and d.get("district") in TOURIST_DISTRICTS
+    ]
+
+    # Параллельное получение данных по всем районам (вместо N+1)
+    end_date = date.today()
+    start_date = end_date - timedelta(days=days)
+
+    async def fetch_district_data(district: str):
+        try:
+            return district, await data.get_occupancy_by_district(district)
+        except Exception as e:
+            logger.error(f"Failed to get data for {district}: {e}")
+            return district, []
+
+    results = await asyncio.gather(*[fetch_district_data(d) for d in districts])
+
+    all_dates = [str(start_date + timedelta(days=i)) for i in range(days + 1)]
+
+    heatmap_data = []
+    for district, history in results:
+        occ_map: dict[str, float] = {}
+        for row in history:
+            row_date = row.get("date")
+            if row_date and start_date <= row_date <= end_date:
+                occ_map[str(row_date)] = round(row.get("avg_occupancy", 0) or 0, 1)
+
+        last_val = None
+        for d in all_dates:
+            if d in occ_map:
+                last_val = occ_map[d]
+            if last_val is not None:
+                heatmap_data.append({
+                    "district": district,
+                    "date": d,
+                    "occupancy": occ_map.get(d, last_val),
+                })
+
+    result = {
+        "data": heatmap_data,
+        "districts": districts,
+        "dates": all_dates,
+    }
+    await cache.set(cache_key, result, ttl=120)
+    return result
+
+
+@router.get("/data-coverage")
+async def get_data_coverage(
+    data: DataServiceDep,
+    district: str = DEFAULT_DISTRICT,
+) -> dict[str, Any]:
+    """Проверить покрытие данных по загрузке отелей."""
+    if district and district not in TOURIST_DISTRICTS:
+        raise HTTPException(400, f"Неизвестный район: {district}")
+    if not data.is_connected:
+        raise HTTPException(503, "БД не подключена")
+
+    from collections import defaultdict
+
+    # Получаем все данные по району
+    history_data = await data.get_occupancy_by_district(district)
+
+    if not history_data:
+        return {
+            "district": district,
+            "has_data": False,
+            "message": "Нет данных по этому району",
+            "date_range": None,
+            "gaps": [],
+            "monthly_coverage": [],
+        }
+
+    # Собираем все даты
+    dates = []
+    by_month = defaultdict(list)
+
+    for row in history_data:
+        d = row.get("date")
+        if d:
+            dates.append(d)
+            month_key = f"{d.year}-{d.month:02d}"
+            by_month[month_key].append(row.get("avg_occupancy", 0))
+
+    if not dates:
+        return {
+            "district": district,
+            "has_data": False,
+            "message": "Нет валидных дат в данных",
+            "date_range": None,
+            "gaps": [],
+            "monthly_coverage": [],
+        }
+
+    # Определяем диапазон
+    min_date = min(dates)
+    max_date = max(dates)
+
+    # Ищем пропуски (gaps) — месяцы без данных внутри диапазона
+    gaps = []
+    current = date(min_date.year, min_date.month, 1)
+    end = date(max_date.year, max_date.month, 1)
+
+    while current <= end:
+        month_key = f"{current.year}-{current.month:02d}"
+        if month_key not in by_month:
+            gaps.append({
+                "month": month_key,
+                "year": current.year,
+                "month_num": current.month,
+            })
+
+        # Следующий месяц
+        if current.month == 12:
+            current = date(current.year + 1, 1, 1)
+        else:
+            current = date(current.year, current.month + 1, 1)
+
+    # Статистика по месяцам
+    monthly_coverage = []
+    for month_key in sorted(by_month.keys()):
+        values = by_month[month_key]
+        monthly_coverage.append({
+            "month": month_key,
+            "days_count": len(values),
+            "avg_occupancy": round(sum(values) / len(values), 1) if values else 0,
+            "min_occupancy": round(min(values), 1) if values else 0,
+            "max_occupancy": round(max(values), 1) if values else 0,
+        })
+
+    return {
+        "district": district,
+        "has_data": True,
+        "date_range": {
+            "start": str(min_date),
+            "end": str(max_date),
+            "total_days": len(dates),
+        },
+        "gaps": gaps,
+        "gaps_count": len(gaps),
+        "monthly_coverage": monthly_coverage,
+    }
+
+
+@router.get("/price-history")
+async def get_price_history(
+    data: DataServiceDep,
+    district: str | None = None,
+    days: int = 30,
+) -> dict[str, Any]:
+    """
+    Получить историю цен на отели.
+
+    Args:
+        district: Район (None = все районы)
+        days: Количество дней истории (1-365)
+
+    Returns:
+        История цен по датам и тренд
+    """
+    if days < 1 or days > 365:
+        raise HTTPException(400, "days должен быть от 1 до 365")
+    if not data.is_connected:
+        raise HTTPException(503, "БД не подключена")
+
+    from datetime import timedelta
+    from collections import defaultdict
+
+    end_date = date.today()
+    start_date = end_date - timedelta(days=days)
+
+    # Получаем данные
+    if district:
+        if district not in TOURIST_DISTRICTS:
+            raise HTTPException(400, f"Неизвестный район: {district}")
+        history = await data.get_occupancy_by_district(district)
+    else:
+        # Все туристические районы - параллельный запрос
+        async def fetch_dist_data(dist):
+            try:
+                return await data.get_occupancy_by_district(dist)
+            except Exception as e:
+                logger.error(f"Failed to get data for {dist}: {e}")
+                return []
+
+        results = await asyncio.gather(*[fetch_dist_data(d) for d in TOURIST_DISTRICTS])
+        history = []
+        for dist_history in results:
+            history.extend(dist_history)
+
+    if not history:
+        return {
+            "district": district or "all",
+            "prices": [],
+            "trend": None,
+            "message": "Нет данных о ценах",
+        }
+
+    # Агрегируем по датам
+    daily_prices = defaultdict(list)
+    for row in history:
+        row_date = row.get("date")
+        price = row.get("avg_price") or row.get("min_price")
+        if row_date and price and start_date <= row_date <= end_date:
+            daily_prices[str(row_date)].append(price)
+
+    # Формируем результат
+    prices = []
+    for date_str in sorted(daily_prices.keys()):
+        prices_list = daily_prices[date_str]
+        avg_price = round(sum(prices_list) / len(prices_list)) if prices_list else 0
+        prices.append({
+            "date": date_str,
+            "avg_price": avg_price,
+            "min_price": min(prices_list) if prices_list else 0,
+            "max_price": max(prices_list) if prices_list else 0,
+            "samples": len(prices_list),
+        })
+
+    # Расчёт тренда (последние 7 дней vs предыдущие 7 дней)
+    trend = None
+    if len(prices) >= 14:
+        recent = [p["avg_price"] for p in prices[-7:]]
+        previous = [p["avg_price"] for p in prices[-14:-7]]
+        recent_avg = sum(recent) / len(recent)
+        previous_avg = sum(previous) / len(previous)
+        change_pct = ((recent_avg - previous_avg) / previous_avg * 100) if previous_avg > 0 else 0
+        trend = {
+            "direction": "up" if change_pct > 2 else "down" if change_pct < -2 else "stable",
+            "change_percent": round(change_pct, 1),
+            "recent_avg": round(recent_avg),
+            "previous_avg": round(previous_avg),
+        }
+
+    return {
+        "district": district or "all",
+        "prices": prices,
+        "trend": trend,
+        "period": {
+            "start": str(start_date),
+            "end": str(end_date),
+            "days": days,
+        },
+    }
+
+
+@router.get("/trip-summary", response_model=TripSummary)
+async def get_trip_summary(
+    data: DataServiceDep,
+    weather_svc: WeatherServiceDep,
+    ensemble_svc: EnsembleServiceDep,
+    cache: CacheServiceDep,
+    district: str = DEFAULT_DISTRICT,
+    days: int = 14,
+) -> TripSummary:
+    """Сводка для планирования поездки: прогноз + погода + события + отели."""
+    if district not in TOURIST_DISTRICTS:
+        raise HTTPException(400, f"Неизвестный район: {district}")
+    if days < 1 or days > 30:
+        raise HTTPException(400, "days должен быть от 1 до 30")
+    if not data.is_connected:
+        raise HTTPException(503, "БД не подключена")
+
+    cache_key = f"trip_summary:{district}:{days}"
+    cached = await cache.get(cache_key)
+    if cached:
+        try:
+            return TripSummary(**cached)
+        except (ValidationError, TypeError):
+            logger.warning("Corrupted trip_summary cache, recalculating")
+
+    forecast_occ = 50.0
+    trend = "stable"
+    forecast_source = "fallback"
+    try:
+        result = await _get_shared_forecast(data, weather_svc, ensemble_svc, district, days)
+        points = result.get("ensemble", [])
+        if points:
+            values = [p.occupancy for p in points]
+            forecast_occ = round(sum(values) / len(values), 1)
+            forecast_source = "ensemble"
+            if len(values) >= 2:
+                first_half = sum(values[:len(values)//2]) / max(1, len(values)//2)
+                second_half = sum(values[len(values)//2:]) / max(1, len(values) - len(values)//2)
+                diff = second_half - first_half
+                trend = "growing" if diff > 3 else "declining" if diff < -3 else "stable"
+    except Exception as e:
+        logger.error(f"Ensemble forecast failed for trip-summary: {e}")
+
+    level = "low" if forecast_occ < 40 else "high" if forecast_occ > 70 else "medium"
+
+    weather_days: list[WeatherDay] = []
+    try:
+        w = await weather_svc.get_forecast_weather(min(days, 16))
+        for day in (w or [])[:days]:
+            weather_days.append(WeatherDay(
+                date=str(day.get("date", "")),
+                temp_max=day.get("temperature_max", 0),
+                temp_min=day.get("temperature_min", 0),
+                weather_code=day.get("weather_code", 0),
+                description=day.get("weather_description", ""),
+            ))
+    except Exception as e:
+        logger.error(f"Weather fetch failed: {e}")
+
+    top_events: list[EventBrief] = []
+    events_count = 0
+    try:
+        today = date.today()
+        events = await data.get_events(
+            date_from=today,
+            date_to=today + timedelta(days=days),
+        )
+        events_count = len(events)
+        for ev in events[:3]:
+            ds = ev.get("date_start")
+            top_events.append(EventBrief(
+                title=ev.get("title", "")[:60],
+                date=str(ds) if ds else "",
+                event_type=ev.get("event_type"),
+            ))
+    except Exception as e:
+        logger.error(f"Events fetch failed: {e}")
+
+    # available_hotels (имя в JSON для фронта): фактически SUM(free_rooms_amount) по району
+    # из get_districts_statistics — суммарное число свободных номеров на последнюю дату, не число отелей.
+    available_hotels = 0
+    avg_price: float | None = None
+    try:
+        districts_stats = await data.get_districts_statistics()
+        for d in districts_stats:
+            if d.get("district") == district:
+                available_hotels = d.get("free_rooms", 0) or 0
+                avg_price = d.get("avg_price") or None
+                break
+    except Exception as e:
+        logger.error(f"District stats failed: {e}")
+
+    recs = {
+        "low": f"Отличное время для поездки в {district} район! Загрузка всего {forecast_occ}% — много свободных номеров.",
+        "medium": f"Умеренная загрузка в {district} районе ({forecast_occ}%). Номеров достаточно — можно выбирать без спешки.",
+        "high": f"Высокая загрузка в {district} районе ({forecast_occ}%). Бронируйте как можно раньше!",
+    }
+
+    summary = TripSummary(
+        district=district,
+        forecast_occupancy=forecast_occ,
+        occupancy_level=level,
+        occupancy_trend=trend,
+        forecast_source=forecast_source,
+        weather=weather_days,
+        events_count=events_count,
+        top_events=top_events,
+        available_hotels=available_hotels,
+        avg_price=avg_price,
+        recommendation=recs[level],
+    )
+
+    await cache.set(cache_key, summary.model_dump(), ttl=900)
+    return summary
+
+
+@router.get("/best-dates", response_model=list[BestDate])
+async def get_best_dates(
+    data: DataServiceDep,
+    weather_svc: WeatherServiceDep,
+    ensemble_svc: EnsembleServiceDep,
+    cache: CacheServiceDep,
+    district: str = DEFAULT_DISTRICT,
+    days_ahead: int = 14,
+) -> list[BestDate]:
+    """Топ-5 лучших дат для поездки (минимальная прогнозная загрузка)."""
+    if district not in TOURIST_DISTRICTS:
+        raise HTTPException(400, f"Неизвестный район: {district}")
+    if days_ahead < 7 or days_ahead > 30:
+        raise HTTPException(400, "days_ahead должен быть от 7 до 30")
+    if not data.is_connected:
+        raise HTTPException(503, "БД не подключена")
+
+    cache_key = f"best_dates:{district}:{days_ahead}"
+    cached = await cache.get(cache_key)
+    if cached:
+        try:
+            return [BestDate(**item) for item in cached]
+        except (ValidationError, TypeError):
+            logger.warning("Corrupted best_dates cache, recalculating")
+
+    forecast_points: list[dict] = []
+    try:
+        result = await _get_shared_forecast(data, weather_svc, ensemble_svc, district, days_ahead)
+        forecast_points = result.get("ensemble", [])
+    except Exception as e:
+        logger.error(f"Ensemble forecast failed for best-dates: {e}")
+
+    if not forecast_points:
+        return []
+
+    weather_map: dict[str, float] = {}
+    try:
+        coords = DISTRICT_CENTERS.get(district)
+        w = await weather_svc.get_forecast_weather(
+            min(days_ahead, 16),
+            lat=coords[0] if coords else None,
+            lon=coords[1] if coords else None,
+        )
+        for day in w or []:
+            weather_map[str(day.get("date", ""))] = day.get("temperature_max", 0)
+    except Exception as e:
+        logger.error(f"Weather fetch failed for best-dates: {e}")
+
+    events_map: dict[str, list[str]] = defaultdict(list)
+    try:
+        today = date.today()
+        events = await data.get_events(
+            date_from=today,
+            date_to=today + timedelta(days=days_ahead),
+        )
+        for ev in events:
+            ds = ev.get("date_start")
+            if ds:
+                events_map[str(ds)].append(ev.get("title", "")[:40])
+    except Exception as e:
+        logger.error(f"Events fetch failed for best-dates: {e}")
+
+    scored: list[BestDate] = []
+    for point in forecast_points:
+        d = str(point.date)
+        occ = point.occupancy
+        temp = weather_map.get(d)
+        evts = events_map.get(d, [])
+
+        score = max(0, 100 - occ)
+        if temp is not None:
+            score += min(20, max(-10, temp) * 0.7)
+        if len(evts) > 0:
+            score -= len(evts) * 3
+
+        scored.append(BestDate(
+            date=d,
+            predicted_occupancy=round(occ, 1),
+            weather_temp=round(temp, 1) if temp is not None else None,
+            events=evts,
+            score=round(max(0, min(100, score)), 1),
+        ))
+
+    # Фильтруем прошлые даты (I-2: best-dates не должны содержать вчерашние даты)
+    today_str = str(date.today())
+    scored = [s for s in scored if s.date >= today_str]
+
+    scored.sort(key=lambda x: x.score, reverse=True)
+    top5 = scored[:5]
+
+    await cache.set(cache_key, [b.model_dump() for b in top5], ttl=1800)
+    return top5
+
+
+@router.get("/hotels-map")
+async def analytics_hotels_map(
+    data: DataServiceDep,
+    cache: CacheServiceDep,
+    district: str | None = Query(default=None, description="Район; без параметра — все отели с координатами"),
+) -> dict[str, Any]:
+    """Данные для карты: отели с координатами + загрузка по районам."""
+    if not data.is_connected:
+        raise HTTPException(503, "Database unavailable")
+    cache_key = f"hotels_map:{district or 'all'}"
+    cached = await cache.get(cache_key)
+    if cached:
+        return cached
+
+    hotels_list, _ = await data.get_hotels(limit=1000)
+    districts_stats = await data.get_districts_statistics()
+    hotel_stats = await data.get_latest_hotel_stats()
+
+    occ_by_district = {d.get("district"): d for d in (districts_stats or [])}
+
+    hotels = []
+    total_rooms = 0
+    free_rooms = 0
+    for h in hotels_list:
+        if not h.lat or not h.lon:
+            continue
+        if district and h.district != district:
+            continue
+        d_occ = (occ_by_district.get(h.district) or {}).get("avg_occupancy", 0) or 0
+        hs = hotel_stats.get(h.id, {})
+
+        hotels.append({
+            "id": h.id, "name": h.name, "city": h.city,
+            "district": h.district, "lat": h.lat, "lon": h.lon,
+            "rating": h.rating, "min_price": h.min_price,
+            "rooms_num": hs.get("rooms_num", 0),
+            "free_rooms": hs.get("free_rooms", 0),
+            "occupancy": round(d_occ, 1),
+            "max_capacity": hs.get("max_capacity", 0),
+        })
+
+    for d in (districts_stats or []):
+        if district and d.get("district") != district:
+            continue
+        if d.get("district") in TOURIST_DISTRICTS:
+            total_rooms += d.get("total_rooms", 0) or 0
+            free_rooms += d.get("free_rooms", 0) or 0
+
+    response = {
+        "hotels": hotels, "total_hotels": len(hotels),
+        "total_rooms": total_rooms, "free_rooms": free_rooms,
+        "avg_occupancy": round(100 - free_rooms / total_rooms * 100, 1) if total_rooms else 0,
+        "occupancy_note": "Средняя загрузка по району (из hotel_statistics). Индивидуальная загрузка отелей недоступна через API 101Hotels.",
+    }
+    await cache.set(cache_key, response, ttl=300)
+    return response
+
+
+@router.get("/poi")
+async def get_points_of_interest(
+    category: Literal["tourism", "nature", "culture", "transport", "bus_station", "train", "all"] = "tourism",
+    limit: int = Query(30, ge=1, le=100),
+) -> dict[str, Any]:
+    """Достопримечательности и POI из OpenStreetMap.
+
+    Categories: tourism, nature, culture, transport, bus_station, train
+    """
+    from app.services.poi_service import poi_service, POI_CATEGORIES
+
+    if category == "all":
+        data = await poi_service.get_all_categories(limit_per_category=limit)
+        return {"categories": {k: {"label": POI_CATEGORIES[k]["label"], "items": v} for k, v in data.items()}}
+
+    live_pois = await poi_service.get_pois(category=category, limit=limit)
+    if live_pois:
+        pois = live_pois
+        data_source = "overpass"
+    else:
+        pois = await poi_service.get_pois_with_fallback(category=category, limit=limit)
+        data_source = "fallback"
+    cat_info = POI_CATEGORIES.get(category, {})
+    return {
+        "category": category,
+        "label": cat_info.get("label", category),
+        "items": pois,
+        "total": len(pois),
+        "data_source": data_source,
+    }
+
+
+@router.get("/revpar")
+async def get_revpar_metrics(
+    data: DataServiceDep,
+    district: str | None = None,
+) -> dict[str, Any]:
+    """Оценочные метрики RevPAR и ADR по районам.
+
+    RevPAR = ADR * (Occupancy / 100)
+    ADR оценивается как средняя min_price отелей района.
+    """
+    if not data.is_connected:
+        raise HTTPException(503, "БД не подключена")
+
+    districts_stats = await data.get_districts_statistics()
+    if not districts_stats:
+        return {"districts": [], "avg_revpar": 0}
+
+    results = []
+    for d in districts_stats:
+        d_name = d.get("district", "")
+        if d_name not in TOURIST_DISTRICTS:
+            continue
+        if district and d_name != district:
+            continue
+
+        occ = d.get("avg_occupancy", 0) or 0
+        adr = d.get("avg_price", 0) or 0
+        revpar = round(adr * (occ / 100), 0) if adr and occ else 0
+        count = d.get("hotels_count", 0) or 0
+
+        results.append({
+            "district": d_name,
+            "adr": round(adr),
+            "occupancy": round(occ, 1),
+            "revpar": revpar,
+            "hotels_count": count,
+            "confidence": "high" if count >= 10 else "medium" if count >= 3 else "low",
+        })
+
+    results.sort(key=lambda x: x["revpar"], reverse=True)
+    avg_revpar = round(sum(r["revpar"] for r in results) / len(results)) if results else 0
+
+    return {
+        "districts": results,
+        "avg_revpar": avg_revpar,
+        "methodology": "RevPAR = ADR * Occupancy%. ADR оценён как средняя min_price по данным 101Hotels.",
+    }
+
+
+@router.get("/price-recommendation")
+async def get_price_recommendation(
+    data: DataServiceDep,
+    ensemble_svc: EnsembleServiceDep,
+    weather_svc: WeatherServiceDep,
+    cache: CacheServiceDep,
+    district: str = DEFAULT_DISTRICT,
+) -> dict[str, Any]:
+    """Рекомендация оптимальной цены на основе прогноза загрузки и сезонности.
+
+    Логика: при высокой прогнозной загрузке (>60%) — повышение цены,
+    при низкой (<35%) — скидки для привлечения гостей.
+    """
+    if district not in TOURIST_DISTRICTS:
+        raise HTTPException(400, f"Неизвестный район: {district}")
+    if not data.is_connected:
+        raise HTTPException(503, "БД не подключена")
+
+    cache_key = f"price_rec:{district}"
+    cached = await cache.get(cache_key)
+    if cached:
+        return cached
+
+    districts_stats = await data.get_districts_statistics()
+    current_price = 0
+    current_occ = 0
+    for d in districts_stats:
+        if d.get("district") == district:
+            current_price = d.get("avg_price", 0) or 0
+            current_occ = d.get("avg_occupancy", 0) or 0
+            break
+
+    if not current_price:
+        return {"district": district, "recommendation": "Недостаточно данных о ценах", "adjustments": []}
+
+    forecast_occ = current_occ
+    try:
+        result = await _get_shared_forecast(data, weather_svc, ensemble_svc, district, 7)
+        points = result.get("ensemble", [])
+        if points:
+            forecast_occ = round(sum(p.occupancy for p in points) / len(points), 1)
+    except Exception:
+        pass
+
+    adjustments = []
+    if forecast_occ > 75:
+        pct = min(30, round((forecast_occ - 60) * 0.8))
+        adjustments.append({
+            "period": "Ближайшая неделя",
+            "direction": "up",
+            "percent": pct,
+            "recommended_price": round(current_price * (1 + pct / 100)),
+            "reason": f"Прогноз загрузки {forecast_occ}% — высокий спрос",
+        })
+    elif forecast_occ > 55:
+        pct = min(15, round((forecast_occ - 50) * 0.5))
+        adjustments.append({
+            "period": "Ближайшая неделя",
+            "direction": "up",
+            "percent": pct,
+            "recommended_price": round(current_price * (1 + pct / 100)),
+            "reason": f"Прогноз загрузки {forecast_occ}% — умеренный спрос",
+        })
+    elif forecast_occ < 35:
+        pct = min(25, round((40 - forecast_occ) * 0.8))
+        adjustments.append({
+            "period": "Ближайшая неделя",
+            "direction": "down",
+            "percent": pct,
+            "recommended_price": round(current_price * (1 - pct / 100)),
+            "reason": f"Прогноз загрузки {forecast_occ}% — низкий спрос, скидки привлекут гостей",
+        })
+    else:
+        adjustments.append({
+            "period": "Ближайшая неделя",
+            "direction": "stable",
+            "percent": 0,
+            "recommended_price": current_price,
+            "reason": f"Прогноз загрузки {forecast_occ}% — цена оптимальна",
+        })
+
+    response = {
+        "district": district,
+        "current_avg_price": current_price,
+        "current_occupancy": current_occ,
+        "forecast_occupancy": forecast_occ,
+        "adjustments": adjustments,
+        "methodology": "Ценовая рекомендация основана на прогнозе загрузки Ensemble (Prophet+NeuralProphet+XGBoost). При загрузке >75% — повышение до +30%, при <35% — скидка до -25%.",
+    }
+    await cache.set(cache_key, response, ttl=1800)
+    return response
+
+
+@router.get("/rosstat")
+async def get_rosstat_context(data: DataServiceDep) -> dict[str, Any]:
+    """Контекст данных Росстата по туризму Иркутской области.
+
+    Официальная статистика КСР (коллективных средств размещения) за 2024 год
+    + сравнение с данными системы.
+    """
+    rosstat_2024 = {
+        "year": 2024,
+        "source": "Росстат, форма 1-КСР, Иркутскстат",
+        "total_ksr": 549,
+        "hotels_hostels_motels": 370,
+        "sanatoriums_camps_bases": 179,
+        "top_districts": {
+            "Иркутск": 173,
+            "Ольхонский": 82,
+            "Иркутский": 51,
+            "Слюдянский": 43,
+        },
+        "avg_rooms_per_ksr": 27,
+        "avg_beds_per_ksr": 72,
+        "avg_annual_revenue_mln": 19.5,
+        "revenue_growth_yoy": 11.0,
+        "employees": 5843,
+        "year_round_share": 80.0,
+    }
+
+    system_stats = {"total_hotels": 0, "total_cities": 0, "avg_occupancy": 0}
+    try:
+        metrics = await data.get_total_metrics()
+        system_stats = {
+            "total_hotels": metrics.get("total_hotels", 0),
+            "total_cities": metrics.get("total_cities", 0),
+            "avg_occupancy": round(metrics.get("avg_occupancy", 0) or 0, 1),
+        }
+    except Exception:
+        pass
+
+    coverage = round(system_stats["total_hotels"] / rosstat_2024["total_ksr"] * 100, 1) if rosstat_2024["total_ksr"] else 0
+
+    return {
+        "rosstat": rosstat_2024,
+        "system": system_stats,
+        "comparison": {
+            "coverage_percent": coverage,
+            "description": f"Система мониторит {system_stats['total_hotels']} из {rosstat_2024['total_ksr']} КСР региона ({coverage}% покрытие)",
+        },
+        "note": "Данные Росстата — годовая отчётность (форма 1-КСР). Данные системы — оперативный мониторинг через 101Hotels API.",
+    }
