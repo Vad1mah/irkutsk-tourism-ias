@@ -188,6 +188,9 @@ AVG_MONTHLY_TEMP_IRKUTSK: dict[int, float] = {
 
 MIN_SAMPLES_PER_MONTH: int = 5  # для расчёта корреляции и определения gap-периодов
 
+BASELINE_CONFIDENCE_HIGH: int = 5   # >= N samples → confidence "high"
+BASELINE_CONFIDENCE_MEDIUM: int = 3  # >= N samples → confidence "medium" (else "low")
+
 OCCUPANCY_MIN: float = 0.0
 OCCUPANCY_MAX: float = 100.0
 

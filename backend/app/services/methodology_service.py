@@ -10,7 +10,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, timedelta
+from math import sqrt
+from statistics import mean, stdev
 from typing import Iterable, Literal
+
+from app.constants import BASELINE_CONFIDENCE_HIGH, BASELINE_CONFIDENCE_MEDIUM
 
 
 @dataclass(frozen=True)
@@ -33,8 +37,6 @@ class MethodologyService:
         event_dates: set[date],
         window_weeks: int = 3,
     ) -> SeasonalBaseline:
-        from statistics import mean, stdev
-
         cutoff_min = target_date - timedelta(weeks=window_weeks)
         cutoff_max = target_date + timedelta(weeks=window_weeks)
 
@@ -55,7 +57,9 @@ class MethodologyService:
         m = float(mean(samples))
         s = float(stdev(samples)) if n >= 2 else 0.0
         confidence: Literal["high", "medium", "low"] = (
-            "high" if n >= 5 else "medium" if n >= 3 else "low"
+            "high" if n >= BASELINE_CONFIDENCE_HIGH else
+            "medium" if n >= BASELINE_CONFIDENCE_MEDIUM else
+            "low"
         )
         return SeasonalBaseline(mean=m, std=s, n_samples=n, confidence=confidence)
 
@@ -70,15 +74,14 @@ class MethodologyService:
         delta = (observed - baseline.mean) / baseline.mean * 100.0
         # 95% CI (упрощённо: ±1.96 * std/sqrt(n) в %)
         if baseline.std is not None and baseline.n_samples >= 2:
-            from math import sqrt
             ci_half = 1.96 * baseline.std / sqrt(baseline.n_samples)
             ci_pct = ci_half / baseline.mean * 100.0
         else:
             ci_pct = None
         return {
             "delta_pct": round(delta, 2),
-            "ci_lower": round(delta - ci_pct, 2) if ci_pct else None,
-            "ci_upper": round(delta + ci_pct, 2) if ci_pct else None,
+            "ci_lower": round(delta - ci_pct, 2) if ci_pct is not None else None,
+            "ci_upper": round(delta + ci_pct, 2) if ci_pct is not None else None,
             "baseline_mean": round(baseline.mean, 2),
             "n_samples": baseline.n_samples,
             "confidence": baseline.confidence,
