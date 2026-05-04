@@ -43,6 +43,8 @@ DEDUP_CONSTRAINT_DDL = (
     f"UNIQUE (source_id, date_start, title)"
 )
 
+FORECAST_DEDUP_CONSTRAINT = "uq_forecasts_district_date_model"
+
 
 async def column_exists(conn, column: str) -> bool:
     result = await conn.execute(
@@ -55,14 +57,16 @@ async def column_exists(conn, column: str) -> bool:
     return result.first() is not None
 
 
-async def constraint_exists(conn, name: str) -> bool:
-    result = await conn.execute(
-        text(
-            "SELECT 1 FROM information_schema.table_constraints "
-            "WHERE table_schema = 'public' AND table_name = 'events' AND constraint_name = :name"
-        ),
-        {"name": name},
+async def constraint_exists(conn, name: str, table: str | None = None) -> bool:
+    q = (
+        "SELECT 1 FROM information_schema.table_constraints "
+        "WHERE table_schema = 'public' AND constraint_name = :name"
     )
+    params: dict = {"name": name}
+    if table:
+        q += " AND table_name = :table"
+        params["table"] = table
+    result = await conn.execute(text(q), params)
     return result.first() is not None
 
 
@@ -91,7 +95,7 @@ async def migrate() -> None:
             logger.info("added column events.%s (%s)", col_name, col_ddl)
 
     async with async_engine.begin() as conn:
-        if await constraint_exists(conn, DEDUP_CONSTRAINT_NAME):
+        if await constraint_exists(conn, DEDUP_CONSTRAINT_NAME, table="events"):
             logger.info("constraint %s already exists — skip", DEDUP_CONSTRAINT_NAME)
         else:
             removed = await remove_duplicates(conn)
@@ -110,10 +114,33 @@ async def migrate() -> None:
                     raise
 
 
+async def migrate_forecasts_constraint() -> None:
+    """Идемпотентно добавляет UNIQUE constraint на таблицу forecasts."""
+    async with async_engine.begin() as conn:
+        if await constraint_exists(conn, FORECAST_DEDUP_CONSTRAINT):
+            logger.info("constraint %s already exists — skip", FORECAST_DEDUP_CONSTRAINT)
+            return
+        try:
+            await conn.execute(text(
+                f"ALTER TABLE forecasts ADD CONSTRAINT {FORECAST_DEDUP_CONSTRAINT} "
+                f"UNIQUE (district, forecast_date, model)"
+            ))
+            logger.info("added UNIQUE constraint %s", FORECAST_DEDUP_CONSTRAINT)
+        except (ProgrammingError, IntegrityError) as exc:
+            pgcode = getattr(exc.orig, "pgcode", None)
+            if pgcode in (DUPLICATE_OBJECT_PGCODE, UNIQUE_VIOLATION_PGCODE):
+                logger.warning(
+                    "could not add %s (pgcode=%s)", FORECAST_DEDUP_CONSTRAINT, pgcode,
+                )
+            else:
+                raise
+
+
 if __name__ == "__main__":
     async def _main() -> None:
         try:
             await migrate()
+            await migrate_forecasts_constraint()
         finally:
             await async_engine.dispose()
 

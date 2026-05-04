@@ -262,6 +262,12 @@ class BestDate(BaseModel):
     score: float = Field(ge=0, le=100, description="Оценка 0-100, выше = лучше")
 
 
+class ValidationPoint(BaseModel):
+    """Точка валидации (прогноз или факт)."""
+    date: str
+    occupancy: float
+
+
 class ForecastValidationResponse(BaseModel):
     """Результат самовалидации модели: прогноз vs факт."""
     district: str
@@ -269,7 +275,7 @@ class ForecastValidationResponse(BaseModel):
     samples: int
     rmse: float | None = None
     mae: float | None = None
-    rmse_per_day: list[float] = Field(default_factory=list)
-    forecasted: list[dict] = Field(default_factory=list)
-    actual: list[dict] = Field(default_factory=list)
+    mae_per_day: list[float] = Field(default_factory=list)
+    forecasted: list[ValidationPoint] = Field(default_factory=list)
+    actual: list[ValidationPoint] = Field(default_factory=list)
 

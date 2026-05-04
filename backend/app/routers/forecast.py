@@ -9,7 +9,7 @@ import logging
 from app.models.schemas import (
     ForecastRequest, ForecastResponse, ForecastPoint,
     EnsembleResponse, CompareModelsResponse, CompareAllResponse,
-    ForecastValidationResponse,
+    ForecastValidationResponse, ValidationPoint,
 )
 from app.constants import DEFAULT_DISTRICT
 from app.dependencies import (
@@ -369,6 +369,25 @@ async def get_ensemble_forecast(
         logger.error(f"Ensemble forecast error: {e}", exc_info=True)
         raise HTTPException(500, "Ошибка прогнозирования")
 
+    # Fire-and-forget: persist ensemble forecasts for later validation
+    try:
+        asyncio.create_task(
+            data_svc.save_ensemble_forecasts(
+                district=district,
+                forecasts=[
+                    {
+                        "date": f.date if hasattr(f, "date") else f["date"],
+                        "occupancy": f.occupancy if hasattr(f, "occupancy") else f["occupancy"],
+                        "lower": getattr(f, "lower_bound", None),
+                        "upper": getattr(f, "upper_bound", None),
+                    }
+                    for f in result.get("ensemble", [])
+                ],
+            )
+        )
+    except Exception as e:
+        logger.warning("Could not schedule save_ensemble_forecasts: %s", e)
+
     response = {
         "district": district,
         "history_points": len(history),
@@ -644,7 +663,9 @@ async def forecast_validation(
         saved = {}
 
     try:
-        actual_rows = await data.get_occupancy_by_district(district)
+        actual_rows = await data.get_occupancy_by_district(
+            district, date_from=target_dates[0], date_to=target_dates[-1]
+        )
     except Exception:
         logger.warning("forecast_validation: get_occupancy_by_district failed", exc_info=True)
         actual_rows = []
@@ -656,21 +677,21 @@ async def forecast_validation(
     }
 
     pairs: list[tuple[float, float]] = []
-    forecasted: list[dict] = []
-    actual: list[dict] = []
+    forecasted: list[ValidationPoint] = []
+    actual: list[ValidationPoint] = []
     for d in target_dates:
         f = saved.get(d)
         a = actual_map.get(d)
         if f is None or a is None:
             continue
         pairs.append((f, a))
-        forecasted.append({"date": d.isoformat(), "occupancy": f})
-        actual.append({"date": d.isoformat(), "occupancy": a})
+        forecasted.append(ValidationPoint(date=d.isoformat(), occupancy=f))
+        actual.append(ValidationPoint(date=d.isoformat(), occupancy=a))
 
     if not pairs:
         return ForecastValidationResponse(
             district=district, days_back=days_back, samples=0,
-            rmse=None, mae=None, rmse_per_day=[], forecasted=[], actual=[],
+            rmse=None, mae=None, mae_per_day=[], forecasted=[], actual=[],
         )
 
     rmse = math.sqrt(sum((f - a) ** 2 for f, a in pairs) / len(pairs))
@@ -681,7 +702,7 @@ async def forecast_validation(
         samples=len(pairs),
         rmse=round(rmse, 2),
         mae=round(mae, 2),
-        rmse_per_day=[round(abs(f - a), 2) for f, a in pairs],
+        mae_per_day=[round(abs(f - a), 2) for f, a in pairs],
         forecasted=forecasted,
         actual=actual,
     )

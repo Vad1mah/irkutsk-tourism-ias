@@ -909,6 +909,60 @@ class DBService:
                 for r in result
             ]
 
+    async def save_ensemble_forecasts(
+        self,
+        *,
+        district: str,
+        forecasts: list[dict],
+        model_name: str = "ensemble",
+    ) -> int:
+        """Идемпотентно сохраняет прогноз в таблицу forecasts.
+
+        On conflict (district, forecast_date, model) — обновить значения (последний прогноз побеждает).
+
+        Args:
+            district: Название района.
+            forecasts: Список словарей с ключами date, occupancy, lower (опц.), upper (опц.).
+            model_name: Имя модели (по умолчанию "ensemble").
+
+        Returns:
+            Количество записанных строк (0 при ошибке или пустом входе).
+        """
+        if not self.is_connected or not forecasts:
+            return 0
+        try:
+            rows = [
+                {
+                    "district": district,
+                    "forecast_date": f["date"],
+                    "predicted_occupancy": f.get("occupancy"),
+                    "model": model_name,
+                    "confidence_lower": f.get("lower"),
+                    "confidence_upper": f.get("upper"),
+                }
+                for f in forecasts
+                if f.get("date") is not None
+            ]
+            if not rows:
+                return 0
+            async with async_session() as s:
+                ins = pg_insert(Forecast).values(rows)
+                stmt = ins.on_conflict_do_update(
+                    constraint="uq_forecasts_district_date_model",
+                    set_={
+                        "predicted_occupancy": ins.excluded.predicted_occupancy,
+                        "confidence_lower": ins.excluded.confidence_lower,
+                        "confidence_upper": ins.excluded.confidence_upper,
+                        "updated_at": func.now(),
+                    },
+                )
+                await s.execute(stmt)
+                await s.commit()
+            return len(rows)
+        except Exception as exc:
+            logger.error("save_ensemble_forecasts failed: %s", exc)
+            return 0
+
     async def get_saved_forecasts(
         self, *, district: str, dates: list[date]
     ) -> dict[date, float]:

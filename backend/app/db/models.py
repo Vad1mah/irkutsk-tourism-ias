@@ -144,5 +144,6 @@ class Forecast(Base):
     )
 
     __table_args__ = (
+        UniqueConstraint("district", "forecast_date", "model", name="uq_forecasts_district_date_model"),
         Index("idx_forecasts_district_date", "district", "forecast_date"),
     )
