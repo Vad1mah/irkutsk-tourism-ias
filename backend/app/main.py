@@ -11,7 +11,7 @@ from app.routers import hotels, events, query, forecast, documents, parser, anal
 from app.services.db_service import db_service
 from app.services.chroma_service import chroma_service
 from app.services.llm_service import llm_service
-from app.services.cache_service import cache_service
+from app.services.cache_service import cache_service, build_ensemble_cache_key
 from app.models.schemas import HealthResponse
 from app.middleware.rate_limit import RateLimitMiddleware
 
@@ -49,7 +49,7 @@ async def _warmup_forecast_cache():
         points = result.get("ensemble", [])
         logger.info(f"Warmup: ensemble прогрев завершён, {len(points)} точек для {DEFAULT_DISTRICT}")
 
-        key = f"forecast:ensemble:{DEFAULT_DISTRICT}:{days}:weighted_average"
+        key = build_ensemble_cache_key(district=DEFAULT_DISTRICT, days=days)
         if cache_service.is_connected:
             await cache_service.set(key, {
                 "district": DEFAULT_DISTRICT,
