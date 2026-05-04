@@ -21,3 +21,9 @@ async def test_events_impact_supports_method_param(client: AsyncClient):
         return
     # На этом этапе seasonal_corrected возвращает naive с пометкой (полная реализация — D2)
     assert response2.status_code == 200
+    data = response2.json()
+    if isinstance(data, list) and data:
+        # Each row should be marked with the fallback marker
+        assert all(r.get("method") == "naive_fallback" for r in data), (
+            f"Expected all rows to have method='naive_fallback', got: {[r.get('method') for r in data[:3]]}"
+        )

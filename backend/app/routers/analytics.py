@@ -14,6 +14,7 @@ from app.constants import VALID_DISTRICTS, CITY_TO_DISTRICT, DEFAULT_DISTRICT, D
 from app.dependencies import (
     DataServiceDep, WeatherServiceDep, EnsembleServiceDep, CacheServiceDep,
 )
+from app.services.protocols import DataServiceProtocol
 from pydantic import ValidationError
 from app.models.schemas import (
     KPIResponse, CityHotels,
@@ -488,7 +489,7 @@ async def get_events_impact(
     data: DataServiceDep,
     cache: CacheServiceDep,
     method: Literal["naive", "seasonal_corrected"] = "seasonal_corrected",
-    window_weeks: int = 3,
+    window_weeks: int = Query(3, ge=1, le=52, description="Окно для baseline-расчёта (недели). Используется в seasonal_corrected (D2)."),
 ) -> list[dict[str, Any]]:
     """Влияние событий на загруженность: сравнение в дни событий vs обычные дни.
 
@@ -515,7 +516,7 @@ async def get_events_impact(
     return result
 
 
-async def _events_impact_naive(data: Any) -> list[dict[str, Any]]:
+async def _events_impact_naive(data: DataServiceProtocol) -> list[dict[str, Any]]:
     """Наивный расчёт влияния событий: разница загруженности в день события vs среднее."""
     if not data.is_connected:
         raise HTTPException(503, "БД не подключена")
