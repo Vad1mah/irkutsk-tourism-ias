@@ -1,10 +1,9 @@
 """Роутер для AI-агента с поддержкой tools и SSE streaming."""
 import asyncio
 import json
-from collections import defaultdict
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query, Depends, Request
+from fastapi import APIRouter, HTTPException, Query, Depends
 from fastapi.responses import StreamingResponse
 import logging
 
@@ -14,13 +13,43 @@ from app.dependencies import (
     ChromaServiceDep,
     verify_api_key,
 )
+from app.services.cache_service import cache_service
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/query", tags=["query"])
 
-_active_streams: dict[str, int] = defaultdict(int)
+_STREAM_COUNTER_KEY = "query:active_streams"
+_STREAM_TTL_SECONDS = 600  # автосброс зависших
 _MAX_CONCURRENT_STREAMS = 3
+
+
+async def increment_active_stream() -> int:
+    """Атомарно увеличить счётчик активных SSE-стримов (Redis INCR)."""
+    if cache_service.client is None:
+        return 0
+    val = await cache_service.client.incr(_STREAM_COUNTER_KEY)
+    await cache_service.client.expire(_STREAM_COUNTER_KEY, _STREAM_TTL_SECONDS)
+    return int(val)
+
+
+async def decrement_active_stream() -> int:
+    """Атомарно уменьшить счётчик активных SSE-стримов (Redis DECR)."""
+    if cache_service.client is None:
+        return 0
+    val = await cache_service.client.decr(_STREAM_COUNTER_KEY)
+    if val < 0:
+        await cache_service.client.set(_STREAM_COUNTER_KEY, 0)
+        return 0
+    return int(val)
+
+
+async def get_active_streams() -> int:
+    """Получить текущее значение счётчика активных SSE-стримов."""
+    if cache_service.client is None:
+        return 0
+    val = await cache_service.client.get(_STREAM_COUNTER_KEY)
+    return int(val or 0)
 
 
 @router.post("", response_model=QueryResponse)
@@ -71,7 +100,7 @@ async def process_query(
 
 
 @router.post("/stream")
-async def stream_query(request: QueryRequest, chroma: ChromaServiceDep, raw_request: Request):
+async def stream_query(request: QueryRequest, chroma: ChromaServiceDep):
     """SSE streaming: токены AI-ответа в реальном времени."""
     if not request.text or not request.text.strip():
         raise HTTPException(400, "Текст запроса не может быть пустым")
@@ -82,14 +111,14 @@ async def stream_query(request: QueryRequest, chroma: ChromaServiceDep, raw_requ
             detail="Сервис временно недоступен. Попробуйте позже."
         )
 
-    client_ip = raw_request.client.host if raw_request.client else "unknown"
-    if _active_streams[client_ip] >= _MAX_CONCURRENT_STREAMS:
+    current = await get_active_streams()
+    if current >= _MAX_CONCURRENT_STREAMS:
         raise HTTPException(429, "Too many concurrent streams")
 
     from app.services.main_agent import main_agent
 
     async def event_generator():
-        _active_streams[client_ip] += 1
+        await increment_active_stream()
         agen = main_agent.stream(
             message=request.text.strip(),
             session_id=request.session_id,
@@ -108,7 +137,7 @@ async def stream_query(request: QueryRequest, chroma: ChromaServiceDep, raw_requ
             logger.error(f"Stream error: {e}", exc_info=True)
             yield f"data: {json.dumps({'type': 'error', 'content': 'Внутренняя ошибка обработки запроса'}, ensure_ascii=False)}\n\n"
         finally:
-            _active_streams[client_ip] = max(0, _active_streams[client_ip] - 1)
+            await decrement_active_stream()
 
     return StreamingResponse(
         event_generator(),
