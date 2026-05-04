@@ -25,6 +25,7 @@ from app.models.schemas import (
     OccupancyPoint, OccupancyTimeseriesSummary, OccupancyTimeseriesResponse,
     PriceDistributionResponse,
     DistrictComparisonItem, CompareDistrictsResponse,
+    SegmentBucket, SegmentsResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -1998,4 +1999,32 @@ async def compare_districts(
 
     response = CompareDistrictsResponse(days=days, districts=items)
     await cache.set(cache_key, response.model_dump(), ttl=300)
+    return response
+
+
+@router.get("/segments", response_model=SegmentsResponse)
+async def hotel_segments(
+    data: DataServiceDep,
+    cache: CacheServiceDep,
+) -> SegmentsResponse:
+    """Распределение объектов размещения по сегментам.
+
+    Сегменты по размеру: mini (≤15 номеров), mid (16-50), large (51+).
+    Сегменты по типу: hotel, hostel, guest_house и т.д.
+    """
+    cache_key = "analytics:segments"
+    cached = await cache.get(cache_key)
+    if cached:
+        return SegmentsResponse(**cached)
+
+    by_size, by_type = await asyncio.gather(
+        data.segments_by_size(),
+        data.segments_by_accommodation_type(),
+    )
+    response = SegmentsResponse(
+        by_size={k: SegmentBucket(**v) for k, v in by_size.items()},
+        by_accommodation_type=by_type,
+        size_thresholds={"mini_max": 15, "mid_max": 50},
+    )
+    await cache.set(cache_key, response.model_dump(), ttl=600)
     return response

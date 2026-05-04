@@ -382,3 +382,17 @@ class CompareDistrictsResponse(BaseModel):
     days: int
     districts: list[DistrictComparisonItem]
 
+
+class SegmentBucket(BaseModel):
+    """Бакет сегмента объектов размещения."""
+    count: int
+    avg_occupancy: float | None = None
+    avg_price: int | None = None
+
+
+class SegmentsResponse(BaseModel):
+    """Распределение объектов размещения по сегментам."""
+    by_size: dict[str, SegmentBucket]
+    by_accommodation_type: dict[str, dict]
+    size_thresholds: dict[str, int]
+

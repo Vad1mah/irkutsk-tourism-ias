@@ -83,6 +83,9 @@ class DataServiceProtocol(Protocol):
 
     async def collect_min_prices(self, *, district: str, days: int) -> list[int]: ...
 
+    async def segments_by_size(self) -> dict[str, dict]: ...
+    async def segments_by_accommodation_type(self) -> dict[str, dict]: ...
+
 
 @runtime_checkable
 class ForecastServiceProtocol(Protocol):

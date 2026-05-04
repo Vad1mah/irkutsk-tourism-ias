@@ -1176,6 +1176,64 @@ class DBService:
             logger.error("compute_proxy_pickup: %s", exc)
             return []
 
+    async def segments_by_size(self) -> dict[str, dict]:
+        """Возвращает {'mini'/'mid'/'large': {count, avg_occupancy, avg_price}}."""
+        if not self.is_connected:
+            return {}
+        try:
+            async with async_session() as s:
+                result = await s.execute(text("""
+                    WITH latest AS (
+                        SELECT DISTINCT ON (id) id, rooms_num, available_rooms_percent, min_price
+                        FROM hotel_statistics
+                        ORDER BY id, date DESC
+                    )
+                    SELECT
+                        CASE
+                            WHEN rooms_num <= 15 THEN 'mini'
+                            WHEN rooms_num <= 50 THEN 'mid'
+                            ELSE 'large'
+                        END AS size_bucket,
+                        COUNT(*) AS n,
+                        AVG(100 - available_rooms_percent) AS avg_occ,
+                        AVG(min_price) AS avg_price
+                    FROM latest
+                    WHERE rooms_num IS NOT NULL
+                    GROUP BY size_bucket
+                """))
+                return {
+                    r[0]: {
+                        "count": int(r[1]),
+                        "avg_occupancy": round(float(r[2] or 0), 2),
+                        "avg_price": int(r[3] or 0),
+                    }
+                    for r in result.all()
+                }
+        except Exception as exc:
+            logger.error("segments_by_size: %s", exc)
+            return {}
+
+    async def segments_by_accommodation_type(self) -> dict[str, dict]:
+        """Возвращает {'<type>': {count, avg_price}}."""
+        if not self.is_connected:
+            return {}
+        try:
+            async with async_session() as s:
+                result = await s.execute(text("""
+                    SELECT COALESCE(accommodation_type, 'unknown') AS at, COUNT(*) AS n,
+                           AVG(min_price) AS avg_price
+                    FROM hotels
+                    GROUP BY at
+                    ORDER BY n DESC
+                """))
+                return {
+                    r[0]: {"count": int(r[1]), "avg_price": int(r[2] or 0)}
+                    for r in result.all()
+                }
+        except Exception as exc:
+            logger.error("segments_by_accommodation_type: %s", exc)
+            return {}
+
     async def create_tables(self) -> None:
         """Create tables if they don't exist. For schema changes use Alembic:
         cd backend && alembic revision --autogenerate -m "description"
