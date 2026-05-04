@@ -1608,7 +1608,7 @@ async def booking_pace(
         points=[BookingPacePoint(**p) for p in points_raw],
         summary=summary,
     )
-    await cache.set(cache_key, response.model_dump(), ttl=180)
+    await cache.set(cache_key, response.model_dump(), ttl=300)
     return response
 
 
