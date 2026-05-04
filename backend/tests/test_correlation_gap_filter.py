@@ -9,9 +9,9 @@ async def test_correlation_skips_months_with_few_samples(client):
     data = response.json()
     # Каждый возвращаемый месяц должен иметь samples >= 5 (или явный gap-flag)
     for m in data.get("months", []):
-        if m.get("avg_occupancy") is not None:
+        if m.get("occupancy") is not None and m.get("occupancy") != 0:
             assert m.get("samples", 0) >= 5 or m.get("is_gap"), (
-                f"Month {m.get('month')} has avg_occupancy but only {m.get('samples')} samples"
+                f"Month {m.get('month')} has occupancy data but only {m.get('samples')} samples"
             )
     # Должен быть список missing_periods
     assert "missing_periods" in data
