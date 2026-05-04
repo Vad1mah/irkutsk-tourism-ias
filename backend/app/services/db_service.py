@@ -1,6 +1,6 @@
 """PostgreSQL сервис данных."""
 import logging
-from datetime import date
+from datetime import date, time
 
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -283,7 +283,7 @@ class DBService:
             return False
         async with async_session() as s:
             try:
-                stmt = pg_insert(Event).values(
+                ins = pg_insert(Event).values(
                     event_id=eid,
                     title=event.get("title", ""),
                     description=event.get("description"),
@@ -293,17 +293,30 @@ class DBService:
                     location=self._clean_location(event.get("location")),
                     source_id=event.get("source_id", event.get("source", "")),
                     url=event.get("url"),
-                ).on_conflict_do_update(
+                    time_start=event.get("time_start"),
+                    price_min=event.get("price_min"),
+                    price_max=event.get("price_max"),
+                    image_url=event.get("image_url"),
+                    address=event.get("address"),
+                    age_restriction=event.get("age_restriction"),
+                )
+                stmt = ins.on_conflict_do_update(
                     index_elements=["event_id"],
                     set_={
-                        "title": event.get("title", ""),
-                        "description": event.get("description"),
-                        "date_start": ds,
-                        "date_end": self._to_date(event.get("date_end")),
-                        "event_type": event.get("event_type"),
-                        "location": self._clean_location(event.get("location")),
-                        "url": event.get("url"),
-                        "source_id": event.get("source_id", event.get("source", "")),
+                        "title": ins.excluded.title,
+                        "description": ins.excluded.description,
+                        "date_start": ins.excluded.date_start,
+                        "date_end": ins.excluded.date_end,
+                        "event_type": ins.excluded.event_type,
+                        "location": ins.excluded.location,
+                        "url": ins.excluded.url,
+                        "source_id": ins.excluded.source_id,
+                        "time_start": ins.excluded.time_start,
+                        "price_min": ins.excluded.price_min,
+                        "price_max": ins.excluded.price_max,
+                        "image_url": ins.excluded.image_url,
+                        "address": ins.excluded.address,
+                        "age_restriction": ins.excluded.age_restriction,
                     },
                 )
                 await s.execute(stmt)
@@ -333,23 +346,35 @@ class DBService:
                 "location": self._clean_location(ev.get("location")),
                 "source_id": ev.get("source_id", ev.get("source", "")),
                 "url": ev.get("url"),
+                "time_start": ev.get("time_start"),
+                "price_min": ev.get("price_min"),
+                "price_max": ev.get("price_max"),
+                "image_url": ev.get("image_url"),
+                "address": ev.get("address"),
+                "age_restriction": ev.get("age_restriction"),
             })
         if not rows:
             return 0
         async with async_session() as s:
             try:
-                stmt = pg_insert(Event).values(rows)
-                stmt = stmt.on_conflict_do_update(
+                ins = pg_insert(Event).values(rows)
+                stmt = ins.on_conflict_do_update(
                     index_elements=["event_id"],
                     set_={
-                        "title": stmt.excluded.title,
-                        "description": stmt.excluded.description,
-                        "date_start": stmt.excluded.date_start,
-                        "date_end": stmt.excluded.date_end,
-                        "event_type": stmt.excluded.event_type,
-                        "location": stmt.excluded.location,
-                        "url": stmt.excluded.url,
-                        "source_id": stmt.excluded.source_id,
+                        "title": ins.excluded.title,
+                        "description": ins.excluded.description,
+                        "date_start": ins.excluded.date_start,
+                        "date_end": ins.excluded.date_end,
+                        "event_type": ins.excluded.event_type,
+                        "location": ins.excluded.location,
+                        "url": ins.excluded.url,
+                        "source_id": ins.excluded.source_id,
+                        "time_start": ins.excluded.time_start,
+                        "price_min": ins.excluded.price_min,
+                        "price_max": ins.excluded.price_max,
+                        "image_url": ins.excluded.image_url,
+                        "address": ins.excluded.address,
+                        "age_restriction": ins.excluded.age_restriction,
                     },
                 )
                 await s.execute(stmt)
@@ -359,6 +384,93 @@ class DBService:
                 logger.error(f"Batch insert events error: {e}")
                 await s.rollback()
                 return 0
+
+    async def upsert_event(
+        self,
+        *,
+        event_id: str,
+        title: str,
+        date_start: date,
+        source_id: str,
+        description: str | None = None,
+        date_end: date | None = None,
+        event_type: str | None = None,
+        location: str | None = None,
+        url: str | None = None,
+        time_start: time | None = None,
+        price_min: int | None = None,
+        price_max: int | None = None,
+        image_url: str | None = None,
+        address: str | None = None,
+        age_restriction: str | None = None,
+    ) -> None:
+        """Вставить или обновить событие с дедупликацией по (source_id, date_start, title).
+
+        Args:
+            event_id: Уникальный идентификатор события.
+            title: Название события.
+            date_start: Дата начала.
+            source_id: Идентификатор источника.
+            description: Описание события.
+            date_end: Дата окончания.
+            event_type: Тип события.
+            location: Место проведения.
+            url: Ссылка на событие.
+            time_start: Время начала.
+            price_min: Минимальная цена.
+            price_max: Максимальная цена.
+            image_url: URL изображения.
+            address: Физический адрес.
+            age_restriction: Возрастное ограничение.
+        """
+        async with async_session() as s:
+            ins = pg_insert(Event).values(
+                event_id=event_id,
+                title=title,
+                description=description,
+                date_start=date_start,
+                date_end=date_end,
+                event_type=event_type,
+                location=self._clean_location(location),
+                source_id=source_id,
+                url=url,
+                time_start=time_start,
+                price_min=price_min,
+                price_max=price_max,
+                image_url=image_url,
+                address=address,
+                age_restriction=age_restriction,
+            )
+            stmt = ins.on_conflict_do_update(
+                constraint="uq_events_dedup",
+                set_={
+                    "description": func.coalesce(ins.excluded.description, Event.description),
+                    "event_type": func.coalesce(ins.excluded.event_type, Event.event_type),
+                    "location": func.coalesce(ins.excluded.location, Event.location),
+                    "url": func.coalesce(ins.excluded.url, Event.url),
+                    "time_start": func.coalesce(ins.excluded.time_start, Event.time_start),
+                    "price_min": func.coalesce(ins.excluded.price_min, Event.price_min),
+                    "price_max": func.coalesce(ins.excluded.price_max, Event.price_max),
+                    "image_url": func.coalesce(ins.excluded.image_url, Event.image_url),
+                    "address": func.coalesce(ins.excluded.address, Event.address),
+                    "age_restriction": func.coalesce(ins.excluded.age_restriction, Event.age_restriction),
+                    "updated_at": func.now(),
+                },
+            )
+            await s.execute(stmt)
+            await s.commit()
+
+    async def delete_event_by_id(self, event_id: str) -> None:
+        """Удалить событие по первичному ключу event_id.
+
+        Args:
+            event_id: Идентификатор события для удаления.
+        """
+        async with async_session() as s:
+            await s.execute(
+                delete(Event).where(Event.event_id == event_id)
+            )
+            await s.commit()
 
     async def delete_events_by_source(self, source: str) -> int:
         async with async_session() as s:

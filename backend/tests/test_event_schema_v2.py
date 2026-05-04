@@ -1,4 +1,5 @@
 """Тесты расширенной схемы Event (фаза 1 B2B-rebuild)."""
+import pytest
 from datetime import date, time
 
 from app.db.models import Event
@@ -78,3 +79,39 @@ def test_event_pydantic_optional_new_fields():
     assert e.image_url is None
     assert e.address is None
     assert e.age_restriction is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_event_dedup_on_conflict(setup_services):
+    """Двойная вставка одного события не создаёт дубль."""
+    from app.services.db_service import db_service
+    from app.services.data_service import data_service
+
+    if not data_service.is_connected:
+        pytest.skip("DB not available")
+
+    payload = {
+        "event_id": "test-dedup-1",
+        "title": "Тестовое событие dedup",
+        "date_start": date(2099, 1, 1),
+        "source_id": "test_dedup",
+        "event_type": "Test",
+    }
+
+    # Первая вставка
+    await db_service.upsert_event(**payload)
+    # Вторая — с другим event_id, но тем же (source_id, date_start, title)
+    payload2 = {**payload, "event_id": "test-dedup-2"}
+    await db_service.upsert_event(**payload2)
+
+    # Проверить, что в БД ровно одна строка
+    rows = await data_service.get_events(
+        date_from=date(2099, 1, 1),
+        date_to=date(2099, 1, 1),
+    )
+    matching = [r for r in rows if r.get("title") == payload["title"]]
+    assert len(matching) == 1, f"Expected 1 row, got {len(matching)}"
+
+    # Cleanup
+    await db_service.delete_event_by_id("test-dedup-1")
+    await db_service.delete_event_by_id("test-dedup-2")
