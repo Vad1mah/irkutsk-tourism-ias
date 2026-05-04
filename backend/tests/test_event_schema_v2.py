@@ -1,6 +1,5 @@
 """Тесты расширенной схемы Event (фаза 1 B2B-rebuild)."""
 from datetime import date, time
-import pytest
 
 from app.db.models import Event
 
@@ -57,6 +56,9 @@ def test_event_pydantic_accepts_new_fields():
     e = EventSchema(**payload)
     assert e.time_start.hour == 19
     assert e.price_min == 1000
+    assert e.price_max == 3500
+    assert e.image_url == "https://example.com/poster.jpg"
+    assert e.address == "ул. Ленина, 5"
     assert e.age_restriction == "12+"
 
 
@@ -72,3 +74,7 @@ def test_event_pydantic_optional_new_fields():
     )
     assert e.time_start is None
     assert e.price_min is None
+    assert e.price_max is None
+    assert e.image_url is None
+    assert e.address is None
+    assert e.age_restriction is None
