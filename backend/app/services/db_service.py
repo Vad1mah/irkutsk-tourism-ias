@@ -1039,14 +1039,15 @@ class DBService:
         try:
             async with async_session() as s:
                 result = await s.execute(text("""
-                    SELECT d_prev, d_next, gap_days FROM (
-                        SELECT
-                            date AS d_prev,
-                            LEAD(date) OVER (ORDER BY date) AS d_next,
-                            (LEAD(date) OVER (ORDER BY date) - date) AS gap_days
-                        FROM (SELECT DISTINCT date FROM hotel_statistics) t
-                    ) gaps
-                    WHERE gap_days > :min_days
+                    WITH dated AS (
+                        SELECT DISTINCT date FROM hotel_statistics
+                    ),
+                    leaded AS (
+                        SELECT date AS d_prev, LEAD(date) OVER (ORDER BY date) AS d_next FROM dated
+                    )
+                    SELECT d_prev, d_next, (d_next - d_prev) AS gap_days
+                    FROM leaded
+                    WHERE d_next - d_prev > :min_days
                     ORDER BY d_prev
                 """), {"min_days": min_days})
                 rows = result.all()

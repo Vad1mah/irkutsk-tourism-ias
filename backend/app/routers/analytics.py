@@ -20,6 +20,7 @@ from pydantic import ValidationError
 from app.models.schemas import (
     KPIResponse, CityHotels,
     TripSummary, EventBrief, WeatherDay, BestDate,
+    AnalyticsMetadataResponse, DataDateRange, GapPeriod,
 )
 
 logger = logging.getLogger(__name__)
@@ -912,21 +913,34 @@ async def get_data_coverage(
     }
 
 
-@router.get("/metadata")
-async def get_metadata(data: DataServiceDep) -> dict[str, Any]:
+@router.get("/metadata", response_model=AnalyticsMetadataResponse)
+async def get_metadata(
+    data: DataServiceDep,
+    cache: CacheServiceDep,
+) -> AnalyticsMetadataResponse:
     """Метаданные системы: счётчики, диапазон данных, gap-периоды."""
-    hotels = await data.get_hotels_count()
-    events = await data.get_events_count()
-    date_range = await data.get_data_date_range()
-    gaps = await data.detect_gap_periods(min_days=7)
-    last = await data.get_last_data_refresh()
-    return {
-        "hotels_count": hotels,
-        "events_count": events,
-        "data_range": date_range,
-        "last_refresh": last.isoformat() if last else None,
-        "gap_periods": gaps,
-    }
+    cache_key = "analytics:metadata"
+    cached = await cache.get(cache_key)
+    if cached:
+        return AnalyticsMetadataResponse.model_validate(cached)
+
+    hotels, events, date_range, gaps, last = await asyncio.gather(
+        data.get_hotels_count(),
+        data.get_events_count(),
+        data.get_data_date_range(),
+        data.detect_gap_periods(min_days=7),
+        data.get_last_data_refresh(),
+    )
+
+    response = AnalyticsMetadataResponse(
+        hotels_count=hotels,
+        events_count=events,
+        data_range=DataDateRange(**date_range),
+        last_refresh=last.isoformat() if last else None,
+        gap_periods=[GapPeriod(**g) for g in gaps],
+    )
+    await cache.set(cache_key, response.model_dump(by_alias=True), ttl=300)
+    return response
 
 
 @router.get("/price-history")

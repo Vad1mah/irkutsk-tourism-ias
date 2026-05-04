@@ -262,6 +262,33 @@ class BestDate(BaseModel):
     score: float = Field(ge=0, le=100, description="Оценка 0-100, выше = лучше")
 
 
+class DataDateRange(BaseModel):
+    """Диапазон дат данных."""
+    from_: str | None = Field(None, alias="from")
+    to: str | None = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class GapPeriod(BaseModel):
+    """Период отсутствия данных."""
+    from_: str | None = Field(None, alias="from")
+    to: str | None = None
+    gap_days: int
+    reason: str
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class AnalyticsMetadataResponse(BaseModel):
+    """Ответ метаданных системы аналитики."""
+    hotels_count: int
+    events_count: int
+    data_range: DataDateRange
+    last_refresh: str | None = None
+    gap_periods: list[GapPeriod] = Field(default_factory=list)
+
+
 class ValidationPoint(BaseModel):
     """Точка валидации (прогноз или факт)."""
     date: str
