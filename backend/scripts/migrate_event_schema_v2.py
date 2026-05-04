@@ -20,6 +20,10 @@ from app.db.session import engine as async_engine
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
+# PostgreSQL error codes used to distinguish expected from unexpected failures.
+DUPLICATE_OBJECT_PGCODE = "42P07"  # constraint already exists
+UNIQUE_VIOLATION_PGCODE = "23505"  # data contains duplicates
+
 NEW_COLUMNS: list[tuple[str, str]] = [
     ("time_start", "TIME NULL"),
     ("price_min", "INTEGER NULL"),
@@ -40,7 +44,7 @@ async def column_exists(conn, column: str) -> bool:
     result = await conn.execute(
         text(
             "SELECT 1 FROM information_schema.columns "
-            "WHERE table_name = 'events' AND column_name = :col"
+            "WHERE table_schema = 'public' AND table_name = 'events' AND column_name = :col"
         ),
         {"col": column},
     )
@@ -51,7 +55,7 @@ async def constraint_exists(conn, name: str) -> bool:
     result = await conn.execute(
         text(
             "SELECT 1 FROM information_schema.table_constraints "
-            "WHERE table_name = 'events' AND constraint_name = :name"
+            "WHERE table_schema = 'public' AND table_name = 'events' AND constraint_name = :name"
         ),
         {"name": name},
     )
@@ -80,9 +84,22 @@ async def migrate() -> None:
                 await conn.execute(text(DEDUP_CONSTRAINT_DDL))
             logger.info("added UNIQUE constraint %s", DEDUP_CONSTRAINT_NAME)
         except (ProgrammingError, IntegrityError) as exc:
-            logger.warning("could not add %s: %s — likely duplicates exist; "
-                           "clean events table first", DEDUP_CONSTRAINT_NAME, exc)
+            pgcode = getattr(exc.orig, "pgcode", None)
+            if pgcode in (DUPLICATE_OBJECT_PGCODE, UNIQUE_VIOLATION_PGCODE):
+                logger.warning(
+                    "could not add %s (pgcode=%s): duplicates exist — clean events table "
+                    "(Task B1) before re-running",
+                    DEDUP_CONSTRAINT_NAME, pgcode,
+                )
+            else:
+                raise
 
 
 if __name__ == "__main__":
-    asyncio.run(migrate())
+    async def _main() -> None:
+        try:
+            await migrate()
+        finally:
+            await async_engine.dispose()
+
+    asyncio.run(_main())
