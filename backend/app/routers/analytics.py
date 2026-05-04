@@ -484,13 +484,39 @@ async def get_kpi(data: DataServiceDep, cache: CacheServiceDep) -> KPIResponse:
 
 
 @router.get("/events-impact")
-async def get_events_impact(data: DataServiceDep, cache: CacheServiceDep) -> list[dict[str, Any]]:
-    """Влияние событий на загруженность: сравнение в дни событий vs обычные дни."""
-    cache_key = f"analytics:events-impact:{DEFAULT_DISTRICT}"
+async def get_events_impact(
+    data: DataServiceDep,
+    cache: CacheServiceDep,
+    method: Literal["naive", "seasonal_corrected"] = "seasonal_corrected",
+    window_weeks: int = 3,
+) -> list[dict[str, Any]]:
+    """Влияние событий на загруженность: сравнение в дни событий vs обычные дни.
+
+    Args:
+        method: Метод расчёта. ``naive`` — простая разница event_day vs avg.
+            ``seasonal_corrected`` — скорректированный (полная реализация в Task D2,
+            пока fallback на naive с маркером ``method=naive_fallback``).
+        window_weeks: Не используется в текущей реализации (зарезервировано для D2).
+    """
+    cache_key = f"analytics:events-impact:{DEFAULT_DISTRICT}:{method}"
     cached = await cache.get(cache_key)
     if cached:
         return cached
 
+    if method == "naive":
+        result = await _events_impact_naive(data)
+    else:
+        # seasonal_corrected будет реализован в Task D2 — пока fallback на naive с пометкой
+        result = await _events_impact_naive(data)
+        for r in result:
+            r["method"] = "naive_fallback"
+
+    await cache.set(cache_key, result, ttl=300)
+    return result
+
+
+async def _events_impact_naive(data: Any) -> list[dict[str, Any]]:
+    """Наивный расчёт влияния событий: разница загруженности в день события vs среднее."""
     if not data.is_connected:
         raise HTTPException(503, "БД не подключена")
 
@@ -586,7 +612,6 @@ async def get_events_impact(data: DataServiceDep, cache: CacheServiceDep) -> lis
         })
 
     result.sort(key=lambda x: abs(x.get("impact") or 0), reverse=True)
-    await cache.set(cache_key, result, ttl=300)
     return result
 
 
