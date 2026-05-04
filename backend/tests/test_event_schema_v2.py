@@ -36,3 +36,39 @@ def test_event_orm_can_instantiate_with_new_fields():
     assert e.time_start.hour == 19
     assert e.price_min == 500
     assert e.age_restriction == "16+"
+
+
+def test_event_pydantic_accepts_new_fields():
+    """Pydantic-схема Event принимает новые поля и валидирует их."""
+    from app.models.schemas import Event as EventSchema
+
+    payload = {
+        "event_id": "abc-1",
+        "title": "Концерт",
+        "date_start": "2026-06-01",
+        "source_id": "yandex",
+        "time_start": "19:30:00",
+        "price_min": 1000,
+        "price_max": 3500,
+        "image_url": "https://example.com/poster.jpg",
+        "address": "ул. Ленина, 5",
+        "age_restriction": "12+",
+    }
+    e = EventSchema(**payload)
+    assert e.time_start.hour == 19
+    assert e.price_min == 1000
+    assert e.age_restriction == "12+"
+
+
+def test_event_pydantic_optional_new_fields():
+    """Все 6 новых полей опциональны (можно создать без них)."""
+    from app.models.schemas import Event as EventSchema
+
+    e = EventSchema(
+        event_id="abc-2",
+        title="Минимальное событие",
+        date_start="2026-06-02",
+        source_id="manual",
+    )
+    assert e.time_start is None
+    assert e.price_min is None

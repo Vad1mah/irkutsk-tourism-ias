@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, time
 from typing import Any
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
@@ -55,6 +55,12 @@ class Event(BaseModel):
     location: str | None = Field(None, description="Место проведения")
     source_id: str = Field(..., description="Источник данных")
     url: str | None = None
+    time_start: time | None = Field(None, description="Время начала события (HH:MM:SS)")
+    price_min: int | None = Field(None, ge=0, description="Минимальная цена в рублях")
+    price_max: int | None = Field(None, ge=0, description="Максимальная цена в рублях")
+    image_url: str | None = Field(None, description="URL изображения")
+    address: str | None = Field(None, description="Уличный адрес места проведения")
+    age_restriction: str | None = Field(None, max_length=10, description="Возрастное ограничение, напр. 16+")
 
     model_config = ConfigDict(populate_by_name=True)
 
