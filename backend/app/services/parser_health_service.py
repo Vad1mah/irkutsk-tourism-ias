@@ -2,12 +2,28 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+import re
+from datetime import datetime, timezone
 from typing import Literal
 
 from app.services.cache_service import cache_service
 
 HEALTH_KEY = "parser_health"  # Redis hash, ключи — parser_id, value — JSON
+_HEALTH_TTL = 7 * 24 * 3600  # 7 дней
+
+_CREDENTIAL_PATTERNS = [
+    re.compile(r"://[^:]+:[^@]+@", re.IGNORECASE),
+    re.compile(r"password\s*=\s*\S+", re.IGNORECASE),
+    re.compile(r"api[_-]?key\s*=\s*\S+", re.IGNORECASE),
+    re.compile(r"token\s*=\s*\S+", re.IGNORECASE),
+]
+
+
+def sanitize_error(msg: str) -> str:
+    """Удалить credentials из сообщения об ошибке перед записью в Redis."""
+    for pat in _CREDENTIAL_PATTERNS:
+        msg = pat.sub("[REDACTED]", msg)
+    return msg
 
 
 class ParserHealthService:
@@ -22,14 +38,16 @@ class ParserHealthService:
         if cache_service.client is None or not cache_service.is_connected:
             return
         try:
+            safe_error = sanitize_error(error)[:500] if error else None
             payload = {
                 "parser_id": parser_id,
                 "status": status,
                 "items_collected": items_collected,
-                "error": error,
-                "last_run": datetime.utcnow().isoformat(),
+                "error": safe_error,
+                "last_run": datetime.now(timezone.utc).isoformat(),
             }
             await cache_service.client.hset(HEALTH_KEY, parser_id, json.dumps(payload))
+            await cache_service.client.expire(HEALTH_KEY, _HEALTH_TTL)
         except Exception:
             return
 
@@ -41,11 +59,9 @@ class ParserHealthService:
         except Exception:
             return []
         out: list[dict] = []
-        for parser_id_bytes, payload_bytes in raw.items():
+        for _parser_id, payload in raw.items():
             try:
-                pid = parser_id_bytes.decode() if isinstance(parser_id_bytes, bytes) else parser_id_bytes
-                p = payload_bytes.decode() if isinstance(payload_bytes, bytes) else payload_bytes
-                out.append(json.loads(p))
+                out.append(json.loads(payload))
             except Exception:
                 continue
         out.sort(key=lambda x: x.get("last_run") or "", reverse=True)

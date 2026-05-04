@@ -211,7 +211,7 @@ async def fetch_events_culture_rf(
     """Получить события с culture.ru."""
     parser = CultureRFParser()
     try:
-        return await parser.fetch_events(location=location)
+        return await parser.run_with_health(location=location)
     finally:
         await parser._close_session()
 

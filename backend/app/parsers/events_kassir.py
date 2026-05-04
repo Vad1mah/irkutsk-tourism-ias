@@ -581,16 +581,16 @@ async def fetch_events_kassir(
 ) -> list[ParsedEvent]:
     """
     Получить события с Kassir.ru.
-    
+
     Args:
         categories: Категории для парсинга
         use_ai: Использовать AI extraction
-        
+
     Returns:
         Список ParsedEvent
     """
     async with KassirParser() as parser:
-        return await parser.fetch_events(categories=categories, use_ai=use_ai)
+        return await parser.run_with_health(categories=categories, use_ai=use_ai)
 
 
 # Тест

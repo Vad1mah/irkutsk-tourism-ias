@@ -133,9 +133,12 @@ class DataCollectorScheduler:
         logger.info("Запуск сбора из Telegram...")
         try:
             from app.parsers import fetch_events_telegram
+            from app.parsers import _run_standalone_with_health
             from app.services.data_service import data_service
 
-            events = await fetch_events_telegram(use_telethon=False, days_back=1)
+            events = await _run_standalone_with_health(
+                "telegram", fetch_events_telegram, use_telethon=False, days_back=1
+            )
             count = len(events)
 
             if events:

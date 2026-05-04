@@ -377,17 +377,17 @@ async def fetch_events_yandex(
 ) -> list[ParsedEvent]:
     """
     Получить события с Яндекс Афиши.
-    
+
     Args:
         city: Город (slug)
         categories: Категории для парсинга
         use_ai: Использовать AI extraction
-        
+
     Returns:
         Список ParsedEvent
     """
     async with YandexAfishaParser(city) as parser:
-        return await parser.fetch_events(categories=categories, use_ai=use_ai)
+        return await parser.run_with_health(categories=categories, use_ai=use_ai)
 
 
 # Тест

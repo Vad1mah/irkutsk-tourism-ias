@@ -6,13 +6,9 @@ from app.services.cache_service import cache_service
 
 @pytest.mark.asyncio
 async def test_parser_health_report_and_list():
-    """Проверяет запись и чтение статуса парсера через Redis hash.
-
-    Всегда делает свежее подключение, чтобы не зависеть от loop-state
-    session-scoped фикстуры.
-    """
-    # Создаём свежее соединение для этого теста
-    fresh_client = None
+    """Проверяет запись и чтение статуса парсера через ParserHealthService."""
+    # Всегда пересоздаём соединение, чтобы не зависеть от loop-state
+    # предыдущих тестов (cache_service — singleton, может быть poisoned).
     try:
         import redis.asyncio as redis
         from app.config import settings
@@ -28,33 +24,54 @@ async def test_parser_health_report_and_list():
         pytest.skip("Redis unavailable")
         return
 
-    try:
-        await fresh_client.hset(
-            "parser_health",
-            "events_yandex_test",
-            '{"parser_id": "events_yandex_test", "status": "ok", "items_collected": 42, "error": null, "last_run": "2026-01-01T00:00:00"}',
-        )
-        raw = await fresh_client.hgetall("parser_health")
-        import json
-        found = None
-        for k, v in raw.items():
-            try:
-                entry = json.loads(v)
-                if entry.get("parser_id") == "events_yandex_test":
-                    found = entry
-                    break
-            except Exception:
-                continue
+    # Подменяем клиент в singleton для этого теста
+    old_client = cache_service._client
+    old_connected = cache_service._connected
+    cache_service._client = fresh_client
+    cache_service._connected = True
 
-        assert found is not None
+    parser_id = "test_health_parser"
+
+    try:
+        await parser_health_service.report(
+            parser_id=parser_id,
+            status="ok",
+            items_collected=42,
+        )
+
+        entries = await parser_health_service.list_all()
+        found = next((e for e in entries if e.get("parser_id") == parser_id), None)
+
+        assert found is not None, "Запись не найдена в list_all()"
         assert found["status"] == "ok"
         assert found["items_collected"] == 42
+        assert found["error"] is None
+        assert "last_run" in found
     finally:
         try:
-            await fresh_client.hdel("parser_health", "events_yandex_test")
+            await fresh_client.hdel("parser_health", parser_id)
             await fresh_client.aclose()
         except Exception:
             pass
+        # Восстанавливаем предыдущее состояние singleton
+        cache_service._client = old_client
+        cache_service._connected = old_connected
+
+
+@pytest.mark.asyncio
+async def test_parser_health_sanitize_error():
+    """Проверяет, что sanitize_error редактирует credentials из строки ошибки."""
+    from app.services.parser_health_service import sanitize_error
+
+    raw = "Connection error: postgresql://user:secret@host/db"
+    cleaned = sanitize_error(raw)
+    assert "secret" not in cleaned
+    assert "[REDACTED]" in cleaned
+
+    raw2 = "api_key=my_super_secret_token_xyz"
+    cleaned2 = sanitize_error(raw2)
+    assert "my_super_secret_token_xyz" not in cleaned2
+    assert "[REDACTED]" in cleaned2
 
 
 @pytest.mark.asyncio

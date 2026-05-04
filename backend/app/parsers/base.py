@@ -19,7 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.config import settings
 from app.parsers.anti_detection import get_random_user_agent
-from app.services.parser_health_service import parser_health_service
+from app.services.parser_health_service import parser_health_service, sanitize_error
 
 logger = logging.getLogger(__name__)
 
@@ -236,7 +236,7 @@ class BaseParser(ABC):
                 parser_id=self.config.name,
                 status="fail",
                 items_collected=0,
-                error=str(exc)[:500],
+                error=sanitize_error(str(exc))[:500],
             )
             raise
 

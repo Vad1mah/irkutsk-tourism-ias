@@ -16,6 +16,7 @@
 """
 import logging
 from datetime import date
+from typing import Any, Callable, Coroutine
 
 logger = logging.getLogger(__name__)
 
@@ -109,38 +110,64 @@ __all__ = [
 ]
 
 
+async def _run_standalone_with_health(
+    parser_id: str,
+    fn: Callable[..., Coroutine[Any, Any, list]],
+    *args: Any,
+    **kwargs: Any,
+) -> list:
+    """Обёртка для standalone-парсеров (не BaseParser) с отчётом в health service."""
+    from app.services.parser_health_service import parser_health_service, sanitize_error
+    try:
+        items = await fn(*args, **kwargs)
+        await parser_health_service.report(
+            parser_id=parser_id,
+            status="ok",
+            items_collected=len(items),
+        )
+        return items
+    except Exception as exc:
+        await parser_health_service.report(
+            parser_id=parser_id,
+            status="fail",
+            items_collected=0,
+            error=sanitize_error(str(exc))[:500],
+        )
+        raise
+
+
 async def fetch_all_events(
     sources: list[str] | None = None,
     use_ai: bool = True
 ) -> list[ParsedEvent]:
     """
     Получить события из всех источников.
-    
+
     Args:
         sources: Список источников (по умолчанию все)
         use_ai: Использовать AI extraction где возможно
-        
+
     Returns:
         Список всех событий (deduplicated)
     """
     import asyncio
-    
+
     all_sources = sources or [
         "zeroevent", "culture38", "irk", "major",
         "yandex", "kassir", "culture_rf", "telegram"
     ]
-    
+
     all_events = []
     seen_titles = set()
-    
+
     tasks = []
-    
+
     if "zeroevent" in all_sources:
-        tasks.append(("zeroevent", fetch_events_zeroevent()))
+        tasks.append(("zeroevent", _run_standalone_with_health("zeroevent", fetch_events_zeroevent)))
     if "culture38" in all_sources:
-        tasks.append(("culture38", fetch_events_culture38()))
+        tasks.append(("culture38", _run_standalone_with_health("culture38", fetch_events_culture38)))
     if "irk" in all_sources:
-        tasks.append(("irk", fetch_events_irk()))
+        tasks.append(("irk", _run_standalone_with_health("irk", fetch_events_irk)))
     if "yandex" in all_sources:
         tasks.append(("yandex", fetch_events_yandex(use_ai=use_ai)))
     if "kassir" in all_sources:
@@ -148,7 +175,7 @@ async def fetch_all_events(
     if "culture_rf" in all_sources:
         tasks.append(("culture_rf", fetch_events_culture_rf()))
     if "telegram" in all_sources:
-        tasks.append(("telegram", fetch_events_telegram(use_telethon=False)))
+        tasks.append(("telegram", _run_standalone_with_health("telegram", fetch_events_telegram, use_telethon=False)))
 
     # Запускаем параллельно с timeout для каждого парсера (60s max)
     wrapped_tasks = [
