@@ -367,3 +367,18 @@ class PriceDistributionResponse(BaseModel):
     p75: int | None = None
     p90: int | None = None
 
+
+class DistrictComparisonItem(BaseModel):
+    """RMS-метрики одного района для side-by-side сравнения."""
+    district: str
+    occupancy: float | None = None
+    adr_proxy: int | None = None
+    revpar_proxy: float | None = None
+    samples: int
+
+
+class CompareDistrictsResponse(BaseModel):
+    """Ответ side-by-side сравнения районов."""
+    days: int
+    districts: list[DistrictComparisonItem]
+

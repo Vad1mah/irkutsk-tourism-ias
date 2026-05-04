@@ -24,6 +24,7 @@ from app.models.schemas import (
     BookingPacePoint, BookingPaceSummary, BookingPaceResponse,
     OccupancyPoint, OccupancyTimeseriesSummary, OccupancyTimeseriesResponse,
     PriceDistributionResponse,
+    DistrictComparisonItem, CompareDistrictsResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -1953,5 +1954,48 @@ async def price_distribution(
             p75=_pct(75),
             p90=_pct(90),
         )
+    await cache.set(cache_key, response.model_dump(), ttl=300)
+    return response
+
+
+@router.get("/compare-districts", response_model=CompareDistrictsResponse)
+async def compare_districts(
+    data: DataServiceDep,
+    cache: CacheServiceDep,
+    districts: str = Query(..., description="Список районов через запятую"),
+    days: int = Query(30, ge=1, le=365),
+) -> CompareDistrictsResponse:
+    """Side-by-side RMS-метрики двух и более районов: occupancy, adr_proxy, revpar_proxy, samples.
+
+    Методология: occupancy — средняя загрузка за N дней из hotel_statistics;
+    adr_proxy — медиана min_price (прокси-ADR); revpar_proxy = adr_proxy × occupancy / 100.
+    """
+    names = [d.strip() for d in districts.split(",") if d.strip()]
+    cache_key = f"analytics:compare-districts:{','.join(sorted(names))}:{days}"
+    cached = await cache.get(cache_key)
+    if cached:
+        return CompareDistrictsResponse(**cached)
+
+    cutoff = _date.today() - timedelta(days=days)
+    items: list[DistrictComparisonItem] = []
+    for name in names:
+        rows = await data.get_occupancy_by_district(name, date_from=cutoff)
+        recent = [r for r in rows if r.get("avg_occupancy") is not None]
+        if not recent:
+            items.append(DistrictComparisonItem(district=name, samples=0))
+            continue
+        avg_occ = sum(r["avg_occupancy"] for r in recent) / len(recent)
+        prices = await data.collect_min_prices(district=name, days=days)
+        adr_proxy = int(sorted(prices)[len(prices) // 2]) if prices else None
+        revpar_proxy = round((adr_proxy or 0) * (avg_occ / 100), 2) if adr_proxy else None
+        items.append(DistrictComparisonItem(
+            district=name,
+            occupancy=round(avg_occ, 2),
+            adr_proxy=adr_proxy,
+            revpar_proxy=revpar_proxy,
+            samples=len(recent),
+        ))
+
+    response = CompareDistrictsResponse(days=days, districts=items)
     await cache.set(cache_key, response.model_dump(), ttl=300)
     return response
