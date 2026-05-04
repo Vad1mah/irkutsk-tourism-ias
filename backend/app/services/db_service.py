@@ -385,6 +385,72 @@ class DBService:
                 await s.rollback()
                 return 0
 
+    async def upsert_events_batch(self, events: list[dict]) -> int:
+        """Вставить или обновить события с дедупликацией по (source_id, date_start, title).
+
+        Uses ON CONFLICT ON CONSTRAINT uq_events_dedup — корректно обрабатывает
+        повторные запуски парсеров без создания дублей.
+
+        Args:
+            events: Список словарей с данными событий.
+
+        Returns:
+            Количество обработанных (не отброшенных при валидации) строк.
+        """
+        rows = []
+        for ev in events:
+            ds = self._to_date(ev.get("date_start"))
+            if not ds:
+                continue
+            eid = ev.get("event_id") or ev.get("id")
+            if not eid:
+                continue
+            rows.append({
+                "event_id": eid,
+                "title": ev.get("title", ""),
+                "description": ev.get("description"),
+                "date_start": ds,
+                "date_end": self._to_date(ev.get("date_end")),
+                "event_type": ev.get("event_type"),
+                "location": self._clean_location(ev.get("location")),
+                "source_id": ev.get("source_id", ev.get("source", "")),
+                "url": ev.get("url"),
+                "time_start": ev.get("time_start"),
+                "price_min": ev.get("price_min"),
+                "price_max": ev.get("price_max"),
+                "image_url": ev.get("image_url"),
+                "address": ev.get("address"),
+                "age_restriction": ev.get("age_restriction"),
+            })
+        if not rows:
+            return 0
+        async with async_session() as s:
+            try:
+                ins = pg_insert(Event).values(rows)
+                stmt = ins.on_conflict_do_update(
+                    constraint="uq_events_dedup",
+                    set_={
+                        "description": func.coalesce(ins.excluded.description, Event.__table__.c.description),
+                        "event_type": func.coalesce(ins.excluded.event_type, Event.__table__.c.event_type),
+                        "location": func.coalesce(ins.excluded.location, Event.__table__.c.location),
+                        "url": func.coalesce(ins.excluded.url, Event.__table__.c.url),
+                        "time_start": func.coalesce(ins.excluded.time_start, Event.__table__.c.time_start),
+                        "price_min": func.coalesce(ins.excluded.price_min, Event.__table__.c.price_min),
+                        "price_max": func.coalesce(ins.excluded.price_max, Event.__table__.c.price_max),
+                        "image_url": func.coalesce(ins.excluded.image_url, Event.__table__.c.image_url),
+                        "address": func.coalesce(ins.excluded.address, Event.__table__.c.address),
+                        "age_restriction": func.coalesce(ins.excluded.age_restriction, Event.__table__.c.age_restriction),
+                        "updated_at": func.now(),
+                    },
+                )
+                await s.execute(stmt)
+                await s.commit()
+                return len(rows)
+            except Exception as e:
+                logger.error(f"Batch upsert events error: {e}")
+                await s.rollback()
+                return 0
+
     async def upsert_event(
         self,
         *,

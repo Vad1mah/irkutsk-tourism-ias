@@ -73,7 +73,7 @@ async def parse_events_irk_endpoint(
         events_added = 0
 
         if save_to_db and events and data.is_connected:
-            events_added = await data.insert_events_batch(events)
+            events_added = await data.upsert_events_batch(events)
             logger.info(f"IRK parser: {len(events)} found, {events_added} saved")
 
         return {
@@ -99,7 +99,7 @@ async def parse_events_culture38_endpoint(
         events_added = 0
 
         if save_to_db and events and data.is_connected:
-            events_added = await data.insert_events_batch(events)
+            events_added = await data.upsert_events_batch(events)
             logger.info(f"Culture38 parser: {len(events)} found, {events_added} saved")
 
         return {
@@ -120,7 +120,7 @@ async def parse_events_zeroevent_endpoint(data: DataServiceDep, save: bool = Tru
         events = await fetch_events_zeroevent()
         added = 0
         if save and events and data.is_connected:
-            added = await data.insert_events_batch(events)
+            added = await data.upsert_events_batch(events)
         return {"status": "ok", "events_found": len(events), "events_added": added, "events": events[:5]}
     except Exception as e:
         logger.error(f"ZeroEvent parser error: {e}")
@@ -244,7 +244,7 @@ async def _save_parsed_events(events: list, source: str, data: DataServiceDep) -
             logger.error(f"Event conversion error: {e}")
     if not rows:
         return 0
-    return await data.insert_events_batch(rows)
+    return await data.upsert_events_batch(rows)
 
 
 # ── Scheduler endpoints ──────────────────────────────────────

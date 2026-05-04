@@ -152,3 +152,19 @@ async def test_event_dedup_preserves_existing_description(setup_services):
     # Cleanup
     await db_service.delete_event_by_id("test-coalesce-1")
     await db_service.delete_event_by_id("test-coalesce-2")
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_parser_all_no_duplicates_on_rerun(setup_services):
+    """Повторный запуск /parser/events/all не создаёт дублей."""
+    from app.services.data_service import data_service
+
+    if not data_service.is_connected:
+        pytest.skip("DB not available")
+
+    rows = await data_service.get_events()
+    seen: set[tuple] = set()
+    for r in rows:
+        key = (r.get("source_id") or r.get("source"), r.get("date_start"), r.get("title"))
+        assert key not in seen, f"Duplicate detected: {key}"
+        seen.add(key)
