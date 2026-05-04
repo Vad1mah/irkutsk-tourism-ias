@@ -1,0 +1,98 @@
+<mxfile host="app.diagrams.net" agent="draw.io">
+  <diagram name="Конвейер ансамблевого прогнозирования" id="ensemble_pipeline">
+    <mxGraphModel dx="1426" dy="784" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="input" parent="1" style="swimlane;startSize=25;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontSize=12;fontFamily=Verdana;" value="Исходные данные" vertex="1">
+          <mxGeometry height="190" width="130" x="60" y="230" as="geometry" />
+        </mxCell>
+        <mxCell id="hotels_data" parent="input" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontFamily=Verdana;fontSize=10;" value="101Hotels API&#xa;(заполняемость,&#xa;цены номеров)" vertex="1">
+          <mxGeometry height="45" width="110" x="10" y="35" as="geometry" />
+        </mxCell>
+        <mxCell id="events_data" parent="input" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontFamily=Verdana;fontSize=10;" value="8 порталов событий&#xa;(376 мероприятий)" vertex="1">
+          <mxGeometry height="40" width="110" x="10" y="90" as="geometry" />
+        </mxCell>
+        <mxCell id="weather_data" parent="input" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontFamily=Verdana;fontSize=10;" value="Open-Meteo API&#xa;(температура, осадки)" vertex="1">
+          <mxGeometry height="40" width="110" x="10" y="140" as="geometry" />
+        </mxCell>
+        <mxCell id="fe" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontFamily=Verdana;fontSize=10;fontStyle=0;verticalAlign=middle;" value="Инженерия признаков&#xa;(FeatureEngineering)&#xa;&#xa;38 признаков × 8 групп:&#xa;календарные (8), праздничные (5),&#xa;лаговые (7), скользящие (5),&#xa;погодные (4), событийные (3),&#xa;трендовые (2), ценовые (4)" vertex="1">
+          <mxGeometry height="115" width="190" x="290" y="267.5" as="geometry" />
+        </mxCell>
+        <mxCell id="models_group" parent="1" style="swimlane;startSize=30;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=11;fontFamily=Verdana;" value="Параллельное&#xa;обучение моделей" vertex="1">
+          <mxGeometry height="300" width="150" x="570" y="175" as="geometry" />
+        </mxCell>
+        <mxCell id="prophet" parent="models_group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontFamily=Verdana;fontSize=10;" value="Prophet&#xa;&#xa;Годовая / недельная&#xa;сезонность (Фурье)&#xa;Погода и праздники&#xa;как внешние регрессоры" vertex="1">
+          <mxGeometry height="80" width="135" x="10" y="35" as="geometry" />
+        </mxCell>
+        <mxCell id="neuralprophet" parent="models_group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontFamily=Verdana;fontSize=10;" value="NeuralProphet&#xa;&#xa;AR Network (n_lags=14)&#xa;Лаговые регрессоры&#xa;погоды через PyTorch" vertex="1">
+          <mxGeometry height="75" width="135" x="10" y="125" as="geometry" />
+        </mxCell>
+        <mxCell id="xgboost" parent="models_group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontFamily=Verdana;fontSize=10;" value="XGBoost / LightGBM&#xa;&#xa;Градиентный бустинг&#xa;Квантильная регрессия&#xa;(интервалы 10%–90%)" vertex="1">
+          <mxGeometry height="80" width="135" x="10" y="210" as="geometry" />
+        </mxCell>
+        <mxCell id="ensemble_block" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontFamily=Verdana;fontSize=10;fontStyle=0;" value="Ансамблевый сервис&#xa;(EnsembleService)&#xa;&#xa;Взвешенное усреднение&#xa;по формуле inverse-RMSE:&#xa;wᵢ = (1/RMSEᵢ) / Σ(1/RMSEⱼ)&#xa;&#xa;Мягкая деградация:&#xa;при ошибке модели —&#xa;перераспределение весов" vertex="1">
+          <mxGeometry height="155" width="190" x="810" y="247.5" as="geometry" />
+        </mxCell>
+        <mxCell id="output" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontFamily=Verdana;fontStyle=1;" value="Итоговый&#xa;прогноз" vertex="1">
+          <mxGeometry height="60" width="150" x="1050" y="190" as="geometry" />
+        </mxCell>
+        <mxCell id="out_point" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontFamily=Verdana;fontSize=10;" value="Точечный прогноз&#xa;(weighted_average)" vertex="1">
+          <mxGeometry height="35" width="150" x="1050" y="260" as="geometry" />
+        </mxCell>
+        <mxCell id="out_ci" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontFamily=Verdana;fontSize=10;" value="Доверительный интервал&#xa;(квантили 10%–90%)" vertex="1">
+          <mxGeometry height="35" width="150" x="1050" y="302.5" as="geometry" />
+        </mxCell>
+        <mxCell id="out_fi" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontFamily=Verdana;fontSize=10;" value="Значимость признаков&#xa;(feature importance, gain)" vertex="1">
+          <mxGeometry height="35" width="150" x="1050" y="342.5" as="geometry" />
+        </mxCell>
+        <mxCell id="out_metrics" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontFamily=Verdana;fontSize=10;" value="Метрики качества&#xa;(RMSE, MAE, R²)" vertex="1">
+          <mxGeometry height="35" width="150" x="1050" y="385" as="geometry" />
+        </mxCell>
+        <mxCell id="cache" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=10;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;fontFamily=Verdana;" value="Redis&#xa;(кэш, TTL 30 мин)" vertex="1">
+          <mxGeometry height="60" width="130" x="840" y="442.5" as="geometry" />
+        </mxCell>
+        <mxCell id="calib" parent="1" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=9;fontFamily=Verdana;fontStyle=2;" value="Автокалибровка&#xa;(не чаще 1 раз/ч)" vertex="1">
+          <mxGeometry height="40" width="110" x="800" y="400" as="geometry" />
+        </mxCell>
+        <mxCell id="a1" edge="1" parent="1" source="input" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;fontFamily=Verdana;fontSize=10;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="fe">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="230" y="230" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="a1_label" connectable="0" parent="a1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontFamily=Verdana;fontSize=9;" value="Временные ряды&#xa;заполняемости" vertex="1">
+          <mxGeometry relative="1" x="-0.1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="a2" edge="1" parent="1" source="fe" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontFamily=Verdana;fontSize=10;" target="models_group">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a2_label" connectable="0" parent="a2" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontFamily=Verdana;fontSize=9;fontStyle=1;" value="38 признаков" vertex="1">
+          <mxGeometry relative="1" x="-0.1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="a3" edge="1" parent="1" source="models_group" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontFamily=Verdana;fontSize=10;" target="ensemble_block">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a3_label" connectable="0" parent="a3" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontFamily=Verdana;fontSize=9;" value="3 прогноза&#xa;(параллельно)" vertex="1">
+          <mxGeometry relative="1" x="-0.1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="a4" edge="1" parent="1" source="ensemble_block" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontFamily=Verdana;fontSize=10;" target="output">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a4_label" connectable="0" parent="a4" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontFamily=Verdana;fontSize=9;fontStyle=1;" value="Итог&#xa;(~2 сек)" vertex="1">
+          <mxGeometry relative="1" x="-0.1" as="geometry">
+            <mxPoint y="-19" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="a5" edge="1" parent="1" source="ensemble_block" style="edgeStyle=orthogonalEdgeStyle;rounded=0;dashed=1;fontFamily=Verdana;" target="cache">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

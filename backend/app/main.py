@@ -90,7 +90,11 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Redis connection failed (caching disabled): {e}")
 
-    chroma_service.init()
+    try:
+        chroma_service.init()
+    except Exception as e:
+        logger.error(f"ChromaDB init failed (RAG will be degraded): {e}")
+
     llm_service.init()
 
     from app.scheduler import get_scheduler
@@ -107,6 +111,8 @@ async def lifespan(app: FastAPI):
     sched.stop()
     from app.executor import shutdown_executor
     shutdown_executor()
+    from app.services.weather_service import weather_service
+    await weather_service.close()
     await cache_service.close()
     await db_service.close()
 

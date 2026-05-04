@@ -11,7 +11,7 @@ import {
   Film, Baby, PartyPopper, MapPin, ExternalLink, ChevronLeft, ChevronRight,
   X, Clock, Info, Ticket, Search, Database, TrendingUp, Sparkles,
 } from 'lucide-react'
-import { Card, CardHeader, CardTitle, CardContent, Badge, Button } from '../components/ui'
+import { Card, CardHeader, CardTitle, CardContent, Badge, Button, Dropdown } from '../components/ui'
 import { ErrorState } from '../components/ErrorState'
 import { usePageTitle } from '../hooks/usePageTitle'
 
@@ -207,7 +207,7 @@ function Events() {
             </p>
           </div>
           <button
-            onClick={() => navigate(`/chat?context=${encodeURIComponent(`Какие события повлияют на загрузку отелей в ${monthName}?`)}`)}
+            onClick={() => navigate(`/chat?context=${encodeURIComponent(`Какие события повлияют на заполняемость отелей в ${monthName}?`)}`)}
             className="ml-2 p-2 rounded-lg bg-[hsl(var(--primary)/0.1)] hover:bg-[hsl(var(--primary)/0.2)] transition-colors"
             title="Спросить AI"
           >
@@ -256,19 +256,17 @@ function Events() {
           )}
         </div>
         {availableSources.length > 1 && (
-          <div className="flex items-center gap-2">
-            <Database size={14} className="text-[hsl(var(--muted-foreground))]" />
-            <select
-              value={selectedSource ?? ''}
-              onChange={(e) => setSelectedSource(e.target.value || null)}
-              className="px-3 py-2 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]"
-            >
-              <option value="">Все источники</option>
-              {availableSources.map(src => (
-                <option key={src} value={src}>{SOURCE_LABELS[src] || src}</option>
-              ))}
-            </select>
-          </div>
+          <Dropdown
+            value={selectedSource ?? ''}
+            onChange={(v) => setSelectedSource(v || null)}
+            options={[
+              { value: '', label: 'Все источники' },
+              ...availableSources.map(src => ({ value: src, label: SOURCE_LABELS[src] || src })),
+            ]}
+            icon={<Database size={14} />}
+            compact
+            className="w-52"
+          />
         )}
       </div>
 
@@ -325,7 +323,7 @@ function Events() {
               <TrendingUp className="w-5 h-5 text-[hsl(var(--primary))]" />
               <CardTitle className="text-base">Источники событий</CardTitle>
             </div>
-            <p className="text-xs text-[hsl(var(--muted-foreground))]">
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">
               Распределение {events.length} событий по источникам данных
             </p>
           </CardHeader>
@@ -527,7 +525,7 @@ function CalendarDay({
       `}>
         {day.date.getDate()}
         {isToday && (
-          <span className="ml-1 text-[10px] font-normal text-[hsl(var(--primary))]">
+          <span className="ml-1 text-xs font-normal text-[hsl(var(--primary))]">
             сегодня
           </span>
         )}
@@ -550,14 +548,14 @@ function CalendarDay({
               )
             })}
             {day.events.length > 4 && (
-              <span className="text-[10px] text-[hsl(var(--muted-foreground))]">
+              <span className="text-xs text-[hsl(var(--muted-foreground))]">
                 +{day.events.length - 4}
               </span>
             )}
           </div>
           
           {/* Event count badge */}
-          <div className="text-[10px] text-[hsl(var(--muted-foreground))]">
+          <div className="text-xs text-[hsl(var(--muted-foreground))]">
             {day.events.length} {_pluralize(day.events.length, 'событие', 'события', 'событий')}
           </div>
         </div>
@@ -594,14 +592,14 @@ function EventMiniCard({
         </div>
         <div className="flex-1 min-w-0">
           <span 
-            className="text-[10px] font-medium px-1.5 py-0.5 rounded"
+            className="text-xs font-medium px-1.5 py-0.5 rounded"
             style={{ backgroundColor: bgColor, color }}
           >
             {label}
           </span>
           <h4 className="font-medium text-sm mt-1 line-clamp-2">{event.title}</h4>
           {event.location && (
-            <p className="text-[11px] text-[hsl(var(--muted-foreground))] flex items-center gap-1 mt-1">
+            <p className="text-xs text-[hsl(var(--muted-foreground))] flex items-center gap-1 mt-1">
               <MapPin size={10} />
               <span className="truncate">{event.location}</span>
             </p>
@@ -648,7 +646,7 @@ function EventCard({
           
           <div className="flex-1 min-w-0">
             <span 
-              className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+              className="text-xs font-medium px-2 py-0.5 rounded-full"
               style={{ backgroundColor: bgColor, color }}
             >
               {label}
@@ -676,12 +674,12 @@ function EventCard({
         {/* Impact + Hover hint */}
         <div className="mt-3 pt-3 border-t border-[hsl(var(--border))] flex items-center justify-between">
           {impact !== undefined ? (
-            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
               impact > 5 ? 'bg-[hsl(var(--destructive)/0.1)] text-[hsl(var(--destructive))]'
                 : impact > 0 ? 'bg-[hsl(var(--warning)/0.1)] text-[hsl(var(--warning))]'
                   : 'bg-[hsl(var(--success)/0.1)] text-[hsl(var(--success))]'
             }`}>
-              {impact > 0 ? '+' : ''}{impact.toFixed(0)} п.п. к загрузке отелей
+              {impact > 0 ? '+' : ''}{impact.toFixed(0)}% к заполняемости отелей (оценка)
             </span>
           ) : (
             <span />
@@ -727,6 +725,9 @@ function EventModal({
     <div 
       className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
       onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={event.title}
     >
       <div 
         className="bg-[hsl(var(--card))] rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-hidden"
@@ -825,7 +826,7 @@ function EventModal({
               className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-[hsl(var(--primary)/0.3)] bg-[hsl(var(--primary)/0.05)] hover:bg-[hsl(var(--primary)/0.1)] text-[hsl(var(--primary))] transition-colors text-sm"
             >
               <TrendingUp size={16} />
-              Влияние на загрузку
+              Влияние на заполняемость
             </button>
             <button
               onClick={onClose}

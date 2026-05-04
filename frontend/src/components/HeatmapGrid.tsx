@@ -49,7 +49,7 @@ export function HeatmapGrid({ data, districts, dates }: HeatmapGridProps) {
         <div className="grid" style={{ gridTemplateColumns: `120px repeat(${dates.length}, 1fr)` }}>
           <div />
           {dates.map(date => (
-            <div key={date} className="text-center text-[10px] text-[hsl(var(--muted-foreground))] py-1">
+            <div key={date} className="text-center text-xs text-[hsl(var(--muted-foreground))] py-1">
               {new Date(date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
             </div>
           ))}
@@ -59,7 +59,7 @@ export function HeatmapGrid({ data, districts, dates }: HeatmapGridProps) {
           <div
             key={district}
             className="grid items-center"
-            style={{ gridTemplateColumns: `120px repeat(${dates.length}, 1fr)` }}
+            style={{ gridTemplateColumns: `120px repeat(${dates.length}, minmax(38px, 56px))` }}
           >
             <div className="text-xs font-medium truncate pr-2 py-1" title={district}>
               {district.replace(' район', '')}
@@ -69,7 +69,7 @@ export function HeatmapGrid({ data, districts, dates }: HeatmapGridProps) {
               return (
                 <div
                   key={date}
-                  className="aspect-square m-0.5 rounded-sm flex items-center justify-center text-[9px] font-medium text-white cursor-default transition-transform hover:scale-110"
+                  className="aspect-square m-0.5 rounded-sm flex items-center justify-center text-xs font-medium text-white cursor-default transition-transform hover:scale-110"
                   style={{ backgroundColor: _heatColor(occupancy) }}
                   title={`${district}: ${occupancy !== undefined ? `${Math.round(occupancy)}%` : 'нет данных'} (${date})`}
                 >

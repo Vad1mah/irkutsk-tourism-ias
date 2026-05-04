@@ -21,7 +21,7 @@ Diplom/
 │   │   │   ├── forecast.py    # /api/forecast (9)
 │   │   │   ├── query.py       # /api/query (5)
 │   │   │   ├── analytics.py   # /api/analytics (17)
-│   │   │   ├── parser.py      # /api/parser (13)
+│   │   │   ├── parser.py      # /api/parser (12)
 │   │   │   └── documents.py   # /api/documents (5)
 │   │   ├── services/          # 16 сервисов
 │   │   │   ├── data_service.py        # PostgreSQL (SQLAlchemy 2.0 + asyncpg)
@@ -67,16 +67,14 @@ Diplom/
 │
 ├── frontend/                   # React 18 + TypeScript + Vite 7
 │   ├── src/
-│   │   ├── pages/             # 10 страниц
+│   │   ├── pages/             # 8 страниц
 │   │   │   ├── Home.tsx       # AI-чат (подсказки, retry, localStorage)
 │   │   │   ├── Chat.tsx       # SSE streaming чат
-│   │   │   ├── Situation.tsx  # Ensemble прогноз + CI + погода
-│   │   │   ├── Seasonality.tsx# Сезонность, корреляции
+│   │   │   ├── Analytics.tsx  # KPI, дашборд, тепловая карта, GeoMap
 │   │   │   ├── Events.tsx     # Каталог событий (поиск + фильтры)
-│   │   │   ├── Map.tsx        # Аналитика регионов (Recharts)
-│   │   │   ├── Forecast.tsx   # Ensemble + сравнение + feature importance
+│   │   │   ├── Map.tsx        # Карта регионов (ECharts GeoMap)
+│   │   │   ├── Forecast.tsx   # Ensemble + сравнение моделей
 │   │   │   ├── HotelDetail.tsx# Карточка отеля
-│   │   │   ├── Dashboard.tsx  # ECharts GeoMap + KPI
 │   │   │   └── About.tsx      # О системе для комиссии
 │   │   ├── components/        # UI: Button, Card, Badge, Input, ErrorState
 │   │   └── api/client.ts      # API клиент (fetch)
@@ -100,7 +98,7 @@ Diplom/
 | Слой | Технология | Назначение |
 |------|------------|------------|
 | **Backend** | FastAPI, Pydantic v2 | REST API (59 endpoints) |
-| **Frontend** | React 18 + TypeScript + Vite 7 | Web UI (10 страниц) |
+| **Frontend** | React 18 + TypeScript + Vite 7 | Web UI (8 страниц) |
 | **База данных** | PostgreSQL 16 (Docker, SQLAlchemy 2.0 + asyncpg) | Хранение данных |
 | **Vector Store** | ChromaDB | RAG для AI |
 | **LLM** | **Mistral** Large (основной, 1B токенов/мес) | AI-ассистент + объяснения |
@@ -140,19 +138,17 @@ Diplom/
 
 ---
 
-## 4. API Endpoints (60 шт.)
+## 4. API Endpoints (59 шт.)
 
 ### Прогнозирование (Forecast, 9 endpoints):
 ```
-GET  /api/forecast                     # Prophet прогноз
-GET  /api/forecast/neural              # NeuralProphet
-GET  /api/forecast/xgboost             # XGBoost + LightGBM
+POST /api/forecast                     # Prophet прогноз
+POST /api/forecast/neural              # NeuralProphet
+POST /api/forecast/xgboost             # XGBoost + LightGBM
 GET  /api/forecast/ensemble            # Weighted ensemble
 GET  /api/forecast/compare-all         # Сравнение всех моделей + метрики
 GET  /api/forecast/explain             # LangGraph Agent с LLM объяснением
 GET  /api/forecast/weather             # Прогноз погоды
-GET  /api/forecast/best-dates          # Лучшие даты для поездки
-GET  /api/forecast/feature-importance  # Важность фичей XGBoost
 ```
 
 ### Основные:
@@ -171,6 +167,7 @@ GET  /api/analytics/kpi                # KPI метрики
 GET  /api/analytics/districts          # По районам
 GET  /api/analytics/heatmap            # Тепловая карта
 GET  /api/analytics/hotels-map         # Данные для GeoMap
+GET  /api/analytics/best-dates         # Лучшие даты для поездки
 GET  /api/analytics/price-history      # История цен
 GET  /api/analytics/events-impact      # Влияние событий
 GET  /api/analytics/recommendations    # Рекомендации
@@ -195,7 +192,7 @@ GET  /api/analytics/recommendations    # Рекомендации
 ```
 Календарные (8): day_of_week, month, quarter, is_weekend...
 Праздники (5):   is_holiday, days_to_holiday, is_long_weekend...
-Лаги (7):        lag_1, lag_7, lag_14, lag_30, lag_90, diff_1, diff_7
+Лаги (5):        lag_1, lag_7, lag_14, lag_30, lag_90
 Rolling (5):     rolling_mean_7, rolling_mean_30, rolling_std_7, min_7, max_7
 Погода (4):      temperature, precipitation, temp_deviation, is_good_weather
 События (3):     events_count, events_week, has_major_event

@@ -1,7 +1,9 @@
 # Статус проекта
 
-**Дата обновления:** 26.03.2026
+**Дата обновления:** 28.03.2026
 **Этап:** Производственная практика (24.02 — 04.04.2026)
+
+**Предзащитная ревизия (28.03.2026):** исправлены критические баги, проведена UX-перестройка навигации, обновлены данные парсеров.
 
 ## Обновление 26.03.2026 — Консолидация и документация
 
@@ -26,7 +28,7 @@
 
 ### Тестирование
 
-- Unit тесты: 59 passed, 1 skipped (60 тестов, 5 файлов)
+- Unit тесты: 59 passed, 1 skipped (~94 теста, 6 файлов)
 
 ### Фазы 0–4 (26.03.2026)
 
@@ -67,7 +69,7 @@
 | GeoMap (ECharts) | ✅ Bubble map (tree-shaken) |
 | Security | ✅ Rate Limiting + API Key Auth + CSP + non-root containers |
 | Docker | ✅ PostgreSQL 16 + Redis 7 (secrets, restricted ports, healthchecks) |
-| Unit тесты | ✅ 59 passed, 1 skipped (60 тестов, 5 файлов) |
+| Unit тесты | ✅ 59 passed, 1 skipped (~94 теста, 6 файлов) |
 | E2E тесты | ✅ 9/9 passed |
 | POI (OpenStreetMap) | ✅ Достопримечательности (LRU cache) |
 | RevPAR/ADR | ✅ Бизнес-метрики |
@@ -132,7 +134,7 @@
 | Удаление dead code в client.ts | ✅ | Убраны neuralForecast, xgboostForecast, EventImpact, DataCoverage |
 | PNG-экспорт графиков | ✅ | SVG→Canvas→PNG, кнопка на Forecast |
 | Сравнение районов | ✅ | До 3 районов на одном LineChart (Forecast) |
-| Дефолтный район | ✅ | Иркутский автоматически на Situation |
+| Дефолтный район | ✅ | Иркутский автоматически на Analytics |
 | Подсказки AI-чата | ✅ | 6 подсказок покрывающих все tools агента |
 | Страница About | ✅ | /about — техстек, возможности, архитектура для комиссии |
 | Пустые состояния | ✅ | Осмысленные подсказки вместо голых сообщений |
@@ -141,12 +143,13 @@
 
 ### Тестирование (актуальное)
 
-**Unit тесты:** 59 passed, 1 skipped (60 тестов, 5 файлов)
+**Unit тесты:** 59 passed, 1 skipped (~94 теста, 6 файлов)
 - `test_agent_tools.py` — 16 тестов (tools, промпт, состояние, MainAgent)
 - `test_ensemble_service.py` — 9 тестов (веса, агрегация, калибровка)
 - `test_forecast_helpers.py` — 8 тестов (кэш, расчёт загрузки, диапазоны дат)
 - `test_schemas.py` — 15 тестов (Hotel, Event, ForecastRequest, QueryRequest)
 - `test_security.py` — 12 тестов (rate limit, SQL injection, API key, валидация)
+- `test_routers.py` — 8 тестов (health, hotels, events, query)
 
 **E2E тесты:** 9/9 passed
 - Health, KPI, Hotels, Events, Prophet, Ensemble, Weather, AI Query, Scheduler — OK
@@ -248,7 +251,7 @@
 | LLM (Mistral) | Работает | mistral-large-latest |
 | PostgreSQL | Работает | Docker, 648 отелей, 34739 записей статистики, 198 событий |
 | Redis | Работает | Docker, кэширование API-ответов |
-| YDB | Доступен (fallback) | Переключение через DB_BACKEND в .env |
+| YDB | Исторически (не используется) | YDB полностью заменён на PostgreSQL, фабрика убрана. Ранее: fallback, переключение через DB_BACKEND в .env |
 | Crawl4AI | Установлен | Playwright доступен, импорт работает |
 | Plotly | Не импортируется | Влияет на интерактивные графики NeuralProphet |
 
@@ -270,7 +273,7 @@
 | Docker Compose | PostgreSQL 16 + Redis 7 (+ backend/frontend через profile "full") |
 | Dockerfile backend | Python 3.11-slim, uvicorn |
 | Dockerfile frontend | Node 20 multi-stage build → Nginx alpine |
-| YDB authorized_key.json | На месте (fallback) |
+| YDB authorized_key.json | Исторически (не требуется) | YDB полностью заменён на PostgreSQL, фабрика убрана |
 | .env | Настроен (6 LLM, DB_BACKEND=postgresql) |
 
 ## Исправления при запуске
@@ -284,13 +287,13 @@
 Backend (FastAPI, порт 8000)
 ├── 7 роутеров (59 endpoints): hotels, events, query, forecast, documents, parser, analytics
 ├── Сервисы (16):
-│   ├── data_service / db_service — PostgreSQL (SQLAlchemy 2.0 + asyncpg)
+│   ├── data_service — обёртка над db_service (PostgreSQL); db_service — SQLAlchemy 2.0 + asyncpg
 │   ├── llm_service — 6 LLM провайдеров (Mistral основной)
 │   ├── chroma_service — векторная БД (GigaChat Embeddings)
 │   ├── cache_service — Redis (кэширование + rate limiting)
 │   ├── prophet_service, neuralprophet_service, xgboost_service
 │   ├── ensemble_service — ансамблевые прогнозы (async + кэш)
-│   ├── feature_engineering — 25+ ML-фичей
+│   ├── feature_engineering — 38 ML-признаков
 │   ├── weather_service — Open-Meteo API
 │   ├── holidays_service — праздники РФ
 │   ├── poi_service — достопримечательности (OSM)
@@ -333,7 +336,7 @@ Frontend (React 18 + Vite 7, порт 5173)
 ### Миграция БД (YDB → PostgreSQL) — ЗАВЕРШЕНО 22.02.2026
 - Docker Compose: PostgreSQL 16 + Redis 7
 - SQLAlchemy ORM: 5 моделей (Hotel, HotelStatistic, Event, QueryHistory, Forecast)
-- `data_service.py` — фабрика переключения YDB/PostgreSQL
+- `data_service.py` — обёртка над db_service (PostgreSQL)
 - Данные: 648 отелей, 34 739 записей статистики, 198 событий
 - API: все endpoint'ы протестированы и работают
 
@@ -345,7 +348,7 @@ Frontend (React 18 + Vite 7, порт 5173)
 
 ### Улучшение AI-агентов (LangGraph) — ОБНОВЛЕНО 22.02.2026
 - **forecast_agent.py:** Command pattern, PydanticOutputParser + ChatPromptTemplate (по образцу executory_formula), ensemble_service для best_model, метрики моделей в state
-- **main_agent.py:** Command[Literal[...]] для маршрутизации, 4 tools (search_hotels, search_events, get_weather, forecast_occupancy)
+- **main_agent.py:** Command[Literal[...]] для маршрутизации, 5 tools (search_hotels, search_events, get_weather, forecast_occupancy, get_statistics)
 - **ForecastExplanation:** Pydantic модель для structured LLM output (summary, main_factors, recommendation, confidence_note)
 - **chroma_service.py:** свойство is_initialized, ленивая инициализация
 
@@ -416,15 +419,15 @@ Frontend (React 18 + Vite 7, порт 5173)
 ### UX фронтенда — УЛУЧШЕНО 22.02.2026, дополнено 22.02.2026
 - **Events.tsx:** поиск по тексту + фильтр по источнику данных (7+ источников)
 - **Home.tsx:** обработка ошибок запросов, кнопка очистки чата
-- **Рефакторинг:** `_getWeatherEmoji` → общий `utils/weather.ts` (убран дубликат из Home, Situation)
+- **Рефакторинг:** `_getWeatherEmoji` → общий `utils/weather.ts` (убран дубликат из Home, Analytics)
 
 **Обновление фронтенда (22.02.2026):**
 - **Forecast.tsx (НОВАЯ):** полноценная страница прогнозирования — выбор района, горизонта, Ensemble с CI-bands, сравнение моделей (линейный график), таблица метрик (RMSE/MAE/R²), feature importance (XGBoost)
-- **Situation.tsx:** Prophet-only заменён на Ensemble прогноз с CI-bands и fallback на Prophet; добавлен виджет сравнения моделей с бейджем best
+- **Forecast.tsx:** Prophet-only заменён на Ensemble прогноз с CI-bands и fallback на Prophet; добавлен виджет сравнения моделей с бейджем best
 - **Layout.tsx:** исправлена битая UTF-8 кодировка (mojibake), добавлен пункт навигации «Прогнозы» (ML badge)
 - **client.ts:** добавлены API-методы `ensembleForecast`, `compareModels`, `neuralForecast`, `xgboostForecast`
 - **App.tsx:** добавлен маршрут `/forecast`
-- **TypeScript:** `tsc --noEmit` без ошибок (исправлены pre-existing проблемы в Events.tsx, Map.tsx, Home.tsx, Situation.tsx)
+- **TypeScript:** `tsc --noEmit` без ошибок (исправлены pre-existing проблемы в Events.tsx, Map.tsx, Home.tsx, Analytics.tsx, Forecast.tsx)
 
 ### Тестирование API endpoints — 22.02.2026
 

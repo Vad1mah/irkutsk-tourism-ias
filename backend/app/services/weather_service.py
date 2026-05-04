@@ -1,4 +1,5 @@
 """Сервис для получения погодных данных из OpenMeteo API."""
+import asyncio
 import aiohttp
 import time
 from datetime import date, timedelta
@@ -39,6 +40,34 @@ class WeatherService:
         if self._session and not self._session.closed:
             await self._session.close()
             self._session = None
+
+    async def _fetch_with_retry(
+        self, url: str, params: dict, max_retries: int = 3,
+    ) -> dict | None:
+        """GET with exponential backoff retry."""
+        for attempt in range(max_retries):
+            try:
+                session = await self._ensure_session()
+                async with session.get(
+                    url, params=params, timeout=aiohttp.ClientTimeout(total=30),
+                ) as response:
+                    if response.status == 200:
+                        return await response.json()
+                    if response.status == 429:
+                        wait = 2 ** attempt
+                        logger.warning(f"OpenMeteo 429, retry in {wait}s")
+                        await asyncio.sleep(wait)
+                        continue
+                    logger.error(f"OpenMeteo error: {response.status}")
+                    return None
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                if attempt < max_retries - 1:
+                    wait = 2 ** attempt
+                    logger.warning(f"Weather API attempt {attempt + 1} failed: {e}, retry in {wait}s")
+                    await asyncio.sleep(wait)
+                else:
+                    logger.error(f"Weather API failed after {max_retries} attempts: {e}")
+        return None
 
     def _get_cached(self, key: str) -> dict | None:
         """Получить значение из кэша с проверкой TTL."""
@@ -91,24 +120,12 @@ class WeatherService:
             "timezone": "Asia/Irkutsk",
         }
 
-        try:
-            session = await self._ensure_session()
-            async with session.get(
-                HISTORICAL_API,
-                params=params,
-                timeout=aiohttp.ClientTimeout(total=30),
-            ) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    result = self._parse_daily_data(data)
-                    self._set_cached(cache_key, result)
-                    return result
-                else:
-                    logger.error(f"OpenMeteo historical API error: {response.status}")
-                    return []
-        except Exception as e:
-            logger.error(f"Weather API error: {e}")
-            return []
+        data = await self._fetch_with_retry(HISTORICAL_API, params)
+        if data:
+            result = self._parse_daily_data(data)
+            self._set_cached(cache_key, result)
+            return result
+        return []
     
     async def get_forecast_weather(
         self,
@@ -135,22 +152,10 @@ class WeatherService:
             "forecast_days": min(days_ahead, 16),
         }
         
-        try:
-            session = await self._ensure_session()
-            async with session.get(
-                FORECAST_API,
-                params=params,
-                timeout=aiohttp.ClientTimeout(total=30),
-            ) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return self._parse_daily_data(data)
-                else:
-                    logger.error(f"OpenMeteo forecast API error: {response.status}")
-                    return []
-        except Exception as e:
-            logger.error(f"Weather forecast API error: {e}")
-            return []
+        data = await self._fetch_with_retry(FORECAST_API, params)
+        if data:
+            return self._parse_daily_data(data)
+        return []
     
     def _parse_daily_data(self, data: dict) -> list[dict]:
         """Парсит ответ OpenMeteo в список словарей."""

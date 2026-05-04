@@ -234,38 +234,3 @@ body {
 .stagger-3 { animation-delay: 0.3s; }
 .stagger-4 { animation-delay: 0.4s; }
 .stagger-5 { animation-delay: 0.5s; }
-
-/* Badge стили */
-.badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.25rem 0.75rem;
-  font-size: 0.75rem;
-  font-weight: 500;
-  border-radius: 9999px;
-  transition: all 0.2s;
-}
-
-.badge-primary {
-  background: hsl(var(--primary) / 0.15);
-  color: hsl(var(--primary));
-  border: 1px solid hsl(var(--primary) / 0.3);
-}
-
-.badge-accent {
-  background: hsl(var(--accent) / 0.15);
-  color: hsl(var(--accent));
-  border: 1px solid hsl(var(--accent) / 0.3);
-}
-
-.badge-success {
-  background: hsl(var(--success) / 0.15);
-  color: hsl(var(--success));
-  border: 1px solid hsl(var(--success) / 0.3);
-}
-
-.badge-warning {
-  background: hsl(var(--warning) / 0.15);
-  color: hsl(var(--warning));
-  border: 1px solid hsl(var(--warning) / 0.3);
-}

@@ -1,0 +1,939 @@
+{
+  "started_at": "2026-05-04T07:29:45.731364",
+  "viewport": {
+    "width": 1600,
+    "height": 1000
+  },
+  "base": "http://localhost:5173",
+  "routes": [
+    {
+      "slug": "home",
+      "path": "/",
+      "title": "Главная (B2B-командный центр)",
+      "status": 200,
+      "text_fragments_count": 122,
+      "english_markers": [],
+      "dev_comments": [],
+      "low_contrast": [],
+      "buttons": [
+        {
+          "text": "",
+          "aria": "Включить светлую тему",
+          "title": "",
+          "disabled": false,
+          "size": "40x40"
+        },
+        {
+          "text": "Иркутский",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "224x46"
+        },
+        {
+          "text": "Подробный прогноз",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "210x34"
+        },
+        {
+          "text": "Все события",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "136x34"
+        },
+        {
+          "text": "RevPAR на майские",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "303x70"
+        },
+        {
+          "text": "События с пиком спроса",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "303x70"
+        },
+        {
+          "text": "Сравни районы по тарифу",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "303x70"
+        },
+        {
+          "text": "Динамика бронирований",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "303x70"
+        },
+        {
+          "text": "Аналитика рынка\n\nRMS-метрики, heatmap, события",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "303x62"
+        },
+        {
+          "text": "Прогноз спроса\n\nEnsemble ML + объяснение",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "303x62"
+        },
+        {
+          "text": "Региональная карта\n\nОбъекты + загрузка",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "303x62"
+        },
+        {
+          "text": "Спросить AI\n\nСвой запрос в чат",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "303x62"
+        },
+        {
+          "text": "→ Найти свой объект на карте",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "358x16"
+        },
+        {
+          "text": "→ Прогноз 7–30 дней по району",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "358x16"
+        },
+        {
+          "text": "→ RevPAR / ADR в моём районе",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "358x16"
+        },
+        {
+          "text": "→ Сравнение районов",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "358x16"
+        },
+        {
+          "text": "→ Сезонная heatmap",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "358x16"
+        },
+        {
+          "text": "→ Календарь событий",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "358x16"
+        },
+        {
+          "text": "→ Сравнение моделей: RMSE / MAE / R²",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "358x16"
+        }
+      ],
+      "console_errors": [],
+      "page_errors": [],
+      "screenshots": {
+        "full": "C:\\Users\\Admin\\Desktop\\Diplom\\.screenshots\\audit\\home_full.png",
+        "viewport": "C:\\Users\\Admin\\Desktop\\Diplom\\.screenshots\\audit\\home_viewport.png"
+      }
+    },
+    {
+      "slug": "analytics",
+      "path": "/analytics",
+      "title": "Аналитика рынка",
+      "status": 200,
+      "text_fragments_count": 361,
+      "english_markers": [
+        {
+          "tag": "span",
+          "text": "Occupancy = avg(100 - available_rooms_percent). ADR ≈ avg(min_price) из 101Hotels API (proxy). RevPAR = ADR × Occupancy / 100.",
+          "marker": "Occupancy"
+        },
+        {
+          "tag": "p",
+          "text": "Изменение числа бронирований за сутки (Pickup): положительное значение — рост бронирований, отрицательное — сдача номеров. Период — последние 30 дней.",
+          "marker": "Pickup"
+        }
+      ],
+      "dev_comments": [],
+      "low_contrast": [],
+      "buttons": [
+        {
+          "text": "",
+          "aria": "Включить светлую тему",
+          "title": "",
+          "disabled": false,
+          "size": "40x40"
+        },
+        {
+          "text": "Иркутский",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "224x38"
+        },
+        {
+          "text": "CSV — загрузка",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "159x34"
+        },
+        {
+          "text": "CSV — события",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "157x34"
+        },
+        {
+          "text": "CSV — реестр",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "147x34"
+        },
+        {
+          "text": "Прогноз спроса\n\nEnsemble ML",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "303x62"
+        },
+        {
+          "text": "События и спрос\n\nКалендарь + impact",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "303x62"
+        },
+        {
+          "text": "Региональная карта\n\nОбъекты на карте",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "303x62"
+        },
+        {
+          "text": "О системе\n\nМетодология",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "303x62"
+        }
+      ],
+      "console_errors": [],
+      "page_errors": [],
+      "screenshots": {
+        "full": "C:\\Users\\Admin\\Desktop\\Diplom\\.screenshots\\audit\\analytics_full.png",
+        "viewport": "C:\\Users\\Admin\\Desktop\\Diplom\\.screenshots\\audit\\analytics_viewport.png"
+      }
+    },
+    {
+      "slug": "forecast",
+      "path": "/forecast",
+      "title": "Прогноз спроса",
+      "status": 200,
+      "text_fragments_count": 83,
+      "english_markers": [],
+      "dev_comments": [],
+      "low_contrast": [
+        {
+          "text": "Прогноз",
+          "ratio": 2.86,
+          "fg": "rgb(255, 255, 255)",
+          "bg": "rgb(13,162,231)",
+          "fontSize": "12px"
+        }
+      ],
+      "buttons": [
+        {
+          "text": "",
+          "aria": "Включить светлую тему",
+          "title": "",
+          "disabled": false,
+          "size": "40x40"
+        },
+        {
+          "text": "Иркутский",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "176x38"
+        },
+        {
+          "text": "7 дней",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "160x38"
+        },
+        {
+          "text": "Прогноз",
+          "aria": "",
+          "title": "Ансамблевый прогноз заполняемости",
+          "disabled": false,
+          "size": "74x32"
+        },
+        {
+          "text": "Модели",
+          "aria": "",
+          "title": "Сравнение моделей и метрики точности",
+          "disabled": false,
+          "size": "71x32"
+        },
+        {
+          "text": "Сезонность",
+          "aria": "",
+          "title": "Сезонные паттерны и корреляции",
+          "disabled": false,
+          "size": "94x32"
+        },
+        {
+          "text": "",
+          "aria": "",
+          "title": "Спросить AI",
+          "disabled": false,
+          "size": "26x26"
+        },
+        {
+          "text": "",
+          "aria": "",
+          "title": "Скачать PNG",
+          "disabled": false,
+          "size": "26x26"
+        },
+        {
+          "text": "Подробнее о моделях\n→",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "170x20"
+        },
+        {
+          "text": "Показать все (15) →",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "137x20"
+        }
+      ],
+      "console_errors": [],
+      "page_errors": [],
+      "screenshots": {
+        "full": "C:\\Users\\Admin\\Desktop\\Diplom\\.screenshots\\audit\\forecast_full.png",
+        "viewport": "C:\\Users\\Admin\\Desktop\\Diplom\\.screenshots\\audit\\forecast_viewport.png"
+      }
+    },
+    {
+      "slug": "events",
+      "path": "/events",
+      "title": "События и спрос",
+      "status": 200,
+      "text_fragments_count": 334,
+      "english_markers": [],
+      "dev_comments": [],
+      "low_contrast": [
+        {
+          "text": "Концерты",
+          "ratio": 3.51,
+          "fg": "rgb(147, 51, 234)",
+          "bg": "rgb(11,17,30)",
+          "fontSize": "12px"
+        },
+        {
+          "text": "Другое",
+          "ratio": 3.9,
+          "fg": "rgb(107, 114, 128)",
+          "bg": "rgb(11,17,30)",
+          "fontSize": "12px"
+        },
+        {
+          "text": "22",
+          "ratio": 3.9,
+          "fg": "rgb(107, 114, 128)",
+          "bg": "rgb(11,17,30)",
+          "fontSize": "12px"
+        }
+      ],
+      "buttons": [
+        {
+          "text": "",
+          "aria": "Включить светлую тему",
+          "title": "",
+          "disabled": false,
+          "size": "40x40"
+        },
+        {
+          "text": "",
+          "aria": "",
+          "title": "Спросить AI",
+          "disabled": false,
+          "size": "32x32"
+        },
+        {
+          "text": "",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "40x28"
+        },
+        {
+          "text": "",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "40x28"
+        },
+        {
+          "text": "Все источники",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "208x38"
+        },
+        {
+          "text": "Концерты\n(8)",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "115x24"
+        },
+        {
+          "text": "Театр\n(6)",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "91x24"
+        },
+        {
+          "text": "Фестивали\n(1)",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "118x24"
+        },
+        {
+          "text": "Спорт\n(1)",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "90x24"
+        },
+        {
+          "text": "Бизнес\n(1)",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "96x24"
+        },
+        {
+          "text": "Кино\n(1)",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "84x24"
+        },
+        {
+          "text": "Другое\n(22)",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "107x24"
+        },
+        {
+          "text": "27",
+          "aria": "",
+          "title": "",
+          "disabled": true,
+          "size": "103x72"
+        },
+        {
+          "text": "28",
+          "aria": "",
+          "title": "",
+          "disabled": true,
+          "size": "103x72"
+        },
+        {
+          "text": "29",
+          "aria": "",
+          "title": "",
+          "disabled": true,
+          "size": "103x72"
+        },
+        {
+          "text": "30",
+          "aria": "",
+          "title": "",
+          "disabled": true,
+          "size": "103x72"
+        },
+        {
+          "text": "1",
+          "aria": "",
+          "title": "",
+          "disabled": true,
+          "size": "103x72"
+        },
+        {
+          "text": "2",
+          "aria": "",
+          "title": "",
+          "disabled": true,
+          "size": "103x72"
+        },
+        {
+          "text": "3",
+          "aria": "",
+          "title": "",
+          "disabled": true,
+          "size": "103x72"
+        },
+        {
+          "text": "4сегодня\n3 события",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "103x78"
+        },
+        {
+          "text": "5\n4 события",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "103x78"
+        },
+        {
+          "text": "6\n1 событие",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "103x78"
+        },
+        {
+          "text": "7\n+2\n6 событий",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "103x78"
+        },
+        {
+          "text": "8\n2 события",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "103x78"
+        },
+        {
+          "text": "9\n1 событие",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "103x78"
+        },
+        {
+          "text": "10\n1 событие",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "103x78"
+        },
+        {
+          "text": "11",
+          "aria": "",
+          "title": "",
+          "disabled": true,
+          "size": "103x72"
+        },
+        {
+          "text": "12",
+          "aria": "",
+          "title": "",
+          "disabled": true,
+          "size": "103x72"
+        },
+        {
+          "text": "13\n1 событие",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "103x72"
+        },
+        {
+          "text": "14\n4 события",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "103x72"
+        },
+        {
+          "text": "15\n1 событие",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "103x72"
+        },
+        {
+          "text": "16\n1 событие",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "103x72"
+        },
+        {
+          "text": "17",
+          "aria": "",
+          "title": "",
+          "disabled": true,
+          "size": "103x72"
+        },
+        {
+          "text": "18\n1 событие",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "103x72"
+        },
+        {
+          "text": "19\n2 события",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "103x72"
+        },
+        {
+          "text": "20\n1 событие",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "103x72"
+        },
+        {
+          "text": "21\n4 события",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "103x72"
+        },
+        {
+          "text": "22",
+          "aria": "",
+          "title": "",
+          "disabled": true,
+          "size": "103x72"
+        },
+        {
+          "text": "23\n3 события",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "103x72"
+        },
+        {
+          "text": "24",
+          "aria": "",
+          "title": "",
+          "disabled": true,
+          "size": "103x72"
+        }
+      ],
+      "console_errors": [],
+      "page_errors": [],
+      "screenshots": {
+        "full": "C:\\Users\\Admin\\Desktop\\Diplom\\.screenshots\\audit\\events_full.png",
+        "viewport": "C:\\Users\\Admin\\Desktop\\Diplom\\.screenshots\\audit\\events_viewport.png"
+      }
+    },
+    {
+      "slug": "map",
+      "path": "/map",
+      "title": "Региональная карта",
+      "status": 200,
+      "text_fragments_count": 64,
+      "english_markers": [],
+      "dev_comments": [],
+      "low_contrast": [
+        {
+          "text": "Карта отелей",
+          "ratio": 1.21,
+          "fg": "rgb(8, 12, 22)",
+          "bg": "rgb(24,33,47)",
+          "fontSize": "14px"
+        },
+        {
+          "text": "Обзор районов",
+          "ratio": 4.48,
+          "fg": "rgb(117, 136, 163)",
+          "bg": "rgb(24,33,47)",
+          "fontSize": "14px"
+        },
+        {
+          "text": "Сезонная карта",
+          "ratio": 4.48,
+          "fg": "rgb(117, 136, 163)",
+          "bg": "rgb(24,33,47)",
+          "fontSize": "14px"
+        },
+        {
+          "text": "Сравнение",
+          "ratio": 4.48,
+          "fg": "rgb(117, 136, 163)",
+          "bg": "rgb(24,33,47)",
+          "fontSize": "14px"
+        }
+      ],
+      "buttons": [
+        {
+          "text": "",
+          "aria": "Включить светлую тему",
+          "title": "",
+          "disabled": false,
+          "size": "40x40"
+        },
+        {
+          "text": "",
+          "aria": "",
+          "title": "Спросить AI",
+          "disabled": false,
+          "size": "32x32"
+        },
+        {
+          "text": "Карта отелей",
+          "aria": "",
+          "title": "Размещение на карте",
+          "disabled": false,
+          "size": "140x32"
+        },
+        {
+          "text": "Обзор районов",
+          "aria": "",
+          "title": "Статистика по районам",
+          "disabled": false,
+          "size": "151x32"
+        },
+        {
+          "text": "Сезонная карта",
+          "aria": "",
+          "title": "Заполняемость по месяцам",
+          "disabled": false,
+          "size": "155x32"
+        },
+        {
+          "text": "Сравнение",
+          "aria": "",
+          "title": "Сравнение районов",
+          "disabled": false,
+          "size": "123x32"
+        }
+      ],
+      "console_errors": [],
+      "page_errors": [],
+      "screenshots": {
+        "full": "C:\\Users\\Admin\\Desktop\\Diplom\\.screenshots\\audit\\map_full.png",
+        "viewport": "C:\\Users\\Admin\\Desktop\\Diplom\\.screenshots\\audit\\map_viewport.png"
+      }
+    },
+    {
+      "slug": "about",
+      "path": "/about",
+      "title": "О системе",
+      "status": 200,
+      "text_fragments_count": 128,
+      "english_markers": [],
+      "dev_comments": [],
+      "low_contrast": [],
+      "buttons": [
+        {
+          "text": "",
+          "aria": "Включить светлую тему",
+          "title": "",
+          "disabled": false,
+          "size": "40x40"
+        }
+      ],
+      "console_errors": [],
+      "page_errors": [],
+      "screenshots": {
+        "full": "C:\\Users\\Admin\\Desktop\\Diplom\\.screenshots\\audit\\about_full.png",
+        "viewport": "C:\\Users\\Admin\\Desktop\\Diplom\\.screenshots\\audit\\about_viewport.png"
+      }
+    },
+    {
+      "slug": "hotel-detail",
+      "path": "/hotels/220_101hotels",
+      "title": "Карточка объекта (отель «Ангара»)",
+      "status": 200,
+      "text_fragments_count": 96,
+      "english_markers": [],
+      "dev_comments": [],
+      "low_contrast": [
+        {
+          "text": "14 дней",
+          "ratio": 2.86,
+          "fg": "rgb(255, 255, 255)",
+          "bg": "rgb(13,162,231)",
+          "fontSize": "12px"
+        },
+        {
+          "text": "Запросить прогноз на 14 дней",
+          "ratio": 1.04,
+          "fg": "rgb(8, 12, 22)",
+          "bg": "rgb(11,17,30)",
+          "fontSize": "14px"
+        }
+      ],
+      "buttons": [
+        {
+          "text": "",
+          "aria": "Включить светлую тему",
+          "title": "",
+          "disabled": false,
+          "size": "40x40"
+        },
+        {
+          "text": "Назад",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "66x20"
+        },
+        {
+          "text": "Прогноз района Иркутский",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "209x28"
+        },
+        {
+          "text": "7 дней",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "59x24"
+        },
+        {
+          "text": "14 дней",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "65x24"
+        },
+        {
+          "text": "30 дней",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "68x24"
+        },
+        {
+          "text": "Запросить прогноз на 14 дней",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "275x40"
+        }
+      ],
+      "console_errors": [],
+      "page_errors": [],
+      "screenshots": {
+        "full": "C:\\Users\\Admin\\Desktop\\Diplom\\.screenshots\\audit\\hotel-detail_full.png",
+        "viewport": "C:\\Users\\Admin\\Desktop\\Diplom\\.screenshots\\audit\\hotel-detail_viewport.png"
+      }
+    },
+    {
+      "slug": "chat",
+      "path": "/chat",
+      "title": "AI-чат",
+      "status": 200,
+      "text_fragments_count": 33,
+      "english_markers": [],
+      "dev_comments": [],
+      "low_contrast": [],
+      "buttons": [
+        {
+          "text": "",
+          "aria": "Включить светлую тему",
+          "title": "",
+          "disabled": false,
+          "size": "40x40"
+        },
+        {
+          "text": "RevPAR на майские",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "219x66"
+        },
+        {
+          "text": "События с пиком спроса",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "219x66"
+        },
+        {
+          "text": "Сравни районы по тарифу",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "219x66"
+        },
+        {
+          "text": "Динамика бронирований",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "219x66"
+        },
+        {
+          "text": "Погода как фактор спроса",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "219x66"
+        },
+        {
+          "text": "Прогноз спроса 14 дней",
+          "aria": "",
+          "title": "",
+          "disabled": false,
+          "size": "219x66"
+        },
+        {
+          "text": "",
+          "aria": "",
+          "title": "",
+          "disabled": true,
+          "size": "66x50"
+        }
+      ],
+      "console_errors": [],
+      "page_errors": [],
+      "screenshots": {
+        "full": "C:\\Users\\Admin\\Desktop\\Diplom\\.screenshots\\audit\\chat_full.png",
+        "viewport": "C:\\Users\\Admin\\Desktop\\Diplom\\.screenshots\\audit\\chat_viewport.png"
+      }
+    }
+  ]
+}

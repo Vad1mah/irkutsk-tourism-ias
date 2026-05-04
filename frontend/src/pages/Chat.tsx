@@ -55,24 +55,25 @@ function saveMessages(messages: Message[]) {
 }
 
 const TOOL_LABELS: Record<string, string> = {
-  search_hotels: 'Поиск отелей',
-  search_events: 'Поиск событий',
-  get_weather: 'Прогноз погоды',
+  search_hotels: 'Реестр объектов размещения',
+  search_events: 'События как фактор спроса',
+  get_weather: 'Погода как внешний фактор',
   forecast_occupancy: 'Прогноз загрузки',
-  get_statistics: 'Статистика',
+  get_statistics: 'KPI рынка',
+  get_revenue_metrics: 'RMS-метрики (RevPAR/ADR)',
 }
 
 const QUICK_QUESTIONS = [
-  { icon: TrendingUp, text: 'Покажи статистику загрузки по районам', short: 'Статистика районов' },
-  { icon: CloudSun, text: 'Как погода влияет на загрузку отелей?', short: 'Влияние погоды' },
-  { icon: Building2, text: 'Сравни отели в Листвянке и на Ольхоне', short: 'Сравнение отелей' },
-  { icon: Calendar, text: 'Какие события влияют на туристический поток?', short: 'Влияние событий' },
-  { icon: MapPin, text: 'Какой район самый загруженный сейчас?', short: 'Текущая загрузка' },
-  { icon: TrendingUp, text: 'Какие тренды загрузки за последние месяцы?', short: 'Тренды загрузки' },
+  { icon: TrendingUp, text: 'Рассчитай RevPAR на майские праздники по Иркутскому району и сравни с прошлой неделей', short: 'RevPAR на майские' },
+  { icon: Calendar, text: 'Какие ближайшие события сильнее всего поднимают спрос на размещение? Топ-5 с расчётом влияния', short: 'События с пиком спроса' },
+  { icon: Building2, text: 'Сравни средний тариф и загрузку по всем районам региона за последние 30 дней. Где RevPAR максимальный?', short: 'Сравни районы по тарифу' },
+  { icon: MapPin, text: 'Покажи динамику бронирований за последние 14 дней по Ольхонскому району. Тренд ускоряется или замедляется?', short: 'Динамика бронирований' },
+  { icon: CloudSun, text: 'Как погода повлияла на загрузку Иркутского района за последний месяц?', short: 'Погода как фактор спроса' },
+  { icon: TrendingUp, text: 'Дай прогноз загрузки и факторов спроса по Слюдянскому району на 14 дней', short: 'Прогноз спроса 14 дней' },
 ]
 
 function Chat() {
-  usePageTitle('AI-помощник')
+  usePageTitle('AI-агент')
   const [searchParams, setSearchParams] = useSearchParams()
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<Message[]>(() => loadMessages())
@@ -127,7 +128,15 @@ function Chat() {
             throw new Error(event.content)
           }
         }
-      } catch {
+        if (!fullText.trim()) {
+          const fallback = await api.query(text, sessionId)
+          fullText = fallback.answer
+          tools = fallback.sources
+        }
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          return
+        }
         if (!fullText) {
           const fallback = await api.query(text, sessionId)
           fullText = fallback.answer
@@ -223,12 +232,12 @@ function Chat() {
               <Sparkles className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold">AI-помощник</h1>
+              <h1 className="text-2xl font-bold">AI-агент</h1>
               <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                Задайте любой вопрос о туризме в Прибайкалье
+                B2B-аналитика рынка размещения в режиме диалога
               </p>
               <p className="text-xs text-[hsl(var(--muted-foreground)/0.7)] mt-1 max-w-md">
-                Ответы основаны на данных агрегаторов и ML-моделях. Перед бронированием проверяйте информацию на сайтах отелей.
+                Ответы строятся на ансамблевом прогнозе, RMS-метриках (RevPAR, ADR, динамика бронирований) и данных 11 источников. Для отельеров, региональной администрации и исследователей.
               </p>
             </div>
           </div>
@@ -240,13 +249,19 @@ function Chat() {
           {!hasMessages ? (
             <EmptyState onQuestion={handleQuestion} isLoading={mutation.isPending} />
           ) : (
-            messages.map((msg) => (
+            messages.map((msg, idx) => (
               <MessageBubble
                 key={msg.id}
                 message={msg}
                 onCopy={() => handleCopy(msg.text, msg.id)}
                 isCopied={copiedId === msg.id}
                 onRetry={msg.error ? handleRetry : undefined}
+                showTyping={
+                  mutation.isPending
+                  && msg.role === 'assistant'
+                  && !msg.text.trim()
+                  && idx === messages.length - 1
+                }
               />
             ))
           )}
@@ -305,7 +320,7 @@ function Chat() {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Спросите о туризме Прибайкалья..."
+              placeholder="Спросите B2B-аналитика: RevPAR, прогноз, события, RMS-метрики..."
               className="flex-1 bg-[hsl(var(--input))] border border-[hsl(var(--border))] rounded-xl px-4 py-3 text-[hsl(var(--foreground))] placeholder:text-[hsl(var(--muted-foreground))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))] focus:border-transparent transition-all"
             />
             <Button
@@ -332,24 +347,24 @@ function EmptyState({ onQuestion, isLoading }: { onQuestion: (text: string) => v
       </div>
       <h3 className="text-lg font-semibold mb-2">Чем могу помочь?</h3>
       <p className="text-sm text-[hsl(var(--muted-foreground))] max-w-md mb-6">
-        Спросите о загруженности отелей, событиях региона, ценах или получите рекомендации для путешествия.
+        Запросите RMS-метрики, прогноз спроса, влияние событий или сравнительную аналитику районов.
       </p>
-      
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 w-full max-w-2xl">
         {QUICK_QUESTIONS.map(({ icon: Icon, text, short }) => (
           <button
             key={text}
             onClick={() => onQuestion(text)}
             disabled={isLoading}
-            className="flex items-center gap-3 p-3 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--secondary)/0.3)] hover:bg-[hsl(var(--secondary))] hover:border-[hsl(var(--primary)/0.3)] transition-all text-left group disabled:opacity-50"
+            className="flex items-center gap-3 p-3 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--secondary)/0.6)] hover:bg-[hsl(var(--secondary))] hover:border-[hsl(var(--primary)/0.5)] transition-all text-left group disabled:opacity-50"
           >
-            <div className="w-8 h-8 rounded-lg bg-[hsl(var(--primary)/0.1)] flex items-center justify-center text-[hsl(var(--primary))] group-hover:bg-[hsl(var(--primary)/0.2)] transition-colors">
+            <div className="w-8 h-8 rounded-lg bg-[hsl(var(--primary)/0.15)] flex items-center justify-center text-[hsl(var(--primary))] group-hover:bg-[hsl(var(--primary)/0.25)] transition-colors">
               <Icon size={16} />
             </div>
-            <span className="text-sm text-[hsl(var(--muted-foreground))] group-hover:text-[hsl(var(--foreground))] transition-colors flex-1">
+            <span className="text-sm text-[hsl(var(--foreground))] flex-1">
               {short}
             </span>
-            <ArrowRight size={14} className="text-[hsl(var(--muted-foreground))] opacity-0 group-hover:opacity-100 transition-opacity" />
+            <ArrowRight size={14} className="text-[hsl(var(--primary))] opacity-50 group-hover:opacity-100 transition-opacity" />
           </button>
         ))}
       </div>
@@ -362,11 +377,13 @@ function MessageBubble({
   onCopy,
   isCopied,
   onRetry,
+  showTyping,
 }: {
   message: Message
   onCopy: () => void
   isCopied: boolean
   onRetry?: () => void
+  showTyping?: boolean
 }) {
   const isUser = message.role === 'user'
   const isError = message.error
@@ -407,6 +424,15 @@ function MessageBubble({
           {isUser ? (
             <p className="text-sm leading-relaxed whitespace-pre-wrap text-white">
               {message.text}
+            </p>
+          ) : showTyping ? (
+            <p className="text-sm text-[hsl(var(--muted-foreground))] flex items-center gap-2">
+              <span className="inline-flex gap-0.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-[hsl(var(--primary))] animate-bounce [animation-delay:0ms]" />
+                <span className="w-1.5 h-1.5 rounded-full bg-[hsl(var(--primary))] animate-bounce [animation-delay:150ms]" />
+                <span className="w-1.5 h-1.5 rounded-full bg-[hsl(var(--primary))] animate-bounce [animation-delay:300ms]" />
+              </span>
+              Генерирую ответ…
             </p>
           ) : (
             <div className="prose prose-sm prose-invert max-w-none

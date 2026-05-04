@@ -342,8 +342,11 @@ class EnsembleService:
 
         results = {}
 
-        # Метрики каждой модели
         for name, forecasts in forecasts_all["models"].items():
+            if forecasts:
+                fc_dates = [str(fp.date) for fp in forecasts[:3]]
+                ac_sample = list({str(k): v for k, v in actuals.items()}.keys())[:3]
+                logger.info(f"compare_models {name}: {len(forecasts)} pts, fc_dates={fc_dates}, ac_sample={ac_sample}")
             m = self._compute_metrics(forecasts, actuals)
             if m:
                 results[name] = m
@@ -364,12 +367,14 @@ class EnsembleService:
     def _compute_metrics(
         self,
         forecasts: list[ForecastPoint],
-        actuals: dict[str, float],
+        actuals: dict,
     ) -> dict | None:
+        actuals_str = {str(k): v for k, v in actuals.items()}
         y_true, y_pred = [], []
         for fp in forecasts:
-            if fp.date in actuals:
-                y_true.append(actuals[fp.date])
+            key = str(fp.date)
+            if key in actuals_str:
+                y_true.append(actuals_str[key])
                 y_pred.append(fp.occupancy)
         if not y_true:
             return None

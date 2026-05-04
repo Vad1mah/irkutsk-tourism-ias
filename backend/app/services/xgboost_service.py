@@ -92,6 +92,11 @@ class XGBoostService:
         test_size: int = 14,
     ) -> dict[str, float]:
         """Internal training implementation (requires lock held)."""
+        min_required = test_size + 30
+        if len(history) < min_required:
+            logger.warning(f"Insufficient data for XGBoost: {len(history)} < {min_required}")
+            return {"error": f"Need at least {min_required} data points, got {len(history)}"}
+
         logger.info(f"Обучение XGBoost/LightGBM на {len(history)} записях...")
 
         df = feature_engineering_service.create_features(
@@ -439,6 +444,7 @@ class XGBoostService:
         days_ahead: int = 30,
         weather_data: dict[date, dict] | None = None,
         events_data: list[dict] | None = None,
+        **kwargs,
     ) -> list[ForecastPoint]:
         """Async обёртка для forecast_occupancy."""
         return await asyncio.to_thread(

@@ -64,7 +64,12 @@ class ChromaService:
 
     def get_collection_count(self) -> int:
         """Количество документов в коллекции."""
-        return self._collection.count()
+        if not self._collection:
+            return 0
+        try:
+            return self._collection.count()
+        except Exception:
+            return -1
 
     def search(
         self,
@@ -136,6 +141,8 @@ class ChromaService:
 
     def delete_document(self, doc_id: str) -> bool:
         """Удалить документ по ID."""
+        if not self._collection:
+            return False
         try:
             self._collection.delete(ids=[doc_id])
             return True
@@ -145,6 +152,8 @@ class ChromaService:
 
     def clear_collection(self) -> None:
         """Очистить коллекцию."""
+        if not self._collection:
+            return
         try:
             all_ids = self._collection.get()["ids"]
             if all_ids:

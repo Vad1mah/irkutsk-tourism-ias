@@ -3,6 +3,10 @@
 .env.bak
 authorized_key.json
 
+# Claude Code / IDE persistent state (per-developer, не в репо)
+.remember/
+.claude/
+
 # Python
 __pycache__/
 *.pyc

@@ -45,12 +45,12 @@
 | 1 | Спроектировать архитектуру системы | Клиент-серверная архитектура с модульным бэкендом, Docker Compose |
 | 2 | Разработать базу данных | PostgreSQL 16 (SQLAlchemy 2.0 + asyncpg) |
 | 3 | Реализовать REST API | FastAPI backend (7 роутеров, 59 endpoints) |
-| 4 | Создать парсеры данных | 10 парсеров (BeautifulSoup4 + aiohttp + APScheduler) |
+| 4 | Создать парсеры данных | 17 модулей парсеров (8 источников событий, 2 отеля, погода + утилиты) |
 | 5 | Внедрить AI-агента | LangGraph + Mistral + ChromaDB (RAG + tools) |
 | 6 | Реализовать прогнозирование | Ensemble (Prophet + NeuralProphet + XGBoost + LightGBM) |
 | 7 | Разработать веб-интерфейс | React + TypeScript + Recharts + ECharts (8 страниц: Home, Chat, Analytics, Events, Map, Forecast, HotelDetail, About) |
 | 8 | Обеспечить безопасность | Rate Limiting + API key auth + CORS |
-| 9 | Провести тестирование | Unit (60) + E2E (9) тесты |
+| 9 | Провести тестирование | Unit (94) + E2E (9) тесты |
 
 ---
 
@@ -219,7 +219,7 @@ services:
     command: redis-server --appendonly yes
 ```
 
-**Данные в БД:** 678 отелей, 34 739 записей статистики, 227 событий из 8 источников
+**Данные в БД:** 1 366 отелей, 37 663 записи статистики, 318 событий из 8 источников
 
 ---
 
@@ -267,7 +267,7 @@ backend/
 │   ├── dependencies/
 │   │   ├── __init__.py         # DI (10 сервисных зависимостей)
 │   │   └── auth.py             # API key verification
-│   ├── parsers/                # 10 парсеров + утилиты
+│   ├── parsers/                # 17 модулей парсеров
 │   └── llm/
 │       └── groq_provider.py    # Groq HTTP client
 ├── tests/                      # pytest + pytest-asyncio
@@ -698,7 +698,7 @@ async def index_data(clear: bool = False) -> Dict[str, Any]:
 | React Query | 5.62 | Управление состоянием запросов |
 | React Router | 7.1 | Маршрутизация |
 | Recharts | 2.15 | Графики (Area, Bar, Line, Radar, Treemap) |
-| ECharts | tree-shaken | GeoMap на Dashboard |
+| ECharts | tree-shaken | GeoMap на Map |
 | Lucide React | 0.468 | Иконки |
 
 ### 5.2 Структура проекта
@@ -719,13 +719,11 @@ frontend/
 │   ├── pages/
 │   │   ├── Home.tsx          # AI-чат с агентом
 │   │   ├── Chat.tsx          # SSE streaming чат
-│   │   ├── Situation.tsx     # Дашборд (Ensemble прогноз + KPI)
-│   │   ├── Seasonality.tsx   # Сезонность и корреляции
+│   │   ├── Analytics.tsx     # Аналитика (KPI, прогноз, рекомендации)
 │   │   ├── Events.tsx        # Каталог событий (поиск + фильтры)
 │   │   ├── Map.tsx           # Аналитика регионов (treemap, radar)
 │   │   ├── Forecast.tsx      # Прогнозирование (Ensemble + сравнение)
 │   │   ├── HotelDetail.tsx   # Карточка отеля (/hotels/:id)
-│   │   ├── Dashboard.tsx     # ECharts GeoMap, KPI
 │   │   └── About.tsx         # О системе для комиссии
 │   ├── lib/cn.ts             # clsx + tailwind-merge
 │   └── utils/weather.ts      # Weather emoji helper
@@ -835,7 +833,7 @@ curl -X POST "http://localhost:8000/api/query" \
 
 | Тест | Статус | Примечание |
 |------|--------|------------|
-| Подключение к PostgreSQL | ✅ | 678 отелей в БД |
+| Подключение к PostgreSQL | ✅ | 1 366 отелей в БД |
 | Индексация ChromaDB | ✅ | 535 документов |
 | Парсер irk.ru | ✅ | События загружаются |
 | AI-агент | ✅ | Retry logic работает |
@@ -952,7 +950,7 @@ async def get_correlation_data() -> Dict[str, Any]:
 
 ### 7.4 Визуализация на Frontend
 
-Страницы: `Seasonality.tsx`, `Situation.tsx`, `Dashboard.tsx` (Recharts + ECharts)
+Страницы: `Analytics.tsx`, `Map.tsx` (Recharts + ECharts)
 
 Компоненты:
 1. **KPI карточки** — ключевые метрики
@@ -966,11 +964,11 @@ async def get_correlation_data() -> Dict[str, Any]:
 #### Страница "Отели" (`/hotels`)
 
 Функционал:
-- Таблица 678 отелей с сортировкой и поиском
+- Таблица 1 366 отелей с сортировкой и поиском
 - Статистика по городам с загруженностью
 - Фильтрация по городу
 - Координаты для геопозиционирования
-- Карта отелей на Dashboard (ECharts GeoMap) и графики на Recharts
+- Карта отелей на Map (ECharts GeoMap) и графики на Recharts
 
 #### Улучшения страницы "События" (`/events`)
 
@@ -1002,7 +1000,7 @@ async def get_correlation_data() -> Dict[str, Any]:
 │   asyncio.gather(                                       │
 │     ┌──────────┐ ┌──────────────┐ ┌──────────┐ ┌──────────┐   │
 │     │ Prophet  │ │ NeuralProphet│ │ XGBoost  │ │ LightGBM │   │
-│     │ weather  │ │ events +     │ │ 25+ feat │ │ boosting │   │
+│     │ weather  │ │ events +     │ │ 38 feat  │ │ boosting │   │
 │     │ regressor│ │ autoregress  │ │ quantile │ │          │   │
 │     └────┬─────┘ └──────┬───────┘ └────┬─────┘ └────┬─────┘   │
 │          │              │              │              │         │
@@ -1021,7 +1019,7 @@ async def get_correlation_data() -> Dict[str, Any]:
 
 Файл: `backend/app/services/feature_engineering.py`
 
-Генерация 25+ признаков для XGBoost:
+Генерация 38 признаков для XGBoost:
 
 | Категория | Признаки |
 |-----------|----------|
@@ -1089,7 +1087,7 @@ async def get_correlation_data() -> Dict[str, Any]:
 | @tanstack/react-query | 5.62 | Data fetching и кэширование |
 | react-router-dom | 7.1 | Маршрутизация с lazy loading |
 | recharts | 2.15 | Графики и визуализация |
-| echarts | tree-shaken | GeoMap (Dashboard) |
+| echarts | tree-shaken | GeoMap (Map) |
 | lucide-react | 0.468 | Иконки |
 | react-hot-toast | 2.6 | Уведомления |
 
@@ -1110,9 +1108,9 @@ async def get_correlation_data() -> Dict[str, Any]:
 ### Достигнутые результаты
 
 1. **Разработана модульная клиент-серверная архитектура** с чётким разделением ответственности (7 роутеров, 16 сервисов)
-2. **Реализован REST API** с 60 эндпоинтами, кэшированием (Redis) и rate limiting
+2. **Реализован REST API** с 59 эндпоинтами, кэшированием (Redis) и rate limiting
 3. **Внедрён AI-агент** на LangGraph с 5 инструментами и RAG-fallback (Mistral + ChromaDB)
-4. **Создано 10 парсеров** с автоматическим сбором данных (APScheduler)
+4. **Создано 17 модулей парсеров** (8 источников событий, 2 отеля, погода + утилиты) с автоматическим сбором данных (APScheduler)
 5. **Реализовано ансамблевое прогнозирование** (Prophet + NeuralProphet + XGBoost + LightGBM)
 6. **Разработан современный UI** на React с 8 страницами (Recharts + ECharts) и адаптивным дизайном
 7. **Реализован корреляционный анализ** событий и загруженности
@@ -1123,17 +1121,17 @@ async def get_correlation_data() -> Dict[str, Any]:
 
 | Метрика | Значение |
 |---------|----------|
-| Отелей в БД | 678 |
-| Записей статистики | 34 739 |
-| Событий из 8 источников | 227 |
+| Отелей в БД | 1 366 |
+| Записей статистики | 37 663 |
+| Событий из 8 источников | 318 |
 | Документов в ChromaDB | 629 |
 | Время ответа API (кэш) | < 100ms |
 | Время Ensemble прогноза | ~2 сек (async + кэш) |
 | Tool usage rate агента | ~90% |
 | Ensemble RMSE (Иркутский) | 2.67 |
-| API endpoints | 60 |
+| API endpoints | 59 |
 | Страниц frontend | 8 |
-| Unit тестов | 60 passed |
+| Unit тестов | 94 passed |
 | E2E тестов | 9/9 passed |
 
 ### Результаты тестирования (2026-02-03)
@@ -1142,8 +1140,8 @@ async def get_correlation_data() -> Dict[str, Any]:
 |-----------|--------|--------|
 | Backend Health | ✅ OK | Сервер работает |
 | ChromaDB | ✅ OK | 535 документов |
-| Hotels API | ✅ OK | 100 отелей (лимит пагинации) |
-| Events API | ✅ OK | 227 событий из 8 источников |
+| Hotels API | ✅ OK | 1 366 отелей |
+| Events API | ✅ OK | 318 событий из 8 источников |
 | Analytics KPI | ✅ OK | Все метрики |
 | Analytics Correlation | ✅ OK | r=0.96 |
 | Analytics Districts | ✅ OK | 5 районов |
@@ -1185,7 +1183,7 @@ async def get_correlation_data() -> Dict[str, Any]:
 - Culture38.ru: 6 событий за запрос
 - Добавлен endpoint `/api/parser/events/all` для запуска всех парсеров
 - Автоматическое сохранение в PostgreSQL (расписание APScheduler)
-- **Всего в базе: 227 событий из 8 источников**
+- **Всего в базе: 318 событий из 8 источников**
 
 #### UI исправления
 - Кнопка "Подробнее" теперь ведёт на /hotels
@@ -1333,7 +1331,7 @@ const { data } = useQuery({
 2. **AI-агент на LangGraph** с инструментами для аналитики туристической активности
 3. **Корреляционный анализ** влияния событий на загруженность с визуализацией пропусков данных
 4. **Мультипровайдерная LLM-архитектура** (основной — Mistral Large, до 1B токенов/мес; резервные провайдеры по `LLM_PROVIDER`)
-5. **Feature Engineering** (25+ признаков) для моделей прогнозирования с учётом погоды и событий
+5. **Feature Engineering** (38 признаков) для моделей прогнозирования с учётом погоды и событий
 
 ### Рекомендации по развитию
 

@@ -1,11 +1,9 @@
 """API для прогнозирования загрузки."""
 import asyncio
-import hashlib
 import time
 from fastapi import APIRouter, HTTPException, Query
 from datetime import date, timedelta
 from typing import Any
-import random
 import logging
 
 from app.models.schemas import (
@@ -46,54 +44,6 @@ def _evict_compare_cache() -> None:
         oldest = min(_compare_results, key=lambda k: _compare_results[k][0])
         _compare_results.pop(oldest, None)
         _compare_locks.pop(oldest, None)
-
-
-def _generate_demo_history(district: str, days: int = 90, holidays_svc=None) -> list[dict]:
-    """Генерация демо-данных истории загруженности."""
-    random.seed(int(hashlib.md5(district.encode()).hexdigest(), 16) % 10000)
-    history = []
-    base_date = date.today() - timedelta(days=days)
-
-    for i in range(days):
-        d = base_date + timedelta(days=i)
-        # Базовая загруженность с сезонностью
-        base = 45 + 15 * (1 + 0.5 * (d.month in [6, 7, 8, 12, 1]))
-        # Выходные выше
-        weekend_boost = 15 if d.weekday() >= 5 else 0
-        # Праздники
-        is_holiday = holidays_svc.is_holiday(d) if holidays_svc else False
-        holiday_boost = 20 if is_holiday else 0
-        # Случайный шум
-        noise = random.uniform(-10, 10)
-        occupancy = max(20, min(95, base + weekend_boost + holiday_boost + noise))
-
-        history.append({"date": d, "occupancy": occupancy})
-
-    return history
-
-
-def _generate_demo_forecast(district: str, days_ahead: int, holidays_svc=None) -> list[ForecastPoint]:
-    """Генерация демо-прогноза без Prophet."""
-    random.seed(hash(district) % 1000 + days_ahead)
-    forecast = []
-
-    for i in range(days_ahead):
-        d = date.today() + timedelta(days=i + 1)
-        base = 50 + 10 * (1 + 0.3 * (d.month in [6, 7, 8, 12, 1]))
-        weekend_boost = 12 if d.weekday() >= 5 else 0
-        is_holiday = holidays_svc.is_holiday(d) if holidays_svc else False
-        holiday_boost = 15 if is_holiday else 0
-        noise = random.uniform(-5, 5)
-        occupancy = max(25, min(90, base + weekend_boost + holiday_boost + noise))
-
-        forecast.append(ForecastPoint(
-            date=d,
-            occupancy=round(occupancy, 1),
-            lower_bound=round(max(10, occupancy - 15), 1),
-            upper_bound=round(min(100, occupancy + 15), 1),
-        ))
-
-    return forecast
 
 
 async def _get_history(hotel_id: str | None, district: str | None, data_svc=None) -> list[dict]:
@@ -155,24 +105,22 @@ async def _get_weather_and_events(
 async def _run_forecast(
     request: ForecastRequest,
     forecast_fn,
-    fallback_fn,
     min_history: int,
     data_svc,
     weather_svc,
-    holidays_svc,
     model_name: str = "model",
-    demo_days: int = 90,
     **extra_kwargs,
 ) -> ForecastResponse:
     """Общий пайплайн для endpoint'ов прогнозирования.
 
     Args:
         forecast_fn: async функция модели (forecast_occupancy_async)
-        fallback_fn: async функция fallback-модели при ошибке
         min_history: минимум точек истории для реального прогноза
         model_name: имя модели для логов
-        demo_days: дней демо-истории при недостатке данных
         extra_kwargs: доп. параметры для forecast_fn (n_lags, model и т.д.)
+
+    Raises:
+        HTTPException 422: если в БД < min_history точек истории.
     """
     if not request.hotel_id and not request.district:
         raise HTTPException(400, "Укажите hotel_id или district")
@@ -180,51 +128,30 @@ async def _run_forecast(
     history = await _get_history(request.hotel_id, request.district, data_svc)
     history = [h for h in history if h.get("occupancy") is not None]
     history_points = len(history)
-    data_source = "real"
 
-    if len(history) >= min_history:
-        weather_data, events_data = await _get_weather_and_events(
-            history, request.days_ahead, weather_svc, data_svc
+    if history_points < min_history:
+        raise HTTPException(
+            422,
+            f"Недостаточно данных для {model_name}: {history_points} точек, "
+            f"требуется минимум {min_history}",
         )
-        try:
-            forecast = await forecast_fn(
-                history=history,
-                days_ahead=request.days_ahead,
-                weather_data=weather_data,
-                events_data=events_data,
-                **extra_kwargs,
-            )
-        except Exception as e:
-            logger.error(f"{model_name} error: {e}")
-            if fallback_fn is None:
-                raise
-            forecast = await fallback_fn(
-                history=history,
-                days_ahead=request.days_ahead,
-                weather_data=weather_data,
-                events_data=events_data,
-            )
-    else:
-        data_source = "demo"
-        district_name = request.district or DEFAULT_DISTRICT
-        demo_history = _generate_demo_history(district_name, days=demo_days, holidays_svc=holidays_svc)
-        history_points = len(demo_history)
-        try:
-            forecast = await forecast_fn(
-                history=demo_history,
-                days_ahead=request.days_ahead,
-                **extra_kwargs,
-            )
-        except Exception as e:
-            logger.error(f"{model_name} demo error: {e}")
-            forecast = _generate_demo_forecast(district_name, request.days_ahead, holidays_svc)
+
+    weather_data, events_data = await _get_weather_and_events(
+        history, request.days_ahead, weather_svc, data_svc
+    )
+    forecast = await forecast_fn(
+        history=history,
+        days_ahead=request.days_ahead,
+        weather_data=weather_data,
+        events_data=events_data,
+        **extra_kwargs,
+    )
 
     return ForecastResponse(
         hotel_id=request.hotel_id,
         district=request.district,
         forecast=forecast,
         history_points=history_points,
-        data_source=data_source,
     )
 
 
@@ -234,17 +161,14 @@ async def get_forecast(
     data_svc: DataServiceDep,
     prophet_svc: ProphetServiceDep,
     weather_svc: WeatherServiceDep,
-    holidays_svc: HolidaysServiceDep,
 ):
     """Прогноз загруженности (Prophet + weather/events regressors)."""
     return await _run_forecast(
         request=request,
         forecast_fn=prophet_svc.forecast_occupancy_async,
-        fallback_fn=None,
         min_history=7,
         data_svc=data_svc,
         weather_svc=weather_svc,
-        holidays_svc=holidays_svc,
         model_name="Prophet",
     )
 
@@ -292,20 +216,16 @@ async def get_weather(
 async def get_neural_forecast(
     request: ForecastRequest,
     data_svc: DataServiceDep,
-    prophet_svc: ProphetServiceDep,
     neuralprophet_svc: NeuralProphetServiceDep,
     weather_svc: WeatherServiceDep,
-    holidays_svc: HolidaysServiceDep,
 ):
     """Прогноз загруженности (NeuralProphet + авторегрессия + events)."""
     return await _run_forecast(
         request=request,
         forecast_fn=neuralprophet_svc.forecast_occupancy_async,
-        fallback_fn=prophet_svc.forecast_occupancy_async,
         min_history=14,
         data_svc=data_svc,
         weather_svc=weather_svc,
-        holidays_svc=holidays_svc,
         model_name="NeuralProphet",
         n_lags=14,
     )
@@ -361,22 +281,17 @@ async def compare_models(
 async def get_xgboost_forecast(
     request: ForecastRequest,
     data_svc: DataServiceDep,
-    prophet_svc: ProphetServiceDep,
     xgboost_svc: XGBoostServiceDep,
     weather_svc: WeatherServiceDep,
-    holidays_svc: HolidaysServiceDep,
 ):
     """Прогноз загруженности (XGBoost/LightGBM + 25 фичей)."""
     return await _run_forecast(
         request=request,
         forecast_fn=xgboost_svc.forecast_occupancy_async,
-        fallback_fn=prophet_svc.forecast_occupancy_async,
         min_history=30,
         data_svc=data_svc,
         weather_svc=weather_svc,
-        holidays_svc=holidays_svc,
         model_name="XGBoost",
-        demo_days=60,
         model="ensemble",
     )
 
@@ -408,19 +323,12 @@ async def get_ensemble_forecast(
     history = []
     weather_data = {}
     events_data = []
-    price_data = []
 
     try:
         history_data = await data_svc.get_occupancy_by_district(district)
         history = [
             {"date": row["date"], "occupancy": row["avg_occupancy"]}
             for row in history_data
-        ]
-        # Извлекаем цены из тех же данных
-        price_data = [
-            {"date": row["date"], "price": row.get("avg_price")}
-            for row in history_data
-            if row.get("avg_price")
         ]
     except Exception as e:
         logger.error(f"DB error: {e}")

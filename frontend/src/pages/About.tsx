@@ -59,7 +59,7 @@ const ARCH_BADGE_CLASS: Record<'primary' | 'accent' | 'success' | 'warning', str
 }
 
 const DATA_SOURCES = [
-  { name: '101hotels.com', desc: 'Отели, цены, загрузка', count: '490+ отелей' },
+  { name: '101hotels.com', desc: 'Отели, цены, заполняемость', count: '490+ отелей' },
   { name: 'irk.ru/afisha', desc: 'Афиша Иркутска', count: 'Автопарсинг' },
   { name: 'culture38.ru', desc: 'Культурные события', count: 'Автопарсинг' },
   { name: 'zeroevent.ru', desc: 'Агрегатор событий', count: 'Автопарсинг' },
@@ -83,7 +83,6 @@ function About() {
         </p>
         <div className="flex items-center justify-center gap-2 mt-3">
           <Badge variant="primary" size="sm">ВКР 2026</Badge>
-          <Badge variant="outline" size="sm">ИГУ, ИМЭИ</Badge>
         </div>
       </div>
 
@@ -97,12 +96,12 @@ function About() {
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {[
-              { label: 'Планирование', desc: 'Выберите район и период для обзора ситуации' },
-              { label: 'Аналитика', desc: 'Текущая загрузка, цены и прогноз по районам' },
-              { label: 'События', desc: 'Календарь мероприятий Прибайкалья' },
-              { label: 'Карта', desc: 'Визуализация загрузки по регионам' },
-              { label: 'Прогнозы', desc: 'ML-прогноз загрузки и анализ сезонности' },
-              { label: 'AI-помощник', desc: 'Задайте любой вопрос о туризме на Байкале' },
+              { label: 'Командный центр', desc: 'B2B-сводка региона: RevPAR, ADR, прогноз 14 дней, события с impact' },
+              { label: 'Аналитика рынка', desc: 'KPI, RMS-метрики, тепловая карта, динамика бронирований, экспорт CSV' },
+              { label: 'Прогноз спроса', desc: 'Ансамбль Prophet + NeuralProphet + XGBoost с факторами' },
+              { label: 'События и спрос', desc: 'Каталог событий с расчётом impact на загрузку' },
+              { label: 'Региональная карта', desc: 'GeoMap по 15 районам с цветовой шкалой загрузки' },
+              { label: 'AI-агент', desc: 'B2B-аналитик: запросы RMS-метрик и прогнозов в режиме диалога' },
             ].map(({ label, desc }) => (
               <div key={label} className="flex items-start gap-2 p-2 rounded-lg">
                 <span className="text-sm font-semibold text-[hsl(var(--primary))] whitespace-nowrap">{label}</span>

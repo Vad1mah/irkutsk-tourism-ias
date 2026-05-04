@@ -64,11 +64,8 @@ class FeatureEngineeringService:
 
         df = self._add_rolling_features(df)
 
-        if weather_data:
-            df = self._add_weather_features(df, weather_data)
-
-        if events_data:
-            df = self._add_event_features(df, events_data)
+        df = self._add_weather_features(df, weather_data or {})
+        df = self._add_event_features(df, events_data or [])
 
         df = self._add_trend_features(df)
 
@@ -161,8 +158,10 @@ class FeatureEngineeringService:
             else:
                 logger.debug(f"Skipping lag_{lag}: only {data_len} data points")
 
+        # shift(1) prevents target leakage: diff uses y[i-1] - y[i-1-d], not y[i]
+        y_shifted = df["y"].shift(1)
         for d in DIFF_DAYS:
-            df[f"diff_{d}"] = df["y"].diff(d)
+            df[f"diff_{d}"] = y_shifted.diff(d)
 
         return df
 
@@ -175,11 +174,13 @@ class FeatureEngineeringService:
         w_short = ROLLING_WINDOWS[0]  # 7
         w_long = ROLLING_WINDOWS[1] if len(ROLLING_WINDOWS) > 1 else 30
 
-        df[f"rolling_mean_{w_short}"] = df["y"].rolling(w_short, min_periods=1).mean()
-        df[f"rolling_mean_{w_long}"] = df["y"].rolling(w_long, min_periods=1).mean()
-        df[f"rolling_std_{w_short}"] = df["y"].rolling(w_short, min_periods=2).std().bfill().fillna(0)
-        df[f"rolling_min_{w_short}"] = df["y"].rolling(w_short, min_periods=1).min()
-        df[f"rolling_max_{w_short}"] = df["y"].rolling(w_short, min_periods=1).max()
+        # shift(1) prevents target leakage: rolling stats exclude current y[i]
+        y_past = df["y"].shift(1)
+        df[f"rolling_mean_{w_short}"] = y_past.rolling(w_short, min_periods=1).mean()
+        df[f"rolling_mean_{w_long}"] = y_past.rolling(w_long, min_periods=1).mean()
+        df[f"rolling_std_{w_short}"] = y_past.rolling(w_short, min_periods=2).std().bfill().fillna(0)
+        df[f"rolling_min_{w_short}"] = y_past.rolling(w_short, min_periods=1).min()
+        df[f"rolling_max_{w_short}"] = y_past.rolling(w_short, min_periods=1).max()
         return df
 
     # ------------------------------------------------------------------
@@ -375,9 +376,7 @@ class FeatureEngineeringService:
                         if src >= split_idx:
                             test_df.loc[row_idx, col] = train_df["y"].iloc[-1]
                     elif col.startswith("diff_"):
-                        diff_n = int(col.rsplit("_", 1)[1])
-                        if split_idx + i - diff_n >= split_idx:
-                            test_df.loc[row_idx, col] = 0.0
+                        test_df.loc[row_idx, col] = 0.0
                     elif col.startswith("rolling_"):
                         test_df.loc[row_idx, col] = train_df[col].iloc[-1]
 

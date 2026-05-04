@@ -89,17 +89,19 @@ F(x) = Σ fₖ(x)
 
 **Особенность:** Требует feature engineering — ручного создания признаков.
 
-**Наши 34 признака:**
+**Наши 38 признаков:**
 
 | Категория | Признаки | Количество |
 |-----------|----------|------------|
-| Календарные | day_of_week, month, is_weekend, quarter... | 8 |
-| Праздники | is_holiday, days_to_holiday, is_school_holiday... | 5 |
-| Лаги | lag_1, lag_7, lag_14, lag_30, lag_365 | 7 |
-| Rolling | mean_7, mean_30, std_7, min_7, max_7 | 5 |
-| Погода | temperature, precipitation, is_good_weather | 4 |
+| Календарные | day_of_week, day_of_month, month, quarter, week_of_year, is_weekend, is_month_start, is_month_end | 8 |
+| Праздники | is_holiday, days_to_holiday, days_from_holiday, is_long_weekend, season | 5 |
+| Лаги | lag_1, lag_7, lag_14, lag_30, lag_90 | 5 |
+| Дифференциалы | diff_1, diff_7 | 2 |
+| Rolling | rolling_mean_7, rolling_mean_30, rolling_std_7, rolling_min_7, rolling_max_7 | 5 |
+| Погода | temperature, precipitation, temp_deviation, is_good_weather | 4 |
 | События | events_count, events_week, has_major_event | 3 |
 | Тренд | time_index, trend | 2 |
+| Цены | price, price_lag_7, price_trend_7, price_rolling_mean_7 | 4 |
 
 **Преимущества:**
 - Высокая точность на табличных данных

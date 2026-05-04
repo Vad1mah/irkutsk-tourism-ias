@@ -139,21 +139,18 @@ class NeuralProphetService:
             if hasattr(last_history_date, "date"):
                 last_history_date = last_history_date.date()
 
-            # raw=True: step1..stepN = прогноз на 1..N шагов от ds строки
-            forecast_raw = model.predict(future, raw=True, decompose=False)
-            # default mode: yhat<i> = i-step-ahead prediction targeting ds
-            forecast_target = model.predict(future)
-            logger.info(
-                f"NeuralProphet raw shape: {forecast_raw.shape}, "
-                f"target shape: {forecast_target.shape}"
-            )
-
             _rolling = df["y"].rolling(7, min_periods=1).mean()
             train_residuals = float(np.nanstd(df["y"].values[-30:] - _rolling.values[-30:])) if len(df) > 30 else 10.0
 
+            forecast_raw = model.predict(future, raw=True, decompose=False)
+            logger.info(f"NeuralProphet raw shape: {forecast_raw.shape}")
             result = self._extract_forecast_raw(forecast_raw, days_ahead, last_history_date, train_residuals)
+
             if not result:
+                forecast_target = model.predict(future)
+                logger.info(f"NeuralProphet target shape: {forecast_target.shape}")
                 result = self._extract_forecast(forecast_target, days_ahead, last_history_date, train_residuals)
+
             logger.info(f"NeuralProphet: извлечено {len(result)} точек прогноза")
             return result
 
@@ -445,6 +442,7 @@ class NeuralProphetService:
         days_ahead: int = 30,
         weather_data: dict[date, dict] | None = None,
         events_data: list[dict] | None = None,
+        **kwargs,
     ) -> list[ForecastPoint]:
         """Async обёртка для forecast_occupancy."""
         return await asyncio.to_thread(

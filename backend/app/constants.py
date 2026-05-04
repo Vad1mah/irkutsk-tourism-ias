@@ -242,7 +242,7 @@ ROLLING_WINDOWS: list[int] = [7, 30]
 # ---------------------------------------------------------------------------
 
 AGENT_MAX_TOOL_CALLS: int = 5
-AGENT_RECURSION_LIMIT: int = 10
+AGENT_RECURSION_LIMIT: int = 25  # 5 tool_calls × ~3 step (model→tools→model) + запас
 AGENT_SEARCH_RESULTS: int = 7
 
 

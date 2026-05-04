@@ -11,6 +11,7 @@ from prophet import Prophet
 
 from app.models.schemas import ForecastPoint
 from app.constants import AVG_MONTHLY_TEMP_IRKUTSK
+from app.services.holidays_service import holidays_service
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ class ProphetService:
         df["ds"] = pd.to_datetime(df["ds"])
         df = df.dropna().sort_values("ds").reset_index(drop=True)
 
-        holidays_df = self._build_holidays(events, events_data)
+        holidays_df = self._build_holidays(events, events_data, history)
         use_weather = weather_data and len(weather_data) > 0
 
         if use_weather:
@@ -72,11 +73,14 @@ class ProphetService:
 
         result = []
         for _, row in forecast.tail(days_ahead).iterrows():
+            occ = float(row["yhat"]) if not pd.isna(row["yhat"]) else 50.0
+            lb = float(row["yhat_lower"]) if not pd.isna(row["yhat_lower"]) else occ - 10
+            ub = float(row["yhat_upper"]) if not pd.isna(row["yhat_upper"]) else occ + 10
             result.append(ForecastPoint(
                 date=row["ds"].date(),
-                occupancy=round(max(0, min(100, row["yhat"])), 1),
-                lower_bound=round(max(0, row["yhat_lower"]), 1),
-                upper_bound=round(min(100, row["yhat_upper"]), 1),
+                occupancy=round(max(0.0, min(100.0, occ)), 1),
+                lower_bound=round(max(0.0, min(100.0, lb)), 1),
+                upper_bound=round(max(0.0, min(100.0, ub)), 1),
             ))
 
         return result
@@ -85,21 +89,43 @@ class ProphetService:
         self,
         events: list[dict] | None,
         events_data: list[dict] | None,
+        history: list[dict] | None = None,
     ) -> pd.DataFrame | None:
         rows = []
+
+        # Russian national holidays from holidays_service
+        if history and len(history) > 0:
+            try:
+                dates = [h["date"] for h in history if h.get("date")]
+                if dates:
+                    min_d = min(d if isinstance(d, date) else date.fromisoformat(str(d)) for d in dates)
+                    max_d = max(d if isinstance(d, date) else date.fromisoformat(str(d)) for d in dates)
+                    end_d = max_d + timedelta(days=90)
+                    for h in holidays_service.get_holidays_in_range(min_d, end_d):
+                        rows.append({
+                            "ds": pd.to_datetime(h["date"]),
+                            "holiday": h["name"][:30],
+                            "lower_window": -2,
+                            "upper_window": 2,
+                        })
+            except Exception as e:
+                logger.warning(f"Failed to add national holidays: {e}")
+
         if events:
             for e in events:
                 d = e.get("date")
                 n = e.get("name", "event")
                 if d:
-                    rows.append({"ds": pd.to_datetime(d), "holiday": n})
+                    rows.append({"ds": pd.to_datetime(d), "holiday": n,
+                                 "lower_window": 0, "upper_window": 0})
 
         if events_data:
             for e in events_data:
                 d = e.get("date_start")
                 n = e.get("title", e.get("name", "event"))
                 if d:
-                    rows.append({"ds": pd.to_datetime(d), "holiday": n[:30]})
+                    rows.append({"ds": pd.to_datetime(d), "holiday": n[:30],
+                                 "lower_window": 0, "upper_window": 0})
 
         if not rows:
             return None

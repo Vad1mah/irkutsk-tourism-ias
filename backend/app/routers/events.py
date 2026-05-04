@@ -21,6 +21,36 @@ _SPAM_MARKERS = [
     "условия акции", "правила акции", "условия использования",
 ]
 
+# B2B-фокус: Иркутская область как whitelist локаций. События без location
+# не отбрасываем (многие источники не отдают location). Если же location указан —
+# проверяем, что он содержит одно из этих ключевых слов.
+_REGION_WHITELIST = [
+    "иркут", "ольхон", "байкал", "листвянк", "слюдянк", "ангарс", "усть-",
+    "хужир", "култук", "тулун", "братск", "усолье", "шелехов", "черемхов",
+    "саянск", "зима", "тайшет", "кропотк", "белореч", "большое голоустн",
+]
+
+# Чёрный список: однозначно НЕ Иркутская область (популярные «утечки» из парсеров).
+_OUT_OF_REGION = [
+    "москва", "санкт-петербург", "спб", "новосибирск", "красноярск",
+    "екатеринбург", "казань", "омск", "челябинск", "уфа", "владивосток",
+    "хабаровск", "сочи", "краснодар", "пермь", "тюмень", "томск", "кемерово",
+    "улан-удэ", "чита", "якутск",
+]
+
+
+def _is_outside_region(location) -> bool:
+    """Возвращает True, если location явно указывает на другой регион."""
+    if not location or not isinstance(location, str):
+        return False
+    low = location.lower()
+    if any(marker in low for marker in _OUT_OF_REGION):
+        # Whitelist может «спасти» событие: «Москва — Иркутск выезд»
+        if any(marker in low for marker in _REGION_WHITELIST):
+            return False
+        return True
+    return False
+
 
 @router.get("", response_model=list[Event])
 async def get_events(
@@ -66,6 +96,7 @@ async def get_events(
             )
             for row in events_data
             if not _is_spam(row.get("title", ""), row.get("description"))
+            and not _is_outside_region(row.get("location"))
         ]
         await cache.set(cache_key, [e.model_dump() for e in result], ttl=120)
         return result

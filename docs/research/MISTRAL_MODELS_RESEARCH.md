@@ -31,7 +31,7 @@
 │  │ • Chat с пользователем    │    │ • RAG (generate_response) │    │
 │  │ • Tools: search, weather  │    │ • JSON extract            │    │
 │  │ • Forecast прогнозы       │    │ • Classification          │    │
-│  │ • API: /api/chat/tools    │    │ • Internal calls          │    │
+│  │ • API: /api/query (режим tools) │    │ • Internal calls          │    │
 │  └───────────────────────────┘    └───────────────────────────┘    │
 │                                                                      │
 └─────────────────────────────────────────────────────────────────────┘

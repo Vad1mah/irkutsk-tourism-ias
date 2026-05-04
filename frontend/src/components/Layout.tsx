@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Toaster } from 'react-hot-toast'
+import type { LucideIcon } from 'lucide-react'
 import {
   Sparkles,
   Compass,
@@ -17,54 +18,122 @@ import {
   Moon,
   Info,
 } from 'lucide-react'
+import type { Location } from 'react-router-dom'
 import { Badge } from './ui'
 import { useTheme } from '../hooks/useTheme'
 import { api } from '../api/client'
 
-const navItems = [
-  { 
-    to: '/', 
-    icon: Compass, 
-    label: 'Планирование',
-    description: 'Спланируйте поездку'
+type NavItemConfig = {
+  to: string
+  icon: LucideIcon
+  label: string
+  description: string
+  badge?: string
+}
+
+function renderNavLink(
+  { to, icon: Icon, label, description, badge }: NavItemConfig,
+  location: Location,
+  setSidebarOpen: (open: boolean) => void,
+) {
+  const isActive = location.pathname === to
+  return (
+    <NavLink
+      key={to}
+      to={to}
+      onClick={() => setSidebarOpen(false)}
+      className={`
+        group flex items-center gap-3 px-3 py-3 rounded-xl transition-all duration-300
+        ${isActive
+          ? 'bg-gradient-to-r from-[hsl(var(--primary)/0.15)] to-[hsl(var(--accent)/0.1)] border border-[hsl(var(--primary)/0.3)]'
+          : 'hover:bg-[hsl(var(--secondary))] border border-transparent'
+        }
+      `}
+    >
+      <div
+        className={`
+        w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-300
+        ${isActive
+          ? 'bg-gradient-to-br from-[hsl(var(--primary))] to-[hsl(var(--accent))] text-white shadow-lg shadow-[hsl(var(--primary)/0.3)]'
+          : 'bg-[hsl(var(--secondary))] text-[hsl(var(--muted-foreground))] group-hover:text-[hsl(var(--foreground))]'
+        }
+      `}
+      >
+        <Icon size={18} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span
+            className={`font-medium text-sm ${isActive ? 'text-[hsl(var(--foreground))]' : 'text-[hsl(var(--muted-foreground))] group-hover:text-[hsl(var(--foreground))]'}`}
+          >
+            {label}
+          </span>
+          {badge && (
+            <Badge variant="accent" size="sm">
+              <Sparkles size={10} />
+              {badge}
+            </Badge>
+          )}
+        </div>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">{description}</p>
+      </div>
+      <ChevronRight
+        size={16}
+        className={`
+          transition-all duration-300
+          ${isActive
+            ? 'text-[hsl(var(--primary))] opacity-100'
+            : 'text-[hsl(var(--muted-foreground))] opacity-0 group-hover:opacity-100'
+          }
+        `}
+      />
+    </NavLink>
+  )
+}
+
+const overviewNavItems: NavItemConfig[] = [
+  {
+    to: '/',
+    icon: Compass,
+    label: 'Командный центр',
+    description: 'B2B-сводка по региону',
   },
-  { 
-    to: '/analytics', 
-    icon: LayoutDashboard, 
-    label: 'Аналитика',
-    description: 'Мониторинг и данные'
+  {
+    to: '/map',
+    icon: Map,
+    label: 'Региональная карта',
+    description: 'Загрузка по районам',
   },
-  { 
-    to: '/events', 
-    icon: PartyPopper, 
-    label: 'События',
-    description: 'Календарь мероприятий'
-  },
-  { 
-    to: '/map', 
-    icon: Map, 
-    label: 'Регионы',
-    description: 'Карта и аналитика районов'
+]
+
+const analyticalNavItems: NavItemConfig[] = [
+  {
+    to: '/analytics',
+    icon: LayoutDashboard,
+    label: 'Аналитика рынка',
+    description: 'KPI, RMS-метрики',
   },
   {
     to: '/forecast',
     icon: TrendingUp,
-    label: 'Прогнозы',
-    description: 'Прогноз загрузки и тренды',
-    badge: 'ML'
+    label: 'Прогноз спроса',
+    description: 'Ensemble + факторы',
+    badge: 'ML',
   },
-  { 
-    to: '/chat', 
-    icon: Sparkles, 
-    label: 'AI-помощник',
-    description: 'Задайте вопрос',
-    badge: 'AI'
+  {
+    to: '/events',
+    icon: PartyPopper,
+    label: 'События и спрос',
+    description: 'Влияние событий на загрузку',
   },
-  { 
-    to: '/about', 
-    icon: Info, 
+]
+
+const metaNavItems: NavItemConfig[] = [
+  {
+    to: '/about',
+    icon: Info,
     label: 'О системе',
-    description: 'О системе и источниках данных'
+    description: 'Архитектура и источники данных',
   },
 ]
 
@@ -83,7 +152,7 @@ function Layout() {
     <div className="min-h-screen flex bg-[hsl(var(--background))]">
       {/* Mobile header */}
       <div className="lg:hidden fixed top-0 left-0 right-0 z-50 h-14 flex items-center px-4 border-b border-[hsl(var(--border))] bg-[hsl(var(--card))]">
-        <button onClick={() => setSidebarOpen(true)} aria-label="Открыть меню" className="p-2 -ml-2 rounded-lg hover:bg-[hsl(var(--secondary))]">
+        <button onClick={() => setSidebarOpen(true)} aria-label="Открыть меню" className="p-2 -ml-2 rounded-lg hover:bg-[hsl(var(--secondary))] min-h-[44px] min-w-[44px] flex items-center justify-center">
           <Menu size={20} />
         </button>
         <div className="flex items-center gap-2 ml-3">
@@ -120,70 +189,42 @@ function Layout() {
                 Прибайкалье
               </h1>
               <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                Туристическая аналитика
+                B2B-аналитика рынка размещения
               </p>
             </div>
           </div>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-4 space-y-2">
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
           <p className="text-xs font-medium text-[hsl(var(--muted-foreground))] uppercase tracking-wider px-3 mb-4">
             Навигация
           </p>
-          {navItems.map(({ to, icon: Icon, label, description, badge }) => {
-            const isActive = location.pathname === to
-            return (
-              <NavLink
-                key={to}
-                to={to}
-                onClick={() => setSidebarOpen(false)}
-                className={`
-                  group flex items-center gap-3 px-3 py-3 rounded-xl transition-all duration-300
-                  ${isActive 
-                    ? 'bg-gradient-to-r from-[hsl(var(--primary)/0.15)] to-[hsl(var(--accent)/0.1)] border border-[hsl(var(--primary)/0.3)]' 
-                    : 'hover:bg-[hsl(var(--secondary))] border border-transparent'
-                  }
-                `}
-              >
-                <div className={`
-                  w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-300
-                  ${isActive 
-                    ? 'bg-gradient-to-br from-[hsl(var(--primary))] to-[hsl(var(--accent))] text-white shadow-lg shadow-[hsl(var(--primary)/0.3)]' 
-                    : 'bg-[hsl(var(--secondary))] text-[hsl(var(--muted-foreground))] group-hover:text-[hsl(var(--foreground))]'
-                  }
-                `}>
-                  <Icon size={18} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className={`font-medium text-sm ${isActive ? 'text-[hsl(var(--foreground))]' : 'text-[hsl(var(--muted-foreground))] group-hover:text-[hsl(var(--foreground))]'}`}>
-                      {label}
-                    </span>
-                    {badge && (
-                      <Badge variant="accent" size="sm">
-                        <Sparkles size={10} />
-                        {badge}
-                      </Badge>
-                    )}
-                  </div>
-                  <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">
-                    {description}
-                  </p>
-                </div>
-                <ChevronRight 
-                  size={16} 
-                  className={`
-                    transition-all duration-300
-                    ${isActive 
-                      ? 'text-[hsl(var(--primary))] opacity-100' 
-                      : 'text-[hsl(var(--muted-foreground))] opacity-0 group-hover:opacity-100'
-                    }
-                  `} 
-                />
-              </NavLink>
-            )
-          })}
+          {overviewNavItems.map((item) => renderNavLink(item, location, setSidebarOpen))}
+          <div
+            className="flex items-center gap-3 px-3 pt-3 pb-1"
+            role="separator"
+            aria-label="Раздел аналитики"
+          >
+            <div className="h-px flex-1 bg-[hsl(var(--border))]" />
+            <span className="text-[10px] font-medium uppercase tracking-wider text-[hsl(var(--muted-foreground))] shrink-0">
+              Аналитика
+            </span>
+            <div className="h-px flex-1 bg-[hsl(var(--border))]" />
+          </div>
+          {analyticalNavItems.map((item) => renderNavLink(item, location, setSidebarOpen))}
+          <div
+            className="flex items-center gap-3 px-3 pt-3 pb-1"
+            role="separator"
+            aria-label="Раздел системы"
+          >
+            <div className="h-px flex-1 bg-[hsl(var(--border))]" />
+            <span className="text-[10px] font-medium uppercase tracking-wider text-[hsl(var(--muted-foreground))] shrink-0">
+              Система
+            </span>
+            <div className="h-px flex-1 bg-[hsl(var(--border))]" />
+          </div>
+          {metaNavItems.map((item) => renderNavLink(item, location, setSidebarOpen))}
         </nav>
 
         {/* Footer */}
@@ -205,14 +246,14 @@ function Layout() {
               {isDark ? <Sun size={16} /> : <Moon size={16} />}
             </button>
           </div>
-          <p className="text-[10px] text-center text-[hsl(var(--muted-foreground))] mb-1">
-            Ищите отели через AI-помощника
+          <p className="text-xs text-center text-[hsl(var(--muted-foreground))] mb-1">
+            Для отельеров, администрации и исследователей
           </p>
           <NavLink
             to="/about"
             className="block text-xs text-center text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--primary))] transition-colors"
           >
-            О системе · ИГУ © 2026
+            О системе · © 2026
           </NavLink>
         </div>
       </aside>

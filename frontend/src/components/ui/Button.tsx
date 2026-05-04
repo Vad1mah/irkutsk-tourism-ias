@@ -100,7 +100,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         ) : (
           leftIcon
         )}
-        {children}
+        {!isLoading && children}
         {!isLoading && rightIcon}
       </button>
     )

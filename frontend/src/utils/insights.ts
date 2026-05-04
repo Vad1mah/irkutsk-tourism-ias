@@ -21,20 +21,20 @@ export function generateInsights(
       insights.push({
         type: 'positive',
         title: 'Сейчас свободно',
-        description: `Загрузка всего ${occ}% — идеальное время для бронирования`,
+        description: `Заполняемость всего ${occ}% — идеальное время для бронирования`,
         metric: `${occ}%`,
       })
     } else if (occ >= 40 && occ <= 70) {
       insights.push({
         type: 'neutral',
-        title: 'Умеренная загрузка',
-        description: `Загрузка ${occ}% — рекомендуем бронировать заранее`,
+        title: 'Умеренная заполняемость',
+        description: `Заполняемость ${occ}% — рекомендуем бронировать заранее`,
         metric: `${occ}%`,
       })
     } else if (occ > 70) {
       insights.push({
         type: 'negative',
-        title: 'Высокая загрузка',
+        title: 'Высокая заполняемость',
         description: `${occ}% номеров занято — бронируйте как можно раньше`,
         metric: `${occ}%`,
       })
@@ -51,14 +51,14 @@ export function generateInsights(
     if (diff > 5) {
       insights.push({
         type: 'negative',
-        title: 'Загрузка растёт',
+        title: 'Заполняемость растёт',
         description: `Ожидается рост на ${Math.round(diff)}% за ${points.length} дней — бронируйте заранее`,
         metric: `+${Math.round(diff)}%`,
       })
     } else if (diff < -5) {
       insights.push({
         type: 'positive',
-        title: 'Загрузка снижается',
+        title: 'Заполняемость снижается',
         description: `Ожидается снижение на ${Math.abs(Math.round(diff))}% — хорошее время подождать`,
         metric: `${Math.round(diff)}%`,
       })
@@ -66,7 +66,7 @@ export function generateInsights(
       insights.push({
         type: 'info',
         title: 'Стабильный прогноз',
-        description: `Загрузка останется в пределах ${Math.round(Math.min(...points.map(p => p.occupancy)))}–${Math.round(Math.max(...points.map(p => p.occupancy)))}%`,
+        description: `Заполняемость останется в пределах ${Math.round(Math.min(...points.map(p => p.occupancy)))}–${Math.round(Math.max(...points.map(p => p.occupancy)))}%`,
       })
     }
   }
@@ -105,7 +105,7 @@ export function generateInsights(
     insights.push({
       type: 'info',
       title: `${eventsCount} событий`,
-      description: 'Много мероприятий в ближайшее время — загрузка может вырасти',
+      description: 'Много мероприятий в ближайшее время — заполняемость может вырасти',
       metric: String(eventsCount),
     })
   }

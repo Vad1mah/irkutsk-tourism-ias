@@ -9,10 +9,10 @@ import {
 } from 'recharts'
 import {
   TrendingUp, Calendar, Layers, BarChart3, Sparkles,
-  ChevronDown, Cpu, MessageSquare, Lightbulb, Loader2, Download,
+  Cpu, MessageSquare, Lightbulb, Loader2, Download,
   Sun, Snowflake, Leaf, Cloud, AlertCircle, Filter, Zap, DollarSign,
 } from 'lucide-react'
-import { Card, CardHeader, CardTitle, CardContent, Badge } from '../components/ui'
+import { Card, CardHeader, CardTitle, CardContent, Badge, Dropdown } from '../components/ui'
 import { ErrorState } from '../components/ErrorState'
 import { exportChartPng } from '../utils/export'
 import { usePageTitle } from '../hooks/usePageTitle'
@@ -142,6 +142,11 @@ function Forecast() {
     return eventsData.filter(e => forecastDates.has(e.date_start))
   })()
 
+  const avgOccupancyPeriod =
+    ensemblePoints.length > 0
+      ? Math.round(ensemblePoints.reduce((a, b) => a + b.occupancy, 0) / ensemblePoints.length)
+      : 0
+
   const multiModelData = _buildMultiModelData(ensemblePoints, modelForecasts)
   const topFeatures = _getTopFeatures(featureImportance)
 
@@ -157,7 +162,7 @@ function Forecast() {
             <div>
               <h1 className="text-2xl font-bold">Прогнозирование</h1>
               <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                Прогноз загрузки с использованием ансамбля моделей
+                Прогноз заполняемости отелей
               </p>
             </div>
           </div>
@@ -167,50 +172,46 @@ function Forecast() {
         <div className="flex items-center gap-3">
           {viewMode !== 'seasonality' && (
             <>
-              <div className="relative">
-                <select
-                  value={district}
-                  onChange={(e) => setDistrict(e.target.value)}
-                  className="appearance-none px-4 py-2 pr-8 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]"
-                >
-                  {districtNames.map(d => <option key={d} value={d}>{d}</option>)}
-                </select>
-                <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))] pointer-events-none" />
-              </div>
-              <div className="relative">
-                <select
-                  value={daysAhead}
-                  onChange={(e) => setDaysAhead(Number(e.target.value))}
-                  className="appearance-none px-4 py-2 pr-8 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]"
-                >
-                  <option value={7}>7 дней</option>
-                  <option value={14}>14 дней</option>
-                  <option value={30}>30 дней</option>
-                </select>
-                <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))] pointer-events-none" />
-              </div>
+              <Dropdown
+                value={district}
+                onChange={setDistrict}
+                options={districtNames.map(d => ({ value: d, label: d }))}
+                compact
+                className="w-44"
+              />
+              <Dropdown
+                value={String(daysAhead)}
+                onChange={(v) => setDaysAhead(Number(v))}
+                options={[
+                  { value: '7', label: '7 дней' },
+                  { value: '14', label: '14 дней' },
+                  { value: '30', label: '30 дней' },
+                  { value: '60', label: '60 дней', hint: 'низкая точность' },
+                  { value: '90', label: '90 дней', hint: 'низкая точность' },
+                ]}
+                compact
+                className="w-40"
+              />
             </>
           )}
           {viewMode === 'seasonality' && availableYears.length > 0 && (
-            <div className="flex items-center gap-2">
-              <Filter size={16} className="text-[hsl(var(--muted-foreground))]" />
-              <select
-                value={selectedYear ?? ''}
-                onChange={(e) => setSelectedYear(e.target.value ? Number(e.target.value) : null)}
-                className="appearance-none px-4 py-2 pr-8 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]"
-              >
-                <option value="">Все годы</option>
-                {availableYears.map(year => (
-                  <option key={year} value={year}>{year}</option>
-                ))}
-              </select>
-            </div>
+            <Dropdown
+              value={selectedYear != null ? String(selectedYear) : ''}
+              onChange={(v) => setSelectedYear(v ? Number(v) : null)}
+              options={[
+                { value: '', label: 'Все годы' },
+                ...availableYears.map(y => ({ value: String(y), label: String(y) })),
+              ]}
+              icon={<Filter size={14} />}
+              compact
+              className="w-40"
+            />
           )}
           <div className="flex rounded-xl border border-[hsl(var(--border))] overflow-hidden">
             <button
               onClick={() => setViewMode('simple')}
               className={`px-3 py-2 text-xs font-medium transition-colors ${viewMode === 'simple' ? 'bg-[hsl(var(--primary))] text-white' : 'bg-[hsl(var(--card))] hover:bg-[hsl(var(--secondary))]'}`}
-              title="Ансамблевый прогноз загрузки"
+              title="Ансамблевый прогноз заполняемости"
             >
               Прогноз
             </button>
@@ -476,7 +477,7 @@ function Forecast() {
             || String((ensembleData as Record<string, unknown>)?.error || '')
             || 'Для построения прогноза требуется минимум 30 дней данных. Попробуйте выбрать другой район.'
           }
-          onRetry={() => queryClient.invalidateQueries()}
+          onRetry={() => queryClient.invalidateQueries({ queryKey: ['ensemble'] })}
         />
       ) : (
         <>
@@ -490,7 +491,7 @@ function Forecast() {
                     <span className="text-sm font-medium">{MODEL_LABELS[model] || model}</span>
                   </div>
                   <p className="text-2xl font-bold">{Math.round(Number(weight) * 100)}%</p>
-                  <p className="text-[10px] text-[hsl(var(--muted-foreground))]">вклад модели</p>
+                  <p className="text-xs text-[hsl(var(--muted-foreground))]">вклад модели</p>
                 </Card>
               ))}
             </div>
@@ -503,14 +504,14 @@ function Forecast() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Layers className="w-5 h-5 text-[hsl(var(--primary))]" />
-                    <CardTitle>Прогноз загрузки с интервалом уверенности</CardTitle>
+                    <CardTitle>Прогноз заполняемости с интервалом уверенности</CardTitle>
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge variant="primary" size="sm">
                       {ensembleData?.history_points} точек данных
                     </Badge>
                     <button
-                      onClick={() => navigate(`/chat?context=${encodeURIComponent(`Объясни прогноз загрузки для ${district} района на ${daysAhead} дней`)}`)}
+                      onClick={() => navigate(`/chat?context=${encodeURIComponent(`Объясни прогноз заполняемости для ${district} района на ${daysAhead} дней`)}`)}
                       className="p-1.5 rounded-lg hover:bg-[hsl(var(--primary)/0.1)] transition-colors"
                       title="Спросить AI"
                     >
@@ -572,6 +573,7 @@ function Forecast() {
                         borderRadius: '12px',
                         color: 'hsl(var(--foreground))',
                       }}
+                      itemStyle={{ color: 'hsl(var(--foreground))' }}
                     />
                     <Area type="monotone" dataKey="upper" stroke="none" fill="url(#ciGrad)" />
                     <Area type="monotone" dataKey="lower" stroke="none" fill="hsl(var(--background))" />
@@ -593,22 +595,131 @@ function Forecast() {
                     ))}
                   </AreaChart>
                 </ResponsiveContainer>
-                <div className="flex items-center justify-between mt-2 text-xs text-[hsl(var(--muted-foreground))]">
-                  <span className="flex items-center gap-1">
-                    <Calendar size={12} />
-                    {new Date(ensemblePoints[0].date).toLocaleDateString('ru-RU')} — {new Date(ensemblePoints[ensemblePoints.length - 1].date).toLocaleDateString('ru-RU')}
-                  </span>
-                  <span>
-                    Средняя загрузка: {Math.round(ensemblePoints.reduce((a, b) => a + b.occupancy, 0) / ensemblePoints.length)}%
-                  </span>
-                </div>
+                {viewMode === 'simple' ? (
+                  <div className="mt-4 space-y-3">
+                    <p className="text-sm text-[hsl(var(--foreground))]">
+                      Средняя заполняемость на период{' '}
+                      {new Date(ensemblePoints[0].date).toLocaleDateString('ru-RU')}
+                      {' — '}
+                      {new Date(ensemblePoints[ensemblePoints.length - 1].date).toLocaleDateString('ru-RU')}:{' '}
+                      <span className="font-semibold tabular-nums">{avgOccupancyPeriod}%</span>
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('expert')}
+                      className="text-sm font-medium text-[hsl(var(--primary))] hover:underline inline-flex items-center gap-1"
+                    >
+                      Подробнее о моделях
+                      <span aria-hidden>→</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between mt-2 text-xs text-[hsl(var(--muted-foreground))]">
+                    <span className="flex items-center gap-1">
+                      <Calendar size={12} />
+                      {new Date(ensemblePoints[0].date).toLocaleDateString('ru-RU')} — {new Date(ensemblePoints[ensemblePoints.length - 1].date).toLocaleDateString('ru-RU')}
+                    </span>
+                    <span>Средняя заполняемость: {avgOccupancyPeriod}%</span>
+                  </div>
+                )}
                 </div>
               </CardContent>
             </Card>
           )}
 
-          {/* Confidence indicator (simple mode) */}
+          {/* Simple view: компактный обзор прогноза + события горизонта */}
           {viewMode === 'simple' && ensemblePoints.length > 0 && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              {(() => {
+                const occs = ensemblePoints.map(p => p.occupancy)
+                const minOcc = Math.min(...occs)
+                const maxOcc = Math.max(...occs)
+                const minDay = ensemblePoints[occs.indexOf(minOcc)]
+                const maxDay = ensemblePoints[occs.indexOf(maxOcc)]
+                const ciAvg = Math.round(
+                  ensemblePoints.reduce((a, p) => a + (p.upper - p.lower), 0) / ensemblePoints.length
+                )
+                const fmt = (d: string) =>
+                  new Date(d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
+                return (
+                  <>
+                    <Card variant="glass" padding="md">
+                      <div className="flex items-center gap-2 mb-2 text-[hsl(var(--muted-foreground))]">
+                        <TrendingUp size={14} />
+                        <span className="text-xs uppercase tracking-wider">Пик загрузки</span>
+                      </div>
+                      <p className="text-2xl font-bold tabular-nums">{Math.round(maxOcc)}%</p>
+                      <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">{fmt(maxDay.date)}</p>
+                    </Card>
+                    <Card variant="glass" padding="md">
+                      <div className="flex items-center gap-2 mb-2 text-[hsl(var(--muted-foreground))]">
+                        <BarChart3 size={14} />
+                        <span className="text-xs uppercase tracking-wider">Спад загрузки</span>
+                      </div>
+                      <p className="text-2xl font-bold tabular-nums">{Math.round(minOcc)}%</p>
+                      <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">{fmt(minDay.date)}</p>
+                    </Card>
+                    <Card variant="glass" padding="md">
+                      <div className="flex items-center gap-2 mb-2 text-[hsl(var(--muted-foreground))]">
+                        <Layers size={14} />
+                        <span className="text-xs uppercase tracking-wider">Доверительный интервал</span>
+                      </div>
+                      <p className="text-2xl font-bold tabular-nums">±{Math.round(ciAvg / 2)} п.п.</p>
+                      <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">
+                        {ciAvg < 15 ? 'высокая уверенность' : ciAvg < 30 ? 'средняя уверенность' : 'низкая уверенность'}
+                      </p>
+                    </Card>
+                  </>
+                )
+              })()}
+            </div>
+          )}
+
+          {/* Simple view: события в горизонте прогноза */}
+          {viewMode === 'simple' && forecastEvents.length > 0 && (
+            <Card variant="glass">
+              <CardHeader className="pb-2">
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-5 h-5 text-[hsl(var(--accent))]" />
+                  <CardTitle className="text-base">События в горизонте прогноза</CardTitle>
+                </div>
+                <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                  Эти события могут изменить спрос в дни их проведения.
+                </p>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {forecastEvents.slice(0, 6).map((event) => (
+                    <div
+                      key={event.event_id}
+                      className="flex items-start gap-3 p-3 rounded-lg bg-[hsl(var(--secondary)/0.4)] hover:bg-[hsl(var(--secondary))] transition-colors cursor-pointer"
+                      onClick={() => navigate('/events')}
+                    >
+                      <div className="text-xs font-mono text-[hsl(var(--primary))] whitespace-nowrap mt-0.5">
+                        {new Date(event.date_start).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{event.title}</p>
+                        <p className="text-xs text-[hsl(var(--muted-foreground))]">{event.location || 'Иркутск'}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {forecastEvents.length > 6 && (
+                  <button
+                    type="button"
+                    onClick={() => navigate('/events')}
+                    className="mt-3 text-sm font-medium text-[hsl(var(--primary))] hover:underline inline-flex items-center gap-1"
+                  >
+                    Показать все ({forecastEvents.length}) →
+                  </button>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Confidence indicator (expert: доп. контекст к интервалу) */}
+          {viewMode === 'expert' && ensemblePoints.length > 0 && (
             <Card variant="glass" padding="md">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -713,9 +824,24 @@ function Forecast() {
                       <thead>
                         <tr className="border-b border-[hsl(var(--border))]">
                           <th className="text-left py-2 px-2 text-[hsl(var(--muted-foreground))]">Модель</th>
-                          <th className="text-right py-2 px-2">RMSE</th>
-                          <th className="text-right py-2 px-2">MAE</th>
-                          <th className="text-right py-2 px-2">R²</th>
+                          <th className="text-right py-2 px-2 align-bottom">
+                            <span className="block text-[hsl(var(--foreground))]">RMSE</span>
+                            <span className="block text-[10px] font-normal font-sans text-[hsl(var(--muted-foreground))] leading-tight mt-0.5 max-w-[9rem] ml-auto">
+                              Средняя ошибка прогноза в п.п.
+                            </span>
+                          </th>
+                          <th className="text-right py-2 px-2 align-bottom">
+                            <span className="block text-[hsl(var(--foreground))]">MAE</span>
+                            <span className="block text-[10px] font-normal font-sans text-[hsl(var(--muted-foreground))] leading-tight mt-0.5 max-w-[9rem] ml-auto">
+                              Среднее отклонение от реальных значений
+                            </span>
+                          </th>
+                          <th className="text-right py-2 px-2 align-bottom">
+                            <span className="block text-[hsl(var(--foreground))]">R²</span>
+                            <span className="block text-[10px] font-normal font-sans text-[hsl(var(--muted-foreground))] leading-tight mt-0.5 max-w-[9rem] ml-auto">
+                              Качество модели (1.0 = идеально)
+                            </span>
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
@@ -786,6 +912,7 @@ function Forecast() {
           </div>}
 
           {/* AI Explanation */}
+          {viewMode !== 'simple' && (
           <Card variant="gradient" className="bg-gradient-to-r from-[hsl(var(--accent)/0.05)] to-[hsl(var(--primary)/0.05)] border-[hsl(var(--accent)/0.2)]">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
@@ -839,7 +966,7 @@ function Forecast() {
                       </div>
                     </div>
                   )}
-                  <p className="text-[10px] text-[hsl(var(--muted-foreground))]">
+                  <p className="text-xs text-[hsl(var(--muted-foreground))]">
                     Сгенерировано за {explainData.processing_time}с
                   </p>
                 </div>
@@ -857,7 +984,9 @@ function Forecast() {
               )}
             </CardContent>
           </Card>
+          )}
           {/* District Comparison */}
+          {viewMode !== 'simple' && (
           <Card variant="glass">
             <CardHeader className="pb-2">
               <div className="flex items-center gap-2">
@@ -936,6 +1065,7 @@ function Forecast() {
               </CardContent>
             )}
           </Card>
+          )}
         </>
       )}
     </div>
@@ -1083,9 +1213,9 @@ function _calculateInsights(months: SeasonData[]) {
 
   return {
     bestMonth: bestMonth?.month || null,
-    bestReason: bestMonth ? `Загрузка ${Math.round(bestMonth.occupancy)}%, меньше туристов` : 'Нет данных',
+    bestReason: bestMonth ? `Заполняемость ${Math.round(bestMonth.occupancy)}%, меньше туристов` : 'Нет данных',
     peakMonth: peakMonth?.month || null,
-    peakReason: peakMonth ? `Загрузка ${Math.round(peakMonth.occupancy)}%, бронируйте заранее` : 'Нет данных',
+    peakReason: peakMonth ? `Заполняемость ${Math.round(peakMonth.occupancy)}%, бронируйте заранее` : 'Нет данных',
     cheapestMonth: cheapestMonth?.month || null,
     cheapestReason: cheapestMonth ? `Ср. цена ${Math.round(cheapestMonth.avgPrice).toLocaleString()}₽` : 'Нет данных',
   }
@@ -1097,7 +1227,7 @@ function _seasonDesc(months: SeasonData[], prefixes: string[]): string {
   if (valid.length === 0) return 'Нет данных за период'
   const avgOcc = Math.round(valid.reduce((a, b) => a + b.occupancy, 0) / valid.length)
   const avgPrice = Math.round(valid.reduce((a, b) => a + b.avgPrice, 0) / valid.length)
-  return avgPrice > 0 ? `Загрузка ~${avgOcc}%, ср. цена ${avgPrice.toLocaleString()}₽` : `Загрузка ~${avgOcc}%`
+  return avgPrice > 0 ? `Заполняемость ~${avgOcc}%, ср. цена ${avgPrice.toLocaleString()}₽` : `Заполняемость ~${avgOcc}%`
 }
 
 export default Forecast

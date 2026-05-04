@@ -1,9 +1,11 @@
 ---
-description: 
+description:
 alwaysApply: true
 ---
 
 # PROJECT RULES: Tourism Analytics System
+
+> **СНАЧАЛА:** прочитай `docs/NORTH_STAR.md` (курс), `docs/REFOCUS_PLAN.md` (план), `docs/SESSION_HANDOFF.md` (где остановились). Текущий курс — **B2B-рефокус** (отельеры, администрация, исследователи; БЕЗ туристов). Документы в `docs/_archive/` — устаревшая двухсегментная концепция, к ним не обращаться как к руководству.
 
 ## Общие правила
 - Всегда отвечай на русском языке
@@ -189,14 +191,24 @@ const api = {
 - CSP/HSTS headers в nginx
 - Non-root Docker containers
 
-## Ключевая документация
-- `docs/project/PROJECT_STATUS.md` — текущий статус проекта
-- `docs/GLOBAL_AUDIT.md` — глобальный аудит (145 пунктов, 25.03.2026)
-- `docs/project/PROJECT_AUDIT.md` — аудит проекта (12.03.2026)
-- `docs/project/PG_MIGRATION_PLAN.md` — план миграции YDB → PostgreSQL (завершён)
-- `docs/research/PARSERS_AUDIT.md` — аудит парсеров
-- `docs/research/LLM_PROVIDERS_RESEARCH.md` — исследование LLM-провайдеров
-- `docs/research/MISTRAL_MODELS_RESEARCH.md` — исследование моделей Mistral
+## Ключевая документация (актуальная)
+
+### Якорные (читать ВСЕГДА в начале сессии)
+- `docs/NORTH_STAR.md` — курс на B2B, контекст, запреты
+- `docs/REFOCUS_PLAN.md` — план работ до 12.05.2026 (9 этапов с DoD)
+- `docs/SESSION_HANDOFF.md` — текущее состояние сессии
+- `docs/vkr/SUPERVISOR_REQUIREMENTS.md` — 32 пункта оформления отчёта от преподавателя
+
+### Рабочие
+- `docs/project/PROJECT_STATUS.md` — фактическое состояние кода
+- `docs/project/PROJECT_AUDIT.md`, `PROJECT_CONTEXT.md` — справочно
+- `docs/project/PG_MIGRATION_PLAN.md` — миграция YDB → PostgreSQL (завершена)
+- `docs/research/*.md` — исследования технологий (15 документов)
+- `models/` — UML/IDEF диаграммы (преподавательская методология)
+- `new_tasks/` — методички и шаблоны ТЭО
+
+### Архив (НЕ использовать)
+- `docs/_archive/` — старая двухсегментная концепция (PROJECT_FOCUS, GLOBAL_AUDIT, DEEP_AUDIT, презентация дипломная)
 
 ## Завершённые миграции
 - **БД:** YDB → PostgreSQL 16 (SQLAlchemy 2.0 + asyncpg, docker-compose) — 22.02.2026

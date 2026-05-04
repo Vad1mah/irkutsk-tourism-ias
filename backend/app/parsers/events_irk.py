@@ -49,6 +49,28 @@ async def fetch_events_irk(days_ahead: int = 30) -> list[dict[str, Any]]:
     return events
 
 
+_LEGAL_NOISE_RE = re.compile(
+    r"(подлежат\s+обязательн|сертификац|лицензирован|"
+    r"согласно\s+(законодательств|постановл)|налог(ов|ообложен))",
+    re.IGNORECASE,
+)
+
+
+def _is_valid_event_title(title: str) -> bool:
+    """Отсекает юридический мусор/длинные фразы, попавшие на irk.ru/afisha вне карточек.
+
+    Карточка события на сайте — короткое название (до ~80 символов). Если HTML
+    выдал текст длиннее 120 символов или содержит юридические триггеры
+    («подлежат обязательной сертификации» и т. п.) — это попавший в общий поток
+    блок текста о правилах сайта, не событие.
+    """
+    if not title or len(title) > 120:
+        return False
+    if _LEGAL_NOISE_RE.search(title):
+        return False
+    return True
+
+
 def _parse_irk_html(html: str) -> list[dict[str, Any]]:
     """Парсинг HTML страницы irk.ru/afisha (обновлённая структура 2026)."""
     soup = BeautifulSoup(html, "html.parser")
@@ -128,7 +150,12 @@ def _parse_irk_html(html: str) -> list[dict[str, Any]]:
                     venue = candidate
                     break
             
-            if title and len(title) > 3 and title.lower() not in skip_words:
+            if (
+                title
+                and len(title) > 3
+                and title.lower() not in skip_words
+                and _is_valid_event_title(title)
+            ):
                 event_date = _parse_irk_date(date_str)
                 event_id = generate_event_id(title, event_date, "irk")
                 event_url = url_map.get(title.lower(), "https://irk.ru/afisha/")

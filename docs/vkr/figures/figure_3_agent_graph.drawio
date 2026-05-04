@@ -1,0 +1,77 @@
+<mxfile host="app.diagrams.net" agent="draw.io">
+  <diagram name="Граф агента" id="agent">
+    <mxGraphModel dx="1188" dy="653" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="start" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;fontFamily=Verdana;fontStyle=1;" value="Запрос&#xa;пользователя" vertex="1">
+          <mxGeometry height="70" width="140" x="90" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="rag" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=14;fontFamily=Verdana;" value="Поиск контекста&#xa;(RAG)&#xa;ChromaDB → top-5" vertex="1">
+          <mxGeometry height="60" width="150" x="280" y="340" as="geometry" />
+        </mxCell>
+        <mxCell id="model" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;fontFamily=Verdana;fontStyle=0;" value="Узел «Модель»&lt;br&gt;(LLM: Mistral Large)&lt;br&gt;Системная инструкция +&lt;br&gt;контекст RAG +&lt;br&gt;история диалога" vertex="1">
+          <mxGeometry height="110" width="170" x="270" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="decision" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14;fontFamily=Verdana;" value="Ответ содержит&#xa;вызов инструмента?" vertex="1">
+          <mxGeometry height="102.5" width="210" x="470" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="tools" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=14;fontFamily=Verdana;fontStyle=1;" value="Узел «Инструменты»" vertex="1">
+          <mxGeometry height="35" width="180" x="720" y="100" as="geometry" />
+        </mxCell>
+        <mxCell id="tool1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=14;fontFamily=Verdana;" value="search_hotels&#xa;(поиск отелей в ChromaDB)" vertex="1">
+          <mxGeometry height="50" width="180" x="720" y="150" as="geometry" />
+        </mxCell>
+        <mxCell id="tool2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=14;fontFamily=Verdana;" value="search_events&#xa;(поиск мероприятий)" vertex="1">
+          <mxGeometry height="50" width="180" x="720" y="210" as="geometry" />
+        </mxCell>
+        <mxCell id="tool3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=14;fontFamily=Verdana;" value="get_weather&#xa;(погода из Open-Meteo)" vertex="1">
+          <mxGeometry height="50" width="180" x="720" y="270" as="geometry" />
+        </mxCell>
+        <mxCell id="tool4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=14;fontFamily=Verdana;" value="forecast_occupancy&#xa;(ансамблевый прогноз)" vertex="1">
+          <mxGeometry height="40" width="180" x="720" y="330" as="geometry" />
+        </mxCell>
+        <mxCell id="tool5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=14;fontFamily=Verdana;" value="get_statistics&#xa;(KPI из PostgreSQL)" vertex="1">
+          <mxGeometry height="45" width="180" x="720" y="380" as="geometry" />
+        </mxCell>
+        <mxCell id="endnode" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;fontFamily=Verdana;fontStyle=1;" value="Ответ&#xa;пользователю&#xa;(потоковая передача, SSE)" vertex="1">
+          <mxGeometry height="90" width="170" x="490" y="310" as="geometry" />
+        </mxCell>
+        <mxCell id="memory" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=10;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=14;fontFamily=Verdana;" value="MemorySaver&#xa;(хранение контекста&#xa;по идентификатору&#xa;сессии)" vertex="1">
+          <mxGeometry height="110" width="160" x="80" y="275" as="geometry" />
+        </mxCell>
+        <mxCell id="a1" edge="1" parent="1" source="start" style="edgeStyle=orthogonalEdgeStyle;rounded=0;fontFamily=Verdana;fontSize=14;" target="model">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a_rag" edge="1" parent="1" source="rag" style="edgeStyle=orthogonalEdgeStyle;rounded=0;dashed=1;fontFamily=Verdana;fontSize=14;" target="model">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a2" edge="1" parent="1" source="model" style="edgeStyle=orthogonalEdgeStyle;rounded=0;fontFamily=Verdana;fontSize=14;" target="decision">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a3" edge="1" parent="1" source="decision" style="edgeStyle=orthogonalEdgeStyle;rounded=0;fontFamily=Verdana;fontSize=14;fontStyle=1;" target="tools" value="Да">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="660" y="255" />
+              <mxPoint x="660" y="117" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="a4" edge="1" parent="1" source="decision" style="edgeStyle=orthogonalEdgeStyle;rounded=0;fontFamily=Verdana;fontSize=14;fontStyle=1;" target="endnode" value="Нет">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a5" edge="1" parent="1" source="tools" style="edgeStyle=orthogonalEdgeStyle;rounded=0;fontFamily=Verdana;fontSize=14;" target="model" value="Результат&#xa;инструмента">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="810" y="70" />
+              <mxPoint x="355" y="70" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="a_mem" edge="1" parent="1" source="memory" style="dashed=1;fontFamily=Verdana;fontSize=14;" target="model">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -1,561 +1,551 @@
-import { useState, useMemo, memo, useEffect } from 'react'
+import { useState, useMemo, useEffect, memo, Fragment } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams, useNavigate } from 'react-router-dom'
-import { api, type DistrictData, type Recommendation } from '../api/client'
-import { getWeatherEmoji } from '../utils/weather'
-import { generateInsights } from '../utils/insights'
+import { api, type RevenueSummaryDistrict, type WeekdayHeatmapCell, type EventImpact } from '../api/client'
 import {
-  ComposedChart, Line, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, Legend,
 } from 'recharts'
 import {
-  MapPin, Building2, TrendingUp, DollarSign, Star,
-  ArrowUpRight, ArrowDownRight, Lightbulb, AlertCircle,
-  Calendar, CloudSun, Map as MapIcon,
-  BarChart3, MessageSquare, Info,
+  TrendingUp, DollarSign, BarChart3, Calendar, Download, Building2,
+  Activity, AlertCircle, MapPin, Info,
 } from 'lucide-react'
-import { Card, CardHeader, CardTitle, CardContent, Badge } from '../components/ui'
+import { Card, CardHeader, CardTitle, CardContent, Badge, Dropdown, Button } from '../components/ui'
 import { ErrorState } from '../components/ErrorState'
-import { InsightCard } from '../components/InsightCard'
 import { usePageTitle } from '../hooks/usePageTitle'
-import { DEFAULT_DISTRICT } from '../constants/districts'
+import { DEFAULT_DISTRICT, ALL_DISTRICT_NAMES } from '../constants/districts'
 
 function Analytics() {
-  usePageTitle('Аналитика')
+  usePageTitle('B2B-аналитика рынка')
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [selectedDistrict, setSelectedDistrict] = useState(searchParams.get('district') || DEFAULT_DISTRICT)
+
   useEffect(() => {
     setSearchParams({ district: selectedDistrict }, { replace: true })
   }, [selectedDistrict, setSearchParams])
 
-  const { data: districtsData, isLoading: loadingDist, isError: errorDist, refetch: refetchDist } = useQuery({
-    queryKey: ['districts'],
-    queryFn: api.getDistricts,
+  const { data: revenueSummary, isLoading: loadRev, isError: errRev, refetch: refetchRev } = useQuery({
+    queryKey: ['revenue-summary'],
+    queryFn: api.getRevenueSummary,
   })
 
-  const { data: recommendations, isLoading: loadingRec, isError: errorRec } = useQuery({
-    queryKey: ['recommendations'],
-    queryFn: api.getRecommendations,
+  const { data: heatmap, isLoading: loadHeat } = useQuery({
+    queryKey: ['weekday-heatmap', selectedDistrict],
+    queryFn: () => api.getWeekdayHeatmap(selectedDistrict),
   })
 
-  const { data: kpiData, isLoading: loadingKpi, isError: errorKpi } = useQuery({
-    queryKey: ['kpi'],
-    queryFn: api.getKPI,
+  const { data: pickup, isLoading: loadPickup } = useQuery({
+    queryKey: ['pickup-pace', selectedDistrict],
+    queryFn: () => api.getPickupPace(selectedDistrict, 30),
   })
 
-  const { data: hotels } = useQuery({
-    queryKey: ['hotels'],
-    queryFn: api.getHotels,
+  const { data: eventsImpact } = useQuery({
+    queryKey: ['events-impact'],
+    queryFn: api.getEventsImpact,
   })
 
-  const { data: ensembleData, isError: errorEnsemble } = useQuery({
-    queryKey: ['ensemble', selectedDistrict],
-    queryFn: () => api.ensembleForecast(selectedDistrict, 14),
-    retry: 1,
-    staleTime: 5 * 60 * 1000,
-  })
+  const districtKpi = useMemo<RevenueSummaryDistrict | null>(() => {
+    if (!revenueSummary) return null
+    return revenueSummary.by_district.find(d => d.district === selectedDistrict) || null
+  }, [revenueSummary, selectedDistrict])
 
-  const { data: weatherData } = useQuery({
-    queryKey: ['weather'],
-    queryFn: () => api.getWeather(7),
-  })
+  const topImpact = useMemo<EventImpact[]>(() => {
+    if (!eventsImpact) return []
+    return [...eventsImpact]
+      .filter(e => e.impact != null)
+      .sort((a, b) => Math.abs(b.impact || 0) - Math.abs(a.impact || 0))
+      .slice(0, 10)
+  }, [eventsImpact])
 
-  const { data: eventsData } = useQuery({
-    queryKey: ['events'],
-    queryFn: api.getEvents,
-  })
+  if (loadRev) return <AnalyticsSkeleton />
 
-  const { data: priceHistory, isError: errorPrice } = useQuery({
-    queryKey: ['price-history'],
-    queryFn: () => api.getPriceHistory(180),
-    staleTime: 10 * 60 * 1000,
-  })
-
-  const hasSecondaryErrors = errorRec || errorKpi || errorPrice || errorEnsemble
-
-  const upcomingEvents = useMemo(() => {
-    if (!eventsData) return []
-    const now = new Date()
-    return eventsData
-      .filter(e => new Date(e.date_start) >= now)
-      .sort((a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime())
-      .slice(0, 5)
-  }, [eventsData])
-
-  const isLoading = loadingDist || loadingRec || loadingKpi
-
-  const districtsList = useMemo<DistrictData[]>(() => districtsData || [], [districtsData])
-  const recommendationsList = useMemo<Recommendation[]>(() => recommendations || [], [recommendations])
-  const sortedDistricts = useMemo(
-    () => [...districtsList].sort((a, b) => a.occupancy - b.occupancy),
-    [districtsList],
-  )
-  const bestForTourist = sortedDistricts[0]
-  const worstForTourist = sortedDistricts[sortedDistricts.length - 1]
-
-  if (isLoading) return <AnalyticsSkeleton />
-
-  if (errorDist) {
-    return <ErrorState title="Ошибка загрузки данных" message="Не удалось загрузить данные о районах. Убедитесь, что сервер запущен." onRetry={() => refetchDist()} />
+  if (errRev) {
+    return (
+      <ErrorState
+        title="Ошибка загрузки RMS-метрик"
+        message="Не удалось получить агрегаты по рынку. Проверьте, что backend запущен."
+        onRetry={() => refetchRev()}
+      />
+    )
   }
 
-  const hasNoData = districtsList.length === 0
+  const hasData = revenueSummary && revenueSummary.by_district.length > 0
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {hasSecondaryErrors && (
-        <ErrorState
-          message={`Не удалось загрузить: ${[errorKpi && 'показатели', errorRec && 'рекомендации', errorPrice && 'историю цен', errorEnsemble && 'прогноз'].filter(Boolean).join(', ')}`}
-          onRetry={() => window.location.reload()}
-        />
-      )}
-
-      {/* 1. Header */}
-      <div>
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[hsl(var(--primary))] to-[hsl(var(--accent))] flex items-center justify-center">
-            <BarChart3 className="w-5 h-5 text-white" />
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[hsl(var(--primary))] to-[hsl(var(--accent))] flex items-center justify-center">
+              <BarChart3 className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold">B2B-аналитика рынка размещения</h1>
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                RMS-метрики, динамика бронирований, влияние событий на спрос
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-bold">Аналитика района</h1>
-            <p className="text-sm text-[hsl(var(--muted-foreground))]">
-              Актуальные данные и мониторинг
-            </p>
-          </div>
-        </div>
-        {districtsList.length > 0 && (
-          <select
+          <Dropdown
             value={selectedDistrict}
-            onChange={(e) => setSelectedDistrict(e.target.value)}
-            className="px-4 py-2 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]"
-          >
-            {districtsList.map(d => (
-              <option key={d.district} value={d.district}>{d.district}</option>
-            ))}
-          </select>
-        )}
+            onChange={setSelectedDistrict}
+            options={ALL_DISTRICT_NAMES.map(d => ({ value: d, label: d }))}
+            compact
+            className="w-56"
+            icon={<MapPin size={14} />}
+          />
+        </div>
+
+        <ExportButtons district={selectedDistrict} />
       </div>
 
-      {/* 3. No-data warning */}
-      {hasNoData ? (
+      {!hasData && (
         <Card variant="glass" className="border-[hsl(var(--warning))]">
           <CardContent>
             <div className="flex items-center gap-3">
               <AlertCircle className="w-6 h-6 text-[hsl(var(--warning))]" />
               <div>
-                <p className="font-medium">Нет данных о загруженности</p>
+                <p className="font-medium">Недостаточно данных по рынку</p>
                 <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                  Данные появятся после запуска парсера отелей. Загрузка данных занимает 5-10 минут.
+                  Запустите парсеры или дождитесь следующего цикла APScheduler.
                 </p>
               </div>
             </div>
           </CardContent>
         </Card>
-      ) : (
+      )}
+
+      {hasData && (
         <>
-          {/* 4. Two insight cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {bestForTourist && (
-              <Card variant="gradient" className="bg-gradient-to-br from-[hsl(var(--success)/0.1)] to-[hsl(var(--success)/0.05)] border-[hsl(var(--success)/0.3)]">
-                <CardContent>
-                  <div className="flex items-start gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-[hsl(var(--success)/0.2)] flex items-center justify-center">
-                      <ArrowDownRight className="w-6 h-6 text-[hsl(var(--success))]" />
-                    </div>
-                    <div className="flex-1">
-                      <Badge variant="success" size="sm" className="mb-2">Рекомендуем туристу</Badge>
-                      <h3 className="text-lg font-semibold">{bestForTourist.district}</h3>
-                      <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                        Наименьшая загрузка — <strong>{Math.round(bestForTourist.occupancy)}%</strong>
-                      </p>
-                      <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                        Свободно номеров: ~{bestForTourist.freeRooms || 'N/A'}
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {worstForTourist && districtsList.length > 1 && (
-              <Card variant="default" className="border-l-4 border-l-[hsl(var(--warning))]">
-                <CardContent>
-                  <div className="flex items-start gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-[hsl(var(--warning)/0.1)] flex items-center justify-center">
-                      <ArrowUpRight className="w-6 h-6 text-[hsl(var(--warning))]" />
-                    </div>
-                    <div className="flex-1">
-                      <Badge variant="warning" size="sm" className="mb-2">Высокий спрос</Badge>
-                      <h3 className="text-lg font-semibold">{worstForTourist.district}</h3>
-                      <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                        Загрузка — <strong>{Math.round(worstForTourist.occupancy)}%</strong>
-                      </p>
-                      <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                        Бронируйте заранее!
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+          {/* RMS KPI блок */}
+          <div>
+            <p className="text-xs uppercase tracking-wider text-[hsl(var(--muted-foreground))] mb-2">
+              RMS-метрики района «{selectedDistrict}»
+            </p>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <KPICard
+                title="Загрузка"
+                value={districtKpi ? `${districtKpi.occupancy}%` : '—'}
+                icon={Activity}
+                description="Средняя по району"
+                accent="primary"
+              />
+              <KPICard
+                title="ADR"
+                value={districtKpi?.adr ? `${districtKpi.adr.toLocaleString('ru-RU')}₽` : '—'}
+                icon={DollarSign}
+                description="Средний тариф номера"
+                accent="accent"
+              />
+              <KPICard
+                title="RevPAR"
+                value={districtKpi?.revpar ? `${districtKpi.revpar.toLocaleString('ru-RU')}₽` : '—'}
+                icon={TrendingUp}
+                description="Выручка на доступный номер"
+                accent="success"
+              />
+              <KPICard
+                title="Объектов"
+                value={districtKpi ? String(districtKpi.hotels_count) : '—'}
+                icon={Building2}
+                description={districtKpi ? `Достоверность: ${confidenceLabel(districtKpi.confidence)}` : ''}
+              />
+            </div>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mt-2 flex items-start gap-1.5">
+              <Info size={12} className="mt-0.5 flex-shrink-0" />
+              <span>{revenueSummary?.methodology}</span>
+            </p>
           </div>
 
-          {/* 5. KPI cards row */}
-          <p className="text-xs text-[hsl(var(--muted-foreground))] mb-1">Агрегированные показатели по всем отелям региона</p>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <KPICard
-              title="Отелей"
-              value={kpiData?.total_hotels?.toString() || '—'}
-              icon={Building2}
-              description={`${kpiData?.total_cities || 0} городов`}
-            />
-            <KPICard
-              title="Ср. загрузка"
-              value={kpiData?.avg_occupancy ? `${kpiData.avg_occupancy}%` : '—'}
-              icon={TrendingUp}
-              description="по всем отелям"
-            />
-            <KPICard
-              title="Всего номеров"
-              value={kpiData?.total_rooms?.toLocaleString() || '—'}
-              icon={MapPin}
-              description={`${kpiData?.free_rooms?.toLocaleString() || 0} свободно`}
-            />
-            <KPICard
-              title="Ср. цена"
-              value={kpiData?.avg_price ? `${Math.round(kpiData.avg_price).toLocaleString()}₽` : '—'}
-              icon={DollarSign}
-              description="за ночь"
-            />
-          </div>
-
-          {/* 6. Ensemble preview */}
-          <p className="text-xs text-[hsl(var(--muted-foreground))]">Ансамблевый прогноз загрузки на 14 дней</p>
-          {(() => {
-            const insights = generateInsights(kpiData, ensembleData, weatherData, upcomingEvents.length)
-            return insights.length > 0 ? (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                {insights.map((insight, i) => (
-                  <InsightCard key={i} {...insight} />
-                ))}
-              </div>
-            ) : errorEnsemble ? (
-              <Card variant="glass" className="border-l-4 border-l-[hsl(var(--warning))]">
-                <CardContent>
-                  <div className="flex items-center gap-3">
-                    <AlertCircle className="w-5 h-5 text-[hsl(var(--warning))]" />
-                    <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                      Не удалось загрузить прогноз — инсайты временно недоступны
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : null
-          })()}
-
-          {/* 7. Weather + Price by district */}
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-            {weatherData?.forecasts && weatherData.forecasts.length > 0 && (
-              <Card variant="glass">
-                <CardHeader className="pb-2">
-                  <div className="flex items-center gap-2">
-                    <CloudSun className="w-5 h-5 text-[hsl(var(--warning))]" />
-                    <CardTitle className="text-base">Погода в {weatherData.location || 'Иркутске'}</CardTitle>
-                  </div>
-                  <p className="text-xs text-[hsl(var(--muted-foreground))]">Корреляция между погодными условиями и заполняемостью</p>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex gap-2 overflow-x-auto pb-2">
-                    {weatherData.forecasts.slice(0, 7).map((day, i) => {
-                      const date = new Date(day.date)
-                      const isToday = i === 0
-                      return (
-                        <div
-                          key={day.date}
-                          className={`flex-shrink-0 text-center p-3 rounded-xl min-w-[70px] ${
-                            isToday
-                              ? 'bg-gradient-to-b from-[hsl(var(--primary)/0.15)] to-[hsl(var(--primary)/0.05)] border border-[hsl(var(--primary)/0.3)]'
-                              : 'bg-[hsl(var(--secondary))]'
-                          }`}
-                        >
-                          <p className="text-[10px] text-[hsl(var(--muted-foreground))]">
-                            {isToday ? 'Сегодня' : date.toLocaleDateString('ru-RU', { weekday: 'short' })}
-                          </p>
-                          <p className="text-xs font-medium mt-0.5">
-                            {date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
-                          </p>
-                          <div className="text-lg my-1">{getWeatherEmoji(day.weather_code)}</div>
-                          <p className="text-sm font-bold">
-                            {Math.round(day.temperature_max)}°
-                          </p>
-                          <p className="text-[10px] text-[hsl(var(--muted-foreground))]">
-                            {Math.round(day.temperature_min)}°
-                          </p>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {upcomingEvents.length > 0 && (
-              <Card variant="glass">
-                <CardHeader className="pb-2">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="w-5 h-5 text-[hsl(var(--accent))]" />
-                    <CardTitle className="text-base">Ближайшие события</CardTitle>
-                  </div>
-                  <p className="text-xs text-[hsl(var(--muted-foreground))]">Мероприятия, влияющие на загрузку</p>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    {upcomingEvents.slice(0, 5).map((event) => (
-                      <div
-                        key={event.event_id}
-                        className="flex items-center gap-3 p-2 rounded-lg hover:bg-[hsl(var(--secondary))] transition-colors cursor-pointer"
-                        onClick={() => navigate('/events')}
-                      >
-                        <div className="w-10 h-10 rounded-lg bg-[hsl(var(--accent)/0.1)] flex flex-col items-center justify-center flex-shrink-0">
-                          <span className="text-[10px] text-[hsl(var(--accent))] font-bold">
-                            {new Date(event.date_start).toLocaleDateString('ru-RU', { day: 'numeric' })}
-                          </span>
-                          <span className="text-[8px] text-[hsl(var(--muted-foreground))]">
-                            {new Date(event.date_start).toLocaleDateString('ru-RU', { month: 'short' })}
-                          </span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{event.title}</p>
-                          {event.location && (
-                            <p className="text-[10px] text-[hsl(var(--muted-foreground))] truncate">{event.location}</p>
-                          )}
-                        </div>
-                        {event.event_type && (
-                          <Badge variant="outline" size="sm">{event.event_type}</Badge>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-
-          {/* 9. Price history chart */}
-          {(priceHistory?.prices?.length ?? 0) > 0 && priceHistory && (
-            <Card variant="glass">
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <TrendingUp className="w-5 h-5 text-[hsl(var(--primary))]" />
-                    <CardTitle className="text-base">Средняя цена и объём данных по районам</CardTitle>
-                  </div>
-                  {priceHistory.trend && (
-                    <Badge variant={priceHistory.trend.direction === 'up' ? 'danger' : 'success'} size="sm">
-                      {priceHistory.trend.direction === 'up' ? '↑' : '↓'} {Math.abs(priceHistory.trend.change_percent).toFixed(1)}%
-                    </Badge>
-                  )}
+          {/* Pickup/Pace */}
+          <Card variant="glass">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <Activity className="w-5 h-5 text-[hsl(var(--primary))]" />
+                  <CardTitle className="text-base">Динамика бронирований по дням</CardTitle>
                 </div>
-                <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                  {priceHistory.period?.days
-                    ? `За последние ${priceHistory.period.days} дней: ср. цена и число отелей в выборке по датам`
-                    : 'Ср. цена и число отелей в выборке по датам'}
-                </p>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={240}>
-                  <ComposedChart data={priceHistory.prices}>
+                {pickup?.summary && (
+                  <Badge variant={pickup.summary.trend === 'ускорение' ? 'success' : pickup.summary.trend === 'замедление' ? 'danger' : 'outline'} size="sm">
+                    {pickup.summary.trend}
+                  </Badge>
+                )}
+              </div>
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                Изменение числа бронирований за сутки (Pickup): положительное значение — рост бронирований, отрицательное — сдача номеров. Период — последние 30 дней.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {loadPickup ? (
+                <div className="h-64 skeleton rounded-xl" />
+              ) : (pickup?.points?.length ?? 0) > 0 ? (
+                <ResponsiveContainer width="100%" height={280}>
+                  <ComposedChart data={pickup!.points}>
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                    <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(v: string) => v.slice(5)} axisLine={false} />
-                    <YAxis yAxisId="price" tick={{ fontSize: 10 }} tickFormatter={(v: number) => `${(v/1000).toFixed(0)}k`} axisLine={false} />
-                    <YAxis yAxisId="samples" orientation="right" tick={{ fontSize: 10 }} axisLine={false} />
+                    <XAxis
+                      dataKey="date"
+                      tick={{ fontSize: 10 }}
+                      tickFormatter={(v: string) => v.slice(5)}
+                      axisLine={false}
+                    />
+                    <YAxis yAxisId="booked" tick={{ fontSize: 10 }} axisLine={false} />
+                    <YAxis yAxisId="pickup" orientation="right" tick={{ fontSize: 10 }} axisLine={false} />
                     <Tooltip
                       contentStyle={{
                         backgroundColor: 'hsl(var(--card))',
                         border: '1px solid hsl(var(--border))',
                         borderRadius: '8px',
-                        color: 'hsl(var(--foreground))',
                         fontSize: 12,
                       }}
-                      labelStyle={{ color: 'hsl(var(--muted-foreground))' }}
                     />
                     <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Area yAxisId="price" type="monotone" dataKey="avg_price" name="Ср. цена" stroke="hsl(var(--primary))" fill="hsl(var(--primary)/0.2)" />
-                    <Line yAxisId="samples" type="monotone" dataKey="samples" name="Отелей" stroke="hsl(var(--accent))" strokeWidth={2} dot={false} />
+                    <Bar yAxisId="pickup" dataKey="pickup" name="Δ бронирований за день" fill="hsl(var(--accent))" />
+                    <Line
+                      yAxisId="booked"
+                      type="monotone"
+                      dataKey="booked"
+                      name="Накопленные бронирования"
+                      stroke="hsl(var(--primary))"
+                      strokeWidth={2}
+                      dot={false}
+                    />
                   </ComposedChart>
                 </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          )}
+              ) : (
+                <p className="text-sm text-[hsl(var(--muted-foreground))] py-8 text-center">
+                  Недостаточно дневных снимков для расчёта pickup за выбранный район.
+                </p>
+              )}
 
-          {/* 10. Top hotels in district */}
-          {(() => {
-            const districtHotels = (hotels || [])
-              .filter(h => h.district === selectedDistrict)
-              .sort((a, b) => (b.rating || 0) - (a.rating || 0))
-              .slice(0, 6)
-            return districtHotels.length > 0 ? (
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <Building2 className="w-5 h-5 text-[hsl(var(--primary))]" />
-                  <h2 className="text-lg font-semibold">Отели — {selectedDistrict} район</h2>
-                  <Badge variant="outline" size="sm">{districtHotels.length} из {(hotels || []).filter(h => h.district === selectedDistrict).length}</Badge>
+              {pickup?.summary && (pickup.points?.length ?? 0) > 0 && (
+                <div className="grid grid-cols-3 gap-3 mt-3 pt-3 border-t border-[hsl(var(--border))]">
+                  <PickupStat label="Ср. pickup/день" value={`${pickup.summary.avg_pickup > 0 ? '+' : ''}${pickup.summary.avg_pickup}`} />
+                  <PickupStat label="Макс." value={`+${pickup.summary.max_pickup}`} />
+                  <PickupStat label="Мин." value={`${pickup.summary.min_pickup}`} />
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {districtHotels.map(hotel => (
-                    <Card
-                      key={hotel.id}
-                      hover
-                      className="cursor-pointer"
-                      onClick={() => navigate(`/hotels/${hotel.id}`)}
-                    >
-                      <div className="flex items-start gap-3">
-                        {hotel.image_url ? (
-                          <img src={hotel.image_url} alt="" className="w-14 h-14 rounded-lg object-cover flex-shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
-                        ) : (
-                          <div className="w-14 h-14 rounded-lg bg-[hsl(var(--secondary))] flex items-center justify-center flex-shrink-0">
-                            <Building2 className="w-6 h-6 text-[hsl(var(--muted-foreground))]" />
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm truncate">{hotel.name}</p>
-                          <p className="text-[10px] text-[hsl(var(--muted-foreground))] truncate">{hotel.city}</p>
-                          <div className="flex items-center gap-2 mt-1">
-                            {hotel.rating != null && (
-                              <span className="inline-flex items-center gap-0.5 text-xs font-medium text-[hsl(var(--warning))]">
-                                <Star size={10} /> {hotel.rating.toFixed(1)}
-                              </span>
-                            )}
-                            {hotel.min_price != null && (
-                              <span className="text-xs text-[hsl(var(--muted-foreground))]">
-                                от {hotel.min_price.toLocaleString()}₽
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </Card>
-                  ))}
-                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Heatmap */}
+          <Card variant="glass">
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-[hsl(var(--accent))]" />
+                <CardTitle className="text-base">Тепловая карта загрузки: день недели × месяц</CardTitle>
               </div>
-            ) : null
-          })()}
-        </>
-      )}
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                Сезонные и недельные паттерны спроса по дням недели и месяцам.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {loadHeat ? (
+                <div className="h-64 skeleton rounded-xl" />
+              ) : heatmap && heatmap.data.length > 0 ? (
+                <WeekdayHeatmap heatmap={heatmap} />
+              ) : (
+                <p className="text-sm text-[hsl(var(--muted-foreground))] py-8 text-center">
+                  Нет данных загрузки по выбранному району.
+                </p>
+              )}
+            </CardContent>
+          </Card>
 
-      {/* 11. Recommendations */}
-      <div>
-        <div className="flex items-center gap-2 mb-3">
-          <Lightbulb className="w-5 h-5 text-[hsl(var(--warning))]" />
-          <h2 className="text-lg font-semibold">Рекомендации</h2>
-        </div>
-        {recommendationsList.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {recommendationsList.slice(0, 4).map((rec, index) => (
-              <RecommendationCard key={index} recommendation={rec} />
+          {/* RMS-сводка по районам — интерпретируемая таблица вместо горизонтальных столбцов */}
+          <Card variant="glass">
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-[hsl(var(--success))]" />
+                <CardTitle className="text-base">RMS-сводка по районам региона</CardTitle>
+              </div>
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                RMS-метрики по районам. Колонка «Δ к региону» показывает отклонение RevPAR от средневзвешенного по региону.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {(() => {
+                const list = revenueSummary?.by_district ?? []
+                const totalRev = list.reduce((s, d) => s + (d.revpar || 0) * (d.hotels_count || 0), 0)
+                const totalHotels = list.reduce((s, d) => s + (d.hotels_count || 0), 0)
+                const totalObj = totalHotels
+                const regionAvgRevpar = totalObj > 0 ? totalRev / totalObj : 0
+                const sorted = [...list].sort((a, b) => (b.revpar || 0) - (a.revpar || 0))
+                return (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-xs uppercase tracking-wider text-[hsl(var(--muted-foreground))] border-b border-[hsl(var(--border))]">
+                          <th className="py-2 pr-3">Район</th>
+                          <th className="py-2 pr-3 text-right">Объектов</th>
+                          <th className="py-2 pr-3 text-right">Загрузка</th>
+                          <th className="py-2 pr-3 text-right">ADR</th>
+                          <th className="py-2 pr-3 text-right">RevPAR</th>
+                          <th className="py-2 pr-3 text-right">Δ к региону</th>
+                          <th className="py-2 text-center">Достоверность</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sorted.map(d => {
+                          const delta = (d.revpar || 0) - regionAvgRevpar
+                          const deltaPct = regionAvgRevpar > 0 ? (delta / regionAvgRevpar) * 100 : 0
+                          const isHi = d.confidence === 'high'
+                          const isMid = d.confidence === 'medium'
+                          return (
+                            <tr key={d.district} className={`border-b border-[hsl(var(--border))] cursor-pointer hover:bg-[hsl(var(--secondary)/0.4)] ${d.district === selectedDistrict ? 'bg-[hsl(var(--primary)/0.06)]' : ''}`} onClick={() => setSelectedDistrict(d.district)}>
+                              <td className="py-2 pr-3 font-medium">{d.district}</td>
+                              <td className="py-2 pr-3 text-right tabular-nums">{d.hotels_count ?? '—'}</td>
+                              <td className="py-2 pr-3 text-right tabular-nums">{d.occupancy != null ? `${d.occupancy}%` : '—'}</td>
+                              <td className="py-2 pr-3 text-right tabular-nums">{d.adr ? `${d.adr.toLocaleString('ru-RU')}₽` : '—'}</td>
+                              <td className="py-2 pr-3 text-right tabular-nums font-semibold">{d.revpar ? `${d.revpar.toLocaleString('ru-RU')}₽` : '—'}</td>
+                              <td className={`py-2 pr-3 text-right tabular-nums ${delta > 0 ? 'text-[hsl(var(--success))]' : delta < 0 ? 'text-[hsl(var(--destructive))]' : 'text-[hsl(var(--muted-foreground))]'}`}>
+                                {regionAvgRevpar > 0 ? `${delta > 0 ? '+' : ''}${deltaPct.toFixed(1)}%` : '—'}
+                              </td>
+                              <td className="py-2 text-center">
+                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs ${isHi ? 'bg-[hsl(var(--success)/0.15)] text-[hsl(var(--success))]' : isMid ? 'bg-[hsl(var(--primary)/0.15)] text-[hsl(var(--primary))]' : 'bg-[hsl(var(--muted-foreground)/0.15)] text-[hsl(var(--muted-foreground))]'}`}>
+                                  {isHi ? `${d.hotels_count}+ объектов` : isMid ? `${d.hotels_count} объектов` : `${d.hotels_count ?? 0} (мало)`}
+                                </span>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                      <tfoot>
+                        <tr className="text-xs text-[hsl(var(--muted-foreground))]">
+                          <td colSpan={7} className="pt-3">
+                            Средневзвешенный RevPAR по региону: <span className="font-semibold text-[hsl(var(--foreground))]">{Math.round(regionAvgRevpar).toLocaleString('ru-RU')} ₽</span>. Клик по строке выбирает район.
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                )
+              })()}
+            </CardContent>
+          </Card>
+
+          {/* Top events impact */}
+          <Card variant="glass">
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-[hsl(var(--warning))]" />
+                <CardTitle className="text-base">Топ-10 событий по влиянию на спрос</CardTitle>
+              </div>
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                Изменение средней загрузки в день события относительно среднего по периоду. Сортировка по модулю влияния.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {topImpact.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs uppercase tracking-wider text-[hsl(var(--muted-foreground))] border-b border-[hsl(var(--border))]">
+                        <th className="py-2 pr-3">Дата</th>
+                        <th className="py-2 pr-3">Событие</th>
+                        <th className="py-2 pr-3">Район</th>
+                        <th className="py-2 pr-3 text-right">Загрузка в день</th>
+                        <th className="py-2 pr-3 text-right">Ср. загрузка</th>
+                        <th className="py-2 text-right">Δ влияние</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {topImpact.map((e, i) => (
+                        <tr key={i} className="border-b border-[hsl(var(--border))] hover:bg-[hsl(var(--secondary))/0.4] cursor-pointer" onClick={() => navigate('/events')}>
+                          <td className="py-2 pr-3 whitespace-nowrap">{e.date}</td>
+                          <td className="py-2 pr-3 max-w-xs truncate">{e.event}</td>
+                          <td className="py-2 pr-3 whitespace-nowrap">{e.district}</td>
+                          <td className="py-2 pr-3 text-right tabular-nums">{e.occupancy_on_day != null ? `${e.occupancy_on_day}%` : '—'}</td>
+                          <td className="py-2 pr-3 text-right tabular-nums">{e.avg_occupancy != null ? `${e.avg_occupancy}%` : '—'}</td>
+                          <td className="py-2 text-right tabular-nums">
+                            <span className={`inline-flex items-center gap-1 ${(e.impact || 0) > 0 ? 'text-[hsl(var(--success))]' : 'text-[hsl(var(--destructive))]'}`}>
+                              {(e.impact || 0) > 0 ? '↑' : '↓'} {Math.abs(e.impact || 0).toFixed(1)}%
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-sm text-[hsl(var(--muted-foreground))] py-8 text-center">
+                  Недостаточно данных для расчёта влияния событий.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Quick navigation */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {[
+              { label: 'Прогноз спроса', desc: 'Ensemble ML', icon: TrendingUp, path: `/forecast?district=${encodeURIComponent(selectedDistrict)}` },
+              { label: 'События и спрос', desc: 'Календарь + impact', icon: Calendar, path: '/events' },
+              { label: 'Региональная карта', desc: 'Объекты на карте', icon: MapPin, path: '/map' },
+              { label: 'О системе', desc: 'Методология', icon: Info, path: '/about' },
+            ].map(item => (
+              <button
+                key={item.path}
+                onClick={() => navigate(item.path)}
+                className="flex items-center gap-3 p-3 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] hover:border-[hsl(var(--primary))] hover:shadow-lg transition-all text-left"
+              >
+                <div className="w-9 h-9 rounded-lg bg-[hsl(var(--primary)/0.1)] flex items-center justify-center flex-shrink-0">
+                  <item.icon className="w-4 h-4 text-[hsl(var(--primary))]" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{item.label}</p>
+                  <p className="text-xs text-[hsl(var(--muted-foreground))]">{item.desc}</p>
+                </div>
+              </button>
             ))}
           </div>
-        ) : (
-          <Card variant="glass" className="flex items-center justify-center h-40">
-            <p className="text-sm text-[hsl(var(--muted-foreground))]">
-              Недостаточно данных для рекомендаций
-            </p>
-          </Card>
-        )}
-      </div>
-
-      {/* 12. Quick navigation */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        {[
-          { label: 'Спросить AI', desc: `О ${selectedDistrict} районе`, icon: MessageSquare, path: `/chat?context=${encodeURIComponent(`Расскажи о ситуации в ${selectedDistrict} районе: загрузка, погода, события`)}` },
-          { label: 'Карта районов', desc: 'Визуализация на карте', icon: MapIcon, path: '/map' },
-          { label: 'Прогнозы', desc: 'Ensemble ML-модели', icon: TrendingUp, path: `/forecast?district=${encodeURIComponent(selectedDistrict)}` },
-          { label: 'События', desc: 'Календарь мероприятий', icon: Calendar, path: '/events' },
-          { label: 'О системе', desc: 'Документация', icon: Info, path: '/about' },
-        ].map(item => (
-          <button
-            key={item.path}
-            onClick={() => navigate(item.path)}
-            className="flex items-center gap-3 p-3 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] hover:border-[hsl(var(--primary))] hover:shadow-lg transition-all text-left"
-          >
-            <div className="w-9 h-9 rounded-lg bg-[hsl(var(--primary)/0.1)] flex items-center justify-center flex-shrink-0">
-              <item.icon className="w-4 h-4 text-[hsl(var(--primary))]" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm font-medium">{item.label}</p>
-              <p className="text-[10px] text-[hsl(var(--muted-foreground))]">{item.desc}</p>
-            </div>
-          </button>
-        ))}
-      </div>
+        </>
+      )}
     </div>
   )
 }
 
-const KPICard = memo(function KPICard({ title, value, icon: Icon, description }: {
-  title: string; value: string; icon: React.ElementType; description: string
+const KPICard = memo(function KPICard({ title, value, icon: Icon, description, accent }: {
+  title: string
+  value: string
+  icon: React.ElementType
+  description: string
+  accent?: 'primary' | 'accent' | 'success'
 }) {
+  const accentClass =
+    accent === 'success' ? 'bg-[hsl(var(--success)/0.1)] text-[hsl(var(--success))]' :
+    accent === 'accent' ? 'bg-[hsl(var(--accent)/0.1)] text-[hsl(var(--accent))]' :
+    'bg-[hsl(var(--primary)/0.1)] text-[hsl(var(--primary))]'
   return (
     <Card hover>
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-[hsl(var(--primary)/0.1)] flex items-center justify-center">
-          <Icon className="w-5 h-5 text-[hsl(var(--primary))]" />
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${accentClass}`}>
+          <Icon className="w-5 h-5" />
         </div>
-        <div>
-          <p className="text-xl font-bold">{value}</p>
+        <div className="min-w-0">
+          <p className="text-xl font-bold tabular-nums truncate">{value}</p>
           <p className="text-xs text-[hsl(var(--muted-foreground))]">{title}</p>
-          <p className="text-xs text-[hsl(var(--muted-foreground))]">{description}</p>
+          <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">{description}</p>
         </div>
       </div>
     </Card>
   )
 })
 
-const RecommendationCard = memo(function RecommendationCard({ recommendation }: { recommendation: Recommendation }) {
-  const isTourist = recommendation.type === 'tourist'
+function PickupStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-xs text-[hsl(var(--muted-foreground))]">{label}</p>
+      <p className="text-base font-semibold tabular-nums">{value}</p>
+    </div>
+  )
+}
+
+function WeekdayHeatmap({ heatmap }: { heatmap: { data: WeekdayHeatmapCell[]; weekdays: string[]; months: string[] } }) {
+  const grid: Record<string, WeekdayHeatmapCell> = {}
+  let max = 0
+  for (const cell of heatmap.data) {
+    grid[`${cell.weekday}-${cell.month}`] = cell
+    if (cell.occupancy > max) max = cell.occupancy
+  }
+
+  const colorFor = (occ: number) => {
+    if (max === 0) return 'hsl(var(--muted)/0.2)'
+    const t = Math.min(1, occ / Math.max(max, 60))
+    return `hsl(var(--primary) / ${(0.15 + t * 0.7).toFixed(2)})`
+  }
 
   return (
-    <Card hover className="border-l-4" style={{ borderLeftColor: isTourist ? 'hsl(var(--primary))' : 'hsl(var(--warning))' }}>
-      <div className="flex items-start gap-3">
-        <div
-          className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-          style={{ backgroundColor: isTourist ? 'hsl(var(--primary)/0.1)' : 'hsl(var(--warning)/0.1)' }}
-        >
-          {isTourist ? (
-            <MapPin className="w-4 h-4 text-[hsl(var(--primary))]" />
-          ) : (
-            <TrendingUp className="w-4 h-4 text-[hsl(var(--warning))]" />
-          )}
-        </div>
-        <div className="flex-1 min-w-0">
-          <Badge variant={isTourist ? 'primary' : 'warning'} size="sm" className="mb-1">
-            {isTourist ? 'Туристу' : 'Бизнесу'}
-          </Badge>
-          <h4 className="font-medium text-sm truncate">{recommendation.title}</h4>
-          <p className="text-xs text-[hsl(var(--muted-foreground))] line-clamp-2">{recommendation.description}</p>
+    <div className="overflow-x-auto">
+      <div className="inline-block min-w-full">
+        <div className="grid grid-cols-[40px_repeat(12,minmax(38px,56px))] gap-1.5">
+          <div />
+          {heatmap.months.map(m => (
+            <div key={m} className="text-[10px] text-center text-[hsl(var(--muted-foreground))] font-medium">{m}</div>
+          ))}
+          {heatmap.weekdays.map((wd, wi) => {
+            const weekdayNum = wi + 1
+            return (
+              <Fragment key={`row-${weekdayNum}`}>
+                <div className="text-[10px] flex items-center justify-end pr-1 text-[hsl(var(--muted-foreground))] font-medium">
+                  {wd}
+                </div>
+                {heatmap.months.map((_, mi) => {
+                  const cell = grid[`${weekdayNum}-${mi + 1}`]
+                  const occ = cell?.occupancy ?? 0
+                  const samples = cell?.samples ?? 0
+                  return (
+                    <div
+                      key={`${weekdayNum}-${mi}`}
+                      className="aspect-square rounded relative group"
+                      style={{ backgroundColor: cell ? colorFor(occ) : 'transparent', border: cell ? 'none' : '1px dashed hsl(var(--border))' }}
+                      title={cell ? `${heatmap.weekdays[wi]}, ${heatmap.months[mi]}: ${occ}% (n=${samples})` : 'нет данных'}
+                    >
+                      {cell && occ > 0 && (
+                        <span className="absolute inset-0 flex items-center justify-center text-[9px] font-semibold text-[hsl(var(--foreground))]/80">
+                          {Math.round(occ)}
+                        </span>
+                      )}
+                    </div>
+                  )
+                })}
+              </Fragment>
+            )
+          })}
         </div>
       </div>
-    </Card>
+      <p className="text-xs text-[hsl(var(--muted-foreground))] mt-2 flex items-center gap-2">
+        <span>Чем темнее — тем выше загрузка.</span>
+        <span className="flex items-center gap-1">
+          <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: 'hsl(var(--primary)/0.15)' }} />
+          <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: 'hsl(var(--primary)/0.45)' }} />
+          <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: 'hsl(var(--primary)/0.85)' }} />
+        </span>
+        <span>0–{Math.round(max)}%</span>
+      </p>
+    </div>
   )
-})
+}
+
+function ExportButtons({ district }: { district: string }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      <a href={api.exportUrl('occupancy', district)} download>
+        <Button variant="secondary" size="sm">
+          <Download size={14} />
+          CSV — загрузка
+        </Button>
+      </a>
+      <a href={api.exportUrl('events')} download>
+        <Button variant="secondary" size="sm">
+          <Download size={14} />
+          CSV — события
+        </Button>
+      </a>
+      <a href={api.exportUrl('hotels', district)} download>
+        <Button variant="secondary" size="sm">
+          <Download size={14} />
+          CSV — реестр
+        </Button>
+      </a>
+    </div>
+  )
+}
+
+function confidenceLabel(c: 'high' | 'medium' | 'low'): string {
+  return c === 'high' ? 'высокая' : c === 'medium' ? 'средняя' : 'низкая'
+}
 
 function AnalyticsSkeleton() {
   return (
     <div className="space-y-6">
-      <div className="h-10 w-48 skeleton rounded-lg" />
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="h-32 skeleton rounded-2xl" />
-        <div className="h-32 skeleton rounded-2xl" />
-      </div>
+      <div className="h-12 skeleton rounded-xl" />
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[1, 2, 3, 4].map(i => <div key={i} className="h-24 skeleton rounded-2xl" />)}
       </div>
-      <div className="h-[450px] skeleton rounded-2xl" />
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <div className="h-64 skeleton rounded-2xl" />
-        <div className="h-64 skeleton rounded-2xl" />
-      </div>
+      <div className="h-64 skeleton rounded-2xl" />
+      <div className="h-64 skeleton rounded-2xl" />
+      <div className="h-72 skeleton rounded-2xl" />
     </div>
   )
 }

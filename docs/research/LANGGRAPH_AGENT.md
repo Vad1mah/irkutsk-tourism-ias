@@ -193,7 +193,7 @@ class AgentState(TypedDict):
 ## Файлы
 
 - `backend/app/services/main_agent.py` — реализация агента и определение tools (файл `agent_tools.py` удалён)
-- `backend/test_langgraph_agent.py` — тесты
+- `backend/tests/test_agent_tools.py` — тесты
 
 ---
 
@@ -220,9 +220,43 @@ class AgentState(TypedDict):
 
 ---
 
+## Реализованные улучшения (25.03.2026)
+
+> Из `LANGGRAPH_IMPROVEMENTS.md` (объединён в этот документ).
+
+### Command паттерн
+
+В `main_agent.py` conditional edges заменены на явный `Command` для управления потоком:
+
+```python
+def call_model(state: AgentState) -> Command[Literal["tools", "__end__"]]:
+    response = await llm.ainvoke(messages)
+    if response.tool_calls:
+        return Command(update={"messages": [response]}, goto="tools")
+    return Command(update={"messages": [response]}, goto="__end__")
+```
+
+### forecast_agent.py
+
+Линейный пайплайн: `collect_data → run_models → analyze_factors → generate_explanation`.
+
+- `ForecastState(TypedDict)` с 15+ полями (district, days_ahead, history, weather, forecasts, metrics, explanation и др.)
+- Использует Ensemble (Prophet + NeuralProphet + XGBoost + LightGBM)
+- Структурированный вывод через `PydanticOutputParser(ForecastExplanation)`
+- Fallback-механизмы при ошибке LLM
+
+### Статус улучшений
+
+1. ✅ Command паттерн в main_agent
+2. ✅ Структурированный вывод — Pydantic модели
+3. ✅ Расширение State — TypedDict с полной типизацией
+4. ✅ Визуализация графа — `app.get_graph().draw_mermaid()`
+5. ✅ MemorySaver для долгосрочного контекста
+
+---
+
 ## Дальнейшее развитие
 
 1. Добавить Human-in-the-Loop для сложных запросов
 2. Интегрировать LangSmith для production трейсинга
-3. Добавить memory для долгосрочного контекста
-4. Реализовать Multi-Agent архитектуру (планировщик + исполнители)
+3. Реализовать Multi-Agent архитектуру (планировщик + исполнители)

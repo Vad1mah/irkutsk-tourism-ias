@@ -2,9 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **СТАРТ ЛЮБОЙ СЕССИИ — ОБЯЗАТЕЛЬНО:**
+> 1. Прочитай [`docs/NORTH_STAR.md`](docs/NORTH_STAR.md) — единый источник правды о текущем курсе проекта (B2B-рефокус, дедлайн 12.05.2026).
+> 2. Прочитай [`docs/SESSION_HANDOFF.md`](docs/SESSION_HANDOFF.md) — где остановилась работа.
+> 3. План работ — [`docs/REFOCUS_PLAN.md`](docs/REFOCUS_PLAN.md) (9 этапов с Definition of Done).
+>
+> **Не используй документы из [`docs/_archive/`](docs/_archive/) как руководство к действию** — там лежит старая двухсегментная концепция (B2B+B2C), от которой проект ушёл 06.04.2026 после защиты практики.
+>
+> **Текущий курс:** ИАС позиционируется как **B2B-инструмент** для трёх сегментов: отельеры, региональная администрация, исследователи. Без сегмента «туристы».
+
 ## Проект
 
-ИАС мониторинга и прогнозирования туристической активности Иркутской области (ВКР).
+ИАС мониторинга и прогнозирования туристической активности Иркутской области (ВКР). Текущая фаза — **преддипломная практика 06.04–16.05.2026, рефокус с двухсегментной модели на B2B**.
 
 ### Архитектура
 
@@ -14,12 +23,12 @@ Frontend (React + Vite)        Backend (FastAPI)              Data Sources
 ├── Chat (SSE streaming)      │   ├── forecast.py (9)        ├── 101hotels (отели)
 ├── Analytics (аналитика)     │   ├── events.py (6)          ├── OpenMeteo (погода)
 ├── Events (календарь)        │   ├── hotels.py (3)          ├── Парсеры событий (8 шт.)
-├── Events (календарь)        │   ├── analytics.py (17)      ├── Telegram каналы
-├── Map (визуализация)        │   ├── query.py (5)           └── Xotelo/TripAdvisor
-├── Forecast (прогноз)        │   ├── parser.py (13)
-├── HotelDetail (карточка)    │   └── documents.py (5)
-├── Map (визуализация)        ├── services/ (16 шт.)
-└── About (о системе)        │   ├── ensemble_service.py (async + кэш)
+├── Map (визуализация)        │   ├── analytics.py (17)      ├── Telegram каналы
+├── Forecast (прогноз)        │   ├── query.py (5)           └── Xotelo/TripAdvisor
+├── HotelDetail (карточка)    │   ├── parser.py (12)
+└── About (о системе)         │   └── documents.py (5)
+                              ├── services/ (16 шт.)
+                              │   ├── ensemble_service.py (async + кэш)
                               │   ├── main_agent.py (LangGraph, 5 tools)
                               │   ├── forecast_agent.py (LangGraph)
                               │   ├── llm_service.py (6 LLM провайдеров)
@@ -39,7 +48,13 @@ Frontend (React + Vite)        Backend (FastAPI)              Data Sources
                               │   └── rate_limit.py
                               ├── dependencies/
                               │   └── auth.py (API key)
-                              └── parsers/ (17 файлов)
+                              ├── db/ (SQLAlchemy ORM, async session)
+                              ├── models/schemas.py (Pydantic v2)
+                              ├── constants.py (DEFAULT_DISTRICT, лимиты)
+                              ├── executor.py (ThreadPoolExecutor для sync ML)
+                              ├── scheduler.py (APScheduler: парсеры по расписанию)
+                              └── parsers/ (~14 файлов)
+                                  ├── base.py + ai_extractor + anti_detection + health_monitor
                                   ├── events_*.py (8 парсеров)
                                   ├── hotels_101hotels.py
                                   ├── hotels_xotelo.py
@@ -51,11 +66,17 @@ Frontend (React + Vite)        Backend (FastAPI)              Data Sources
 ### Backend
 ```bash
 cd backend
-python -m venv venv && venv\Scripts\activate  # Windows
+python -m venv venv
+source venv/Scripts/activate           # Git Bash на Windows
+# .\venv\Scripts\Activate.ps1          # PowerShell альтернатива
 pip install -r requirements.txt
-cp .env.example .env  # Настроить переменные
+cp .env.example .env                   # Настроить переменные
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
+
+> На старте `lifespan` поднимает PostgreSQL, Redis, Chroma, LLM, APScheduler и
+> запускает фоновый прогрев ensemble-кэша (`_warmup_forecast_cache` в `main.py`).
+> Если Redis недоступен — кэш отключается, но сервер продолжает работать.
 
 ### Frontend
 ```bash
@@ -76,14 +97,18 @@ docker compose --profile full up -d       # Полный стек
 # Backend health check
 curl http://localhost:8000/health
 
-# Unit тесты (60 тестов в 5 файлах)
-cd backend && .\\venv\\Scripts\\activate && pytest tests/ -v
+# Unit тесты (8 файлов, см. backend/tests/test_*.py)
+cd backend && source venv/Scripts/activate && pytest tests/ -v
 
-# E2E тесты (9 сценариев)
+# Запуск одного файла / одного теста
+pytest tests/test_routers.py -v
+pytest tests/test_routers.py::test_health -v
+
+# E2E тесты (9 сценариев, требует поднятый backend на :8000)
 cd backend && python tests/e2e_test.py
 
-# API docs
-open http://localhost:8000/docs
+# API docs (Swagger / ReDoc)
+# http://localhost:8000/docs   и   http://localhost:8000/redoc
 ```
 
 ## Ключевые API endpoints
@@ -108,7 +133,7 @@ open http://localhost:8000/docs
 - **ML:** Prophet, NeuralProphet, XGBoost, LightGBM, Ensemble
 - **LLM:** Mistral Large (основной), + GigaChat, Groq, DeepSeek, OpenRouter, Gemini (резервные)
 - **AI Agents:** LangGraph (main_agent + forecast_agent, 5 tools, MemorySaver)
-- **Frontend:** React 18, TypeScript, Tailwind CSS 4, Vite 7
+- **Frontend:** React 18, TypeScript 5.9, Tailwind CSS 4, Vite 7
 - **Визуализация:** Recharts (графики) + ECharts (GeoMap на Map, scatter на Analytics)
 
 ## Районы Иркутской области
@@ -184,7 +209,7 @@ curl -X POST http://localhost:8000/api/parser/hotels \
 | NeuralProphet | `/api/forecast/neural` | Lagged regressors, events |
 | XGBoost | `/api/forecast/xgboost` | Quantile regression (CI) |
 
-Feature engineering: 25+ признаков (лаги, rolling stats, праздники, погода, события).
+Feature engineering: 38 признаков (календарь 8, праздники 5, лаги 5, diff 2, rolling 5, погода 4, события 3, тренд 2, цены 4).
 
 ## AI-агент (LangGraph)
 
@@ -195,6 +220,17 @@ Feature engineering: 25+ признаков (лаги, rolling stats, празд
 - `forecast_occupancy` — прогноз загрузки (Ensemble)
 - `get_statistics` — KPI и статистика
 
+## Слои доступа к данным
+
+Внутри `services/` сосуществуют два сервиса БД — это намеренно, не дубль:
+
+| Сервис | Роль |
+|--------|------|
+| `db_service` | Низкоуровневый: пул соединений, `connect()`/`close()`, создание таблиц при старте |
+| `data_service` | Доменный фасад: `get_occupancy_by_district`, `get_hotels`, `get_events` и т. п. — то, что вызывают роутеры и tools агента |
+
+Все CPU-тяжёлые синхронные ML-вызовы (`prophet_service.forecast`, `xgboost_service.forecast`, `ensemble_service.forecast_ensemble`) ОБЯЗАНЫ идти через `app.executor.run_sync(...)`, иначе блокируют event loop. Не оборачивайте их в `asyncio.to_thread` точечно — ThreadPoolExecutor общий, чтобы не плодить пулы.
+
 ## Известные ограничения
 
 **Пробел данных: июль-сентябрь 2025**
@@ -204,19 +240,20 @@ Feature engineering: 25+ признаков (лаги, rolling stats, празд
 - Для демо использовать краткосрочные прогнозы (3-7 дней)
 - Система архитектурно готова к работе с полными данными
 
-## Статус (25.03.2026)
+## Стабильное состояние компонентов
 
-| Компонент | Статус |
-|-----------|--------|
-| Backend | ✅ Работает (59 endpoints, 7 роутеров) |
-| Frontend | ✅ 8 страниц (Home, Chat, Analytics, Events, Map, Forecast, HotelDetail, About) |
-| AI-агент | ✅ 5 tools, MemorySaver, SSE streaming |
-| Ensemble | ✅ ~2s (async + кэш) |
-| Unit тесты | ✅ 60 тестов, 5 файлов |
-| E2E тесты | ✅ 9/9 passed |
-| Security | ✅ Rate limiting + API key auth + CSP + non-root Docker |
-| Docker | ✅ PostgreSQL 16 + Redis 7 (secrets, healthchecks) |
-| Глобальный аудит | ✅ 145 фиксов (25.03.2026) |
+Снимок «как устроено». Конкретный статус-таблица с датами живёт в `docs/project/PROJECT_STATUS.md` — туда же при изменениях.
+
+| Компонент | Особенность реализации |
+|-----------|------------------------|
+| Backend | 7 роутеров, 59 endpoints, lifespan с прогревом ensemble-кэша |
+| Frontend | 8 страниц, Recharts + ECharts, SSE для чата |
+| AI-агент | LangGraph + MemorySaver (thread_id для контекста), 5 tools |
+| Ensemble | Async поверх sync моделей через `executor.run_sync`, Redis-кэш |
+| Тесты | 8 файлов в `backend/tests/` + `e2e_test.py` (9 сценариев) |
+| Security | Rate limiting (Redis sliding window + in-memory fallback), API-key, CSP, non-root Docker |
+| Docker | `postgres:16-alpine`, `redis:7-alpine`, healthchecks, profiles `full` для бекенда+фронтенда |
+| Alembic | Каркас настроен (`backend/alembic/env.py`); ревизии добавлять при изменении схемы |
 
 ## Ключевая документация
 

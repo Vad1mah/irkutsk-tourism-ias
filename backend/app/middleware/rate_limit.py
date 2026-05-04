@@ -1,4 +1,5 @@
 """Rate Limiting Middleware на базе Redis."""
+import ipaddress
 import time
 import logging
 from typing import Callable
@@ -39,11 +40,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     # Порог предупреждений для fail open
     FAIL_OPEN_WARN_THRESHOLD = 3
 
-    # Доверенные прокси (IP адреса, от которых принимаем X-Forwarded-For)
     TRUSTED_PROXIES = {
         "127.0.0.1",
         "::1",
         "localhost",
+        "172.16.0.0/12",
+        "10.0.0.0/8",
+        "192.168.0.0/16",
     }
 
     def __init__(self, app, redis_client=None, trusted_proxies: list[str] | None = None):
@@ -77,7 +80,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         client_ip = self._get_client_ip(request)
-        rate_key = f"ratelimit:{client_ip}:{path}"
+        rate_pattern = self._get_rate_pattern(path)
+        rate_key = f"ratelimit:{client_ip}:{rate_pattern}"
 
         limit = self._get_limit(path)
         redis = self._get_redis(request)
@@ -105,6 +109,16 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 return True
         return False
 
+    def _get_rate_pattern(self, path: str) -> str:
+        """Pattern-based key to prevent double quota for sub-paths."""
+        for pattern in self.STRICT_PATTERNS:
+            if path.startswith(pattern):
+                return pattern
+        for pattern in self.PROTECTED_PATTERNS:
+            if path.startswith(pattern):
+                return pattern
+        return path
+
     def _get_limit(self, path: str) -> int:
         """Получить лимит для пути."""
         for pattern, limit in self.STRICT_PATTERNS.items():
@@ -117,19 +131,33 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         X-Forwarded-For используется только если запрос пришёл от доверенного прокси.
         """
-        # Сначала проверяем, пришёл ли запрос от доверенного прокси
         remote_host = request.client.host if request.client else "unknown"
 
-        # Используем X-Forwarded-For только от доверенных прокси
-        if remote_host in self.TRUSTED_PROXIES:
+        if self._is_trusted_proxy(remote_host):
             forwarded = request.headers.get("X-Forwarded-For")
             if forwarded:
                 return forwarded.split(",")[0].strip()
 
         return remote_host
 
+    def _is_trusted_proxy(self, host: str) -> bool:
+        """Check if host is in trusted proxies (supports CIDR notation)."""
+        if host in ("localhost", "unknown"):
+            return host in self.TRUSTED_PROXIES
+        try:
+            addr = ipaddress.ip_address(host)
+            for proxy in self.TRUSTED_PROXIES:
+                if "/" in proxy:
+                    if addr in ipaddress.ip_network(proxy, strict=False):
+                        return True
+                elif proxy == host:
+                    return True
+        except ValueError:
+            return False
+        return False
+
     async def _check_redis(self, key: str, limit: int) -> bool:
-        """Проверка через Redis (sliding window)."""
+        """Проверка через Redis (sliding window). Only counts allowed requests."""
         try:
             now = time.time()
             window_start = now - settings.rate_limit_period
@@ -137,25 +165,29 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             pipe = self.redis.pipeline()
             pipe.zremrangebyscore(key, 0, window_start)
             pipe.zcard(key)
-            pipe.zadd(key, {str(now): now})
-            pipe.expire(key, settings.rate_limit_period)
             results = await pipe.execute()
 
             current_count = results[1]
-            # Сбрасываем счётчик ошибок при успехе
             self._redis_error_count = 0
-            return current_count < limit
+
+            if current_count >= limit:
+                return False
+
+            pipe2 = self.redis.pipeline()
+            pipe2.zadd(key, {str(now): now})
+            pipe2.expire(key, settings.rate_limit_period)
+            await pipe2.execute()
+            return True
         except Exception as e:
             self._redis_error_count += 1
-            # Логируем warning каждые N ошибок
             if self._redis_error_count >= self.FAIL_OPEN_WARN_THRESHOLD:
                 logger.warning(
-                    f"Redis rate limit failing open ({self._redis_error_count} errors). "
-                    f"Rate limiting DISABLED. Last error: {e}"
+                    f"Redis rate limit error ({self._redis_error_count}x), "
+                    f"falling back to local. Last: {e}"
                 )
             else:
                 logger.error(f"Redis rate limit error: {e}")
-            return True  # Fail open для availability
+            return self._check_local(key, limit)
 
     def _check_local(self, key: str, limit: int) -> bool:
         """Fallback rate limiting в памяти с защитой от memory leak."""

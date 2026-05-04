@@ -7,7 +7,7 @@ class Hotel(BaseModel):
     """Данные отеля."""
     id: str
     name: str = Field(..., min_length=1, description="Название отеля")
-    city: str = Field(..., min_length=1, description="Город")
+    city: str = Field("", description="Город")
     district: str | None = Field(None, description="Район (Иркутский, Ольхонский, и т.д.)")
     lat: float | None = Field(None, ge=-90, le=90, description="Широта")
     lon: float | None = Field(None, ge=-180, le=180, description="Долгота")
@@ -97,8 +97,7 @@ class ForecastResponse(BaseModel):
     hotel_id: str | None = None
     district: str | None = None
     forecast: list[ForecastPoint] = Field(..., description="Точки прогноза")
-    history_points: int | None = Field(None, ge=0, description="Количество точек истории")
-    data_source: str | None = Field(None, description="'real' или 'demo'")
+    history_points: int = Field(..., ge=0, description="Количество точек истории")
 
 
 class DocumentRequest(BaseModel):

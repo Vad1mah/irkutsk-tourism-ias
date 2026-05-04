@@ -1,0 +1,170 @@
+<mxfile host="app.diagrams.net" agent="draw.io">
+  <diagram name="Сравнение RMS" id="rms_competitors">
+    <mxGraphModel dx="1426" dy="784" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontFamily=Verdana;fontSize=12;fontStyle=1" value="Сравнительный анализ систем мониторинга рынка средств размещения" vertex="1">
+          <mxGeometry height="30" width="980" x="40" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="hcrit" parent="1" style="rounded=0;fillColor=#dae8fc;strokeColor=#6c8ebf;fontFamily=Verdana;fontSize=11;fontStyle=1;align=center" value="Критерий" vertex="1">
+          <mxGeometry height="40" width="200" x="40" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="h1" parent="1" style="rounded=0;fillColor=#d5e8d4;strokeColor=#82b366;fontFamily=Verdana;fontSize=11;fontStyle=1;align=center" value="ИАС «Прибайкалье»" vertex="1">
+          <mxGeometry height="40" width="130" x="240" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="h2" parent="1" style="rounded=0;fillColor=#fff2cc;strokeColor=#d6b656;fontFamily=Verdana;fontSize=11;fontStyle=1;align=center" value="TravelLine PMS" vertex="1">
+          <mxGeometry height="40" width="130" x="370" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="h3" parent="1" style="rounded=0;fillColor=#fff2cc;strokeColor=#d6b656;fontFamily=Verdana;fontSize=11;fontStyle=1;align=center" value="Bnovo Pricer" vertex="1">
+          <mxGeometry height="40" width="130" x="500" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="h4" parent="1" style="rounded=0;fillColor=#fff2cc;strokeColor=#d6b656;fontFamily=Verdana;fontSize=11;fontStyle=1;align=center" value="Hotellab" vertex="1">
+          <mxGeometry height="40" width="130" x="630" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="h5" parent="1" style="rounded=0;fillColor=#fff2cc;strokeColor=#d6b656;fontFamily=Verdana;fontSize=11;fontStyle=1;align=center" value="RoomPriceGenie" vertex="1">
+          <mxGeometry height="40" width="130" x="760" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="h6" parent="1" style="rounded=0;fillColor=#f8cecc;strokeColor=#b85450;fontFamily=Verdana;fontSize=11;fontStyle=1;align=center" value="Росстат" vertex="1">
+          <mxGeometry height="40" width="130" x="890" y="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="r1c0" parent="1" style="rounded=0;fillColor=#f5f5f5;strokeColor=#666666;fontFamily=Verdana;fontSize=10;align=left;spacingLeft=8" value="Данные по Иркутской области" vertex="1">
+          <mxGeometry height="30" width="200" x="40" y="100" as="geometry" />
+        </mxCell>
+        <mxCell id="r1c1" parent="1" style="rounded=0;fillColor=#d5e8d4;strokeColor=#82b366;fontFamily=Verdana;fontSize=10;align=center" value="Полностью" vertex="1">
+          <mxGeometry height="30" width="130" x="240" y="100" as="geometry" />
+        </mxCell>
+        <mxCell id="r1c2" parent="1" style="rounded=0;fillColor=#ffffff;strokeColor=#666666;fontFamily=Verdana;fontSize=10;align=center" value="Свои клиенты" vertex="1">
+          <mxGeometry height="30" width="130" x="370" y="100" as="geometry" />
+        </mxCell>
+        <mxCell id="r1c3" parent="1" style="rounded=0;fillColor=#ffffff;strokeColor=#666666;fontFamily=Verdana;fontSize=10;align=center" value="Свои клиенты" vertex="1">
+          <mxGeometry height="30" width="130" x="500" y="100" as="geometry" />
+        </mxCell>
+        <mxCell id="r1c4" parent="1" style="rounded=0;fillColor=#f8cecc;strokeColor=#b85450;fontFamily=Verdana;fontSize=10;align=center" value="Нет" vertex="1">
+          <mxGeometry height="30" width="130" x="630" y="100" as="geometry" />
+        </mxCell>
+        <mxCell id="r1c5" parent="1" style="rounded=0;fillColor=#f8cecc;strokeColor=#b85450;fontFamily=Verdana;fontSize=10;align=center" value="Нет" vertex="1">
+          <mxGeometry height="30" width="130" x="760" y="100" as="geometry" />
+        </mxCell>
+        <mxCell id="r1c6" parent="1" style="rounded=0;fillColor=#fff2cc;strokeColor=#d6b656;fontFamily=Verdana;fontSize=10;align=center" value="С задержкой 6–12 мес." vertex="1">
+          <mxGeometry height="30" width="130" x="890" y="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="r2c0" parent="1" style="rounded=0;fillColor=#f5f5f5;strokeColor=#666666;fontFamily=Verdana;fontSize=10;align=left;spacingLeft=8" value="Метрики RevPAR / ADR" vertex="1">
+          <mxGeometry height="30" width="200" x="40" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="r2c1" parent="1" style="rounded=0;fillColor=#d5e8d4;strokeColor=#82b366;fontFamily=Verdana;fontSize=10;align=center" value="Да" vertex="1">
+          <mxGeometry height="30" width="130" x="240" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="r2c2" parent="1" style="rounded=0;fillColor=#d5e8d4;strokeColor=#82b366;fontFamily=Verdana;fontSize=10;align=center" value="Да" vertex="1">
+          <mxGeometry height="30" width="130" x="370" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="r2c3" parent="1" style="rounded=0;fillColor=#d5e8d4;strokeColor=#82b366;fontFamily=Verdana;fontSize=10;align=center" value="Да" vertex="1">
+          <mxGeometry height="30" width="130" x="500" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="r2c4" parent="1" style="rounded=0;fillColor=#d5e8d4;strokeColor=#82b366;fontFamily=Verdana;fontSize=10;align=center" value="Да" vertex="1">
+          <mxGeometry height="30" width="130" x="630" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="r2c5" parent="1" style="rounded=0;fillColor=#d5e8d4;strokeColor=#82b366;fontFamily=Verdana;fontSize=10;align=center" value="Да" vertex="1">
+          <mxGeometry height="30" width="130" x="760" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="r2c6" parent="1" style="rounded=0;fillColor=#f8cecc;strokeColor=#b85450;fontFamily=Verdana;fontSize=10;align=center" value="Нет" vertex="1">
+          <mxGeometry height="30" width="130" x="890" y="130" as="geometry" />
+        </mxCell>
+
+        <mxCell id="r3c0" parent="1" style="rounded=0;fillColor=#f5f5f5;strokeColor=#666666;fontFamily=Verdana;fontSize=10;align=left;spacingLeft=8" value="Прогноз ML с учётом событий" vertex="1">
+          <mxGeometry height="30" width="200" x="40" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="r3c1" parent="1" style="rounded=0;fillColor=#d5e8d4;strokeColor=#82b366;fontFamily=Verdana;fontSize=10;align=center" value="Да" vertex="1">
+          <mxGeometry height="30" width="130" x="240" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="r3c2" parent="1" style="rounded=0;fillColor=#f8cecc;strokeColor=#b85450;fontFamily=Verdana;fontSize=10;align=center" value="Нет" vertex="1">
+          <mxGeometry height="30" width="130" x="370" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="r3c3" parent="1" style="rounded=0;fillColor=#f8cecc;strokeColor=#b85450;fontFamily=Verdana;fontSize=10;align=center" value="Нет" vertex="1">
+          <mxGeometry height="30" width="130" x="500" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="r3c4" parent="1" style="rounded=0;fillColor=#fff2cc;strokeColor=#d6b656;fontFamily=Verdana;fontSize=10;align=center" value="Да (без рег. адаптации)" vertex="1">
+          <mxGeometry height="30" width="130" x="630" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="r3c5" parent="1" style="rounded=0;fillColor=#d5e8d4;strokeColor=#82b366;fontFamily=Verdana;fontSize=10;align=center" value="Да" vertex="1">
+          <mxGeometry height="30" width="130" x="760" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="r3c6" parent="1" style="rounded=0;fillColor=#f8cecc;strokeColor=#b85450;fontFamily=Verdana;fontSize=10;align=center" value="Нет" vertex="1">
+          <mxGeometry height="30" width="130" x="890" y="160" as="geometry" />
+        </mxCell>
+
+        <mxCell id="r4c0" parent="1" style="rounded=0;fillColor=#f5f5f5;strokeColor=#666666;fontFamily=Verdana;fontSize=10;align=left;spacingLeft=8" value="AI-аналитик" vertex="1">
+          <mxGeometry height="30" width="200" x="40" y="190" as="geometry" />
+        </mxCell>
+        <mxCell id="r4c1" parent="1" style="rounded=0;fillColor=#d5e8d4;strokeColor=#82b366;fontFamily=Verdana;fontSize=10;align=center" value="Да (LangGraph)" vertex="1">
+          <mxGeometry height="30" width="130" x="240" y="190" as="geometry" />
+        </mxCell>
+        <mxCell id="r4c2" parent="1" style="rounded=0;fillColor=#f8cecc;strokeColor=#b85450;fontFamily=Verdana;fontSize=10;align=center" value="Нет" vertex="1">
+          <mxGeometry height="30" width="130" x="370" y="190" as="geometry" />
+        </mxCell>
+        <mxCell id="r4c3" parent="1" style="rounded=0;fillColor=#f8cecc;strokeColor=#b85450;fontFamily=Verdana;fontSize=10;align=center" value="Нет" vertex="1">
+          <mxGeometry height="30" width="130" x="500" y="190" as="geometry" />
+        </mxCell>
+        <mxCell id="r4c4" parent="1" style="rounded=0;fillColor=#f8cecc;strokeColor=#b85450;fontFamily=Verdana;fontSize=10;align=center" value="Нет" vertex="1">
+          <mxGeometry height="30" width="130" x="630" y="190" as="geometry" />
+        </mxCell>
+        <mxCell id="r4c5" parent="1" style="rounded=0;fillColor=#f8cecc;strokeColor=#b85450;fontFamily=Verdana;fontSize=10;align=center" value="Нет" vertex="1">
+          <mxGeometry height="30" width="130" x="760" y="190" as="geometry" />
+        </mxCell>
+        <mxCell id="r4c6" parent="1" style="rounded=0;fillColor=#f8cecc;strokeColor=#b85450;fontFamily=Verdana;fontSize=10;align=center" value="Нет" vertex="1">
+          <mxGeometry height="30" width="130" x="890" y="190" as="geometry" />
+        </mxCell>
+
+        <mxCell id="r5c0" parent="1" style="rounded=0;fillColor=#f5f5f5;strokeColor=#666666;fontFamily=Verdana;fontSize=10;align=left;spacingLeft=8" value="Стартовая цена для отельера" vertex="1">
+          <mxGeometry height="30" width="200" x="40" y="220" as="geometry" />
+        </mxCell>
+        <mxCell id="r5c1" parent="1" style="rounded=0;fillColor=#d5e8d4;strokeColor=#82b366;fontFamily=Verdana;fontSize=10;align=center" value="3 500 ₽/мес" vertex="1">
+          <mxGeometry height="30" width="130" x="240" y="220" as="geometry" />
+        </mxCell>
+        <mxCell id="r5c2" parent="1" style="rounded=0;fillColor=#fff2cc;strokeColor=#d6b656;fontFamily=Verdana;fontSize=10;align=center" value="от 3 000 ₽/мес" vertex="1">
+          <mxGeometry height="30" width="130" x="370" y="220" as="geometry" />
+        </mxCell>
+        <mxCell id="r5c3" parent="1" style="rounded=0;fillColor=#fff2cc;strokeColor=#d6b656;fontFamily=Verdana;fontSize=10;align=center" value="от 4 700 ₽/мес" vertex="1">
+          <mxGeometry height="30" width="130" x="500" y="220" as="geometry" />
+        </mxCell>
+        <mxCell id="r5c4" parent="1" style="rounded=0;fillColor=#fff2cc;strokeColor=#d6b656;fontFamily=Verdana;fontSize=10;align=center" value="По запросу" vertex="1">
+          <mxGeometry height="30" width="130" x="630" y="220" as="geometry" />
+        </mxCell>
+        <mxCell id="r5c5" parent="1" style="rounded=0;fillColor=#fff2cc;strokeColor=#d6b656;fontFamily=Verdana;fontSize=10;align=center" value="$99/мес" vertex="1">
+          <mxGeometry height="30" width="130" x="760" y="220" as="geometry" />
+        </mxCell>
+        <mxCell id="r5c6" parent="1" style="rounded=0;fillColor=#d5e8d4;strokeColor=#82b366;fontFamily=Verdana;fontSize=10;align=center" value="Бесплатно" vertex="1">
+          <mxGeometry height="30" width="130" x="890" y="220" as="geometry" />
+        </mxCell>
+
+        <mxCell id="r6c0" parent="1" style="rounded=0;fillColor=#f5f5f5;strokeColor=#666666;fontFamily=Verdana;fontSize=10;align=left;spacingLeft=8" value="CSV-экспорт для исследователей" vertex="1">
+          <mxGeometry height="30" width="200" x="40" y="250" as="geometry" />
+        </mxCell>
+        <mxCell id="r6c1" parent="1" style="rounded=0;fillColor=#d5e8d4;strokeColor=#82b366;fontFamily=Verdana;fontSize=10;align=center" value="Да" vertex="1">
+          <mxGeometry height="30" width="130" x="240" y="250" as="geometry" />
+        </mxCell>
+        <mxCell id="r6c2" parent="1" style="rounded=0;fillColor=#f8cecc;strokeColor=#b85450;fontFamily=Verdana;fontSize=10;align=center" value="Нет" vertex="1">
+          <mxGeometry height="30" width="130" x="370" y="250" as="geometry" />
+        </mxCell>
+        <mxCell id="r6c3" parent="1" style="rounded=0;fillColor=#f8cecc;strokeColor=#b85450;fontFamily=Verdana;fontSize=10;align=center" value="Нет" vertex="1">
+          <mxGeometry height="30" width="130" x="500" y="250" as="geometry" />
+        </mxCell>
+        <mxCell id="r6c4" parent="1" style="rounded=0;fillColor=#f8cecc;strokeColor=#b85450;fontFamily=Verdana;fontSize=10;align=center" value="Нет" vertex="1">
+          <mxGeometry height="30" width="130" x="630" y="250" as="geometry" />
+        </mxCell>
+        <mxCell id="r6c5" parent="1" style="rounded=0;fillColor=#f8cecc;strokeColor=#b85450;fontFamily=Verdana;fontSize=10;align=center" value="Нет" vertex="1">
+          <mxGeometry height="30" width="130" x="760" y="250" as="geometry" />
+        </mxCell>
+        <mxCell id="r6c6" parent="1" style="rounded=0;fillColor=#fff2cc;strokeColor=#d6b656;fontFamily=Verdana;fontSize=10;align=center" value="PDF / Excel" vertex="1">
+          <mxGeometry height="30" width="130" x="890" y="250" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend" parent="1" style="text;html=1;align=left;verticalAlign=middle;fontFamily=Verdana;fontSize=9;fontStyle=2" value="Зелёный — преимущество, жёлтый — частичное решение, красный — отсутствует. Источники цен: TravelLine, Bnovo, RoomPriceGenie — официальные сайты на 05.2026; Hotellab — по запросу." vertex="1">
+          <mxGeometry height="30" width="980" x="40" y="290" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

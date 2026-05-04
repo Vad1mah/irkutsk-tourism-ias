@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     groq_api_key: SecretStr | None = None
     groq_model: str = "llama-3.3-70b-versatile"
     groq_max_tokens: int = 2048
-    groq_temperature: float = 0.3
+    groq_temperature: float = 0.2  # Groq tool-use best practice (console.groq.com/docs/prompting)
 
     # Mistral API
     mistral_api_key: SecretStr | None = None
@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     mistral_model: str = "mistral-large-latest"
     mistral_model_fast: str = "ministral-8b-latest"
     mistral_model_balanced: str = "mistral-small-latest"
-    mistral_max_tokens: int = 1000
+    mistral_max_tokens: int = 4096
     mistral_temperature: float = 0.3
     mistral_top_p: float = 0.9
     mistral_temp_extraction: float = 0.0

@@ -40,9 +40,11 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   if (method !== 'GET' && method !== 'HEAD' && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
   }
+  const signal = options?.signal ?? AbortSignal.timeout(30_000)
   const response = await fetch(API_BASE + url, {
     ...options,
     headers,
+    signal,
   })
   if (!response.ok) {
     // Пытаемся прочитать тело ошибки
@@ -223,6 +225,62 @@ export type PriceHistoryData = {
   prices: { date: string; avg_price: number; samples: number }[]
 }
 
+export type WeekdayHeatmapCell = {
+  weekday: number
+  month: number
+  occupancy: number
+  samples: number
+}
+
+export type WeekdayHeatmap = {
+  district: string | null
+  data: WeekdayHeatmapCell[]
+  weekdays: string[]
+  months: string[]
+  methodology: string
+}
+
+export type PickupPacePoint = {
+  date: string
+  booked: number
+  total_rooms: number
+  free_rooms: number
+  hotels_count: number
+  occupancy: number
+  pickup: number
+}
+
+export type PickupPace = {
+  district: string | null
+  period: { start: string; end: string; days: number }
+  points: PickupPacePoint[]
+  summary: {
+    avg_pickup: number
+    max_pickup: number
+    min_pickup: number
+    trend: string
+    samples: number
+  }
+  methodology: string
+}
+
+export type RevenueSummaryDistrict = {
+  district: string
+  occupancy: number
+  adr: number
+  revpar: number
+  hotels_count: number
+  confidence: 'high' | 'medium' | 'low'
+}
+
+export type RevenueSummary = {
+  occupancy: number
+  adr: number
+  revpar: number
+  by_district: RevenueSummaryDistrict[]
+  methodology: string
+}
+
 export type StreamEvent = {
   type: 'token' | 'tool_start' | 'tool_end' | 'sources' | 'done' | 'error'
   content?: string
@@ -272,14 +330,37 @@ export const api = {
     try {
       while (true) {
         const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n\n')
-        buffer = lines.pop() || ''
-        for (const line of lines) {
+        if (value) {
+          buffer += decoder.decode(value, { stream: true })
+        }
+        const parts = buffer.split('\n\n')
+        buffer = parts.pop() || ''
+        for (const block of parts) {
+          const line = block.trim()
           if (line.startsWith('data: ')) {
-            try { yield JSON.parse(line.slice(6)) as StreamEvent } catch { /* skip malformed */ }
+            try {
+              yield JSON.parse(line.slice(6)) as StreamEvent
+            } catch {
+              /* skip malformed */
+            }
           }
+        }
+        if (done) {
+          buffer += decoder.decode()
+          const tail = buffer.trim()
+          if (tail) {
+            for (const block of tail.split(/\n\n/)) {
+              const line = block.trim()
+              if (line.startsWith('data: ')) {
+                try {
+                  yield JSON.parse(line.slice(6)) as StreamEvent
+                } catch {
+                  /* skip malformed */
+                }
+              }
+            }
+          }
+          break
         }
       }
     } catch (err) {
@@ -336,4 +417,42 @@ export const api = {
 
   getPriceHistory: (days: number = 180) =>
     request<PriceHistoryData>(`/api/analytics/price-history?days=${days}`),
+
+  getWeekdayHeatmap: (district?: string) => {
+    const params = district ? `?district=${encodeURIComponent(district)}` : ''
+    return request<WeekdayHeatmap>(`/api/analytics/weekday-heatmap${params}`)
+  },
+
+  getPickupPace: (district?: string, days: number = 30) => {
+    const params = new URLSearchParams({ days: String(days) })
+    if (district) params.set('district', district)
+    return request<PickupPace>(`/api/analytics/pickup-pace?${params}`)
+  },
+
+  getRevenueSummary: () => request<RevenueSummary>('/api/analytics/revenue-summary'),
+
+  hotelForecast: (hotelId: string, daysAhead: number = 14) =>
+    request<{
+      hotel_id: string | null
+      district: string | null
+      forecast: { date: string; occupancy: number; lower_bound: number; upper_bound: number }[]
+      history_points: number
+    }>('/api/forecast', {
+      method: 'POST',
+      body: JSON.stringify({ hotel_id: hotelId, days_ahead: daysAhead }),
+      signal: AbortSignal.timeout(60_000),
+    }),
+
+  exportUrl: (
+    type: 'occupancy' | 'events' | 'hotels',
+    district?: string,
+    dateFrom?: string,
+    dateTo?: string,
+  ): string => {
+    const params = new URLSearchParams({ type })
+    if (district) params.set('district', district)
+    if (dateFrom) params.set('date_from', dateFrom)
+    if (dateTo) params.set('date_to', dateTo)
+    return API_BASE + `/api/analytics/export?${params}`
+  },
 }

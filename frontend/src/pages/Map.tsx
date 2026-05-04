@@ -21,7 +21,7 @@ import { usePageTitle } from '../hooks/usePageTitle'
 type ViewMode = 'map' | 'overview' | 'heatmap' | 'comparison'
 
 function Map() {
-  usePageTitle('Регионы')
+  usePageTitle('Региональная карта')
   const navigate = useNavigate()
   const [viewMode, setViewMode] = useState<ViewMode>('map')
   const [selectedDistrict, setSelectedDistrict] = useState<string | null>(null)
@@ -33,6 +33,7 @@ function Map() {
     queryFn: () => api.getHeatmap(14),
   })
   const { data: hotels, isError: errorHotels } = useQuery({ queryKey: ['hotels'], queryFn: api.getHotels })
+  const { data: hotelsMap } = useQuery({ queryKey: ['hotelsMap'], queryFn: () => api.getHotelsMap() })
   const hasSecondaryErrors = errorHotelsBy || errorHeatmap || errorHotels
 
   const districtsList = districts || []
@@ -53,7 +54,7 @@ function Map() {
   const viewButtons: { key: ViewMode; label: string; icon: React.ElementType; desc: string }[] = [
     { key: 'map', label: 'Карта отелей', icon: MapIcon, desc: 'Размещение на карте' },
     { key: 'overview', label: 'Обзор районов', icon: Layers, desc: 'Статистика по районам' },
-    { key: 'heatmap', label: 'Сезонная карта', icon: Activity, desc: 'Загрузка по месяцам' },
+    { key: 'heatmap', label: 'Сезонная карта', icon: Activity, desc: 'Заполняемость по месяцам' },
     { key: 'comparison', label: 'Сравнение', icon: BarChart3, desc: 'Сравнение районов' },
   ]
 
@@ -84,13 +85,13 @@ function Map() {
               <MapIcon className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold">Регионы и карта</h1>
+              <h1 className="text-2xl font-bold">Региональная карта</h1>
               <p className="text-sm text-[hsl(var(--muted-foreground))]">
                 Визуализация данных по районам Прибайкалья
               </p>
             </div>
             <button
-              onClick={() => navigate(`/chat?context=${encodeURIComponent('Сравни загрузку отелей по районам Прибайкалья')}`)}
+              onClick={() => navigate(`/chat?context=${encodeURIComponent('Сравни заполняемость отелей по районам Прибайкалья')}`)}
               className="ml-auto p-2 rounded-lg bg-[hsl(var(--primary)/0.1)] hover:bg-[hsl(var(--primary)/0.2)] transition-colors"
               title="Спросить AI"
             >
@@ -124,18 +125,29 @@ function Map() {
       {viewMode === 'map' && (
         <Card variant="glass">
           <CardHeader>
-            <div className="flex items-center gap-2">
-              <MapIcon className="w-5 h-5 text-[hsl(var(--primary))]" />
-              <CardTitle>Загруженность районов Прибайкалья</CardTitle>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <MapIcon className="w-5 h-5 text-[hsl(var(--primary))]" />
+                <CardTitle>Карта отелей Прибайкалья</CardTitle>
+              </div>
+              {hotelsMap && (
+                <div className="flex items-center gap-3 text-xs text-[hsl(var(--muted-foreground))]">
+                  <span>{hotelsMap.total_hotels} отелей</span>
+                  <span>{hotelsMap.total_rooms} номеров</span>
+                  <span>Загрузка {hotelsMap.avg_occupancy}%</span>
+                </div>
+              )}
             </div>
-            <p className="text-xs text-[hsl(var(--muted-foreground))]">
-              Размер круга пропорционален загрузке. Клик по району для перехода к детализации.
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">
+              Размер точки пропорционален заполняемости района. Клик по отелю для перехода к карточке.
             </p>
           </CardHeader>
           <CardContent>
             <GeoMap
               districts={districtsList}
+              hotels={hotelsMap?.hotels}
               onDistrictClick={(d) => navigate(`/analytics?district=${encodeURIComponent(d)}`)}
+              onHotelClick={(id) => navigate(`/hotels/${id}`)}
             />
             <div className="flex items-center justify-center gap-6 mt-4 text-xs text-[hsl(var(--muted-foreground))]">
               <span className="flex items-center gap-1.5">
@@ -150,6 +162,77 @@ function Map() {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* Map view: топ районы под картой */}
+      {viewMode === 'map' && districtsList.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Card variant="glass">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Топ-3 района по загрузке</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {[...districtsList]
+                  .filter(d => d.occupancy != null && d.hotelsCount >= 2)
+                  .sort((a, b) => (b.occupancy ?? 0) - (a.occupancy ?? 0))
+                  .slice(0, 3)
+                  .map((d, i) => (
+                    <div
+                      key={d.district}
+                      onClick={() => navigate(`/analytics?district=${encodeURIComponent(d.district)}`)}
+                      className="flex items-center justify-between p-2 rounded-lg bg-[hsl(var(--secondary)/0.4)] hover:bg-[hsl(var(--secondary))] transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm font-bold text-[hsl(var(--primary))] tabular-nums w-5">{i + 1}</span>
+                        <span className="text-sm font-medium">{d.district}</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs">
+                        <span className="text-[hsl(var(--muted-foreground))]">{d.hotelsCount} объектов</span>
+                        <span className="font-semibold tabular-nums text-[hsl(var(--success))]">
+                          {Math.round(d.occupancy ?? 0)}%
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card variant="glass">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Топ-3 района по числу объектов</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {[...districtsList]
+                  .filter(d => d.hotelsCount > 0)
+                  .sort((a, b) => b.hotelsCount - a.hotelsCount)
+                  .slice(0, 3)
+                  .map((d, i) => (
+                    <div
+                      key={d.district}
+                      onClick={() => navigate(`/analytics?district=${encodeURIComponent(d.district)}`)}
+                      className="flex items-center justify-between p-2 rounded-lg bg-[hsl(var(--secondary)/0.4)] hover:bg-[hsl(var(--secondary))] transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm font-bold text-[hsl(var(--accent))] tabular-nums w-5">{i + 1}</span>
+                        <span className="text-sm font-medium">{d.district}</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs">
+                        <span className="text-[hsl(var(--muted-foreground))] tabular-nums">
+                          {Math.round(d.occupancy ?? 0)}% загрузка
+                        </span>
+                        <span className="font-semibold tabular-nums text-[hsl(var(--accent))]">
+                          {d.hotelsCount}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {viewMode === 'overview' && (
@@ -229,8 +312,8 @@ function Map() {
                   <BarChart3 className="w-5 h-5 text-[hsl(var(--primary))]" />
                   <CardTitle>Сравнение районов</CardTitle>
                 </div>
-                <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                  Шкала 0–100: загрузка в процентах; номера и цена — доля от максимума среди районов на графике
+                <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                  Шкала 0–100: заполняемость в процентах; номера и цена — доля от максимума среди районов на графике
                 </p>
               </CardHeader>
               <CardContent>
@@ -246,7 +329,7 @@ function Map() {
                       domain={[0, 100]}
                       tick={{ fontSize: 9 }}
                     />
-                    <Radar name="Загрузка" dataKey="occupancy" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.2} />
+                    <Radar name="Заполняемость" dataKey="occupancy" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.2} />
                     <Radar name="Номера" dataKey="rooms" stroke="hsl(var(--accent))" fill="hsl(var(--accent))" fillOpacity={0.15} />
                     <Radar name="Цена" dataKey="price" stroke="hsl(var(--warning))" fill="hsl(var(--warning))" fillOpacity={0.1} />
                     <Tooltip
@@ -340,7 +423,7 @@ function DistrictCard({ district, isSelected, onClick, hotelsCount, onNavigate }
             style={{ width: `${occ}%` }}
           />
         </div>
-        <div className="grid grid-cols-3 gap-1 text-center text-[10px] text-[hsl(var(--muted-foreground))]">
+        <div className="grid grid-cols-3 gap-1 text-center text-xs text-[hsl(var(--muted-foreground))]">
           <div>
             <p className="font-semibold text-xs text-[hsl(var(--foreground))]">{hotelsCount}</p>
             <p>Отелей</p>
@@ -360,13 +443,13 @@ function DistrictCard({ district, isSelected, onClick, hotelsCount, onNavigate }
           <div className="flex gap-1 pt-1">
             <button
               onClick={(e) => { e.stopPropagation(); onNavigate('analytics') }}
-              className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-medium bg-[hsl(var(--primary)/0.1)] text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary)/0.2)] transition-colors"
+              className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium bg-[hsl(var(--primary)/0.1)] text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary)/0.2)] transition-colors"
             >
               <TrendingUp size={10} /> Аналитика
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); onNavigate('forecast') }}
-              className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-medium bg-[hsl(var(--accent)/0.1)] text-[hsl(var(--accent))] hover:bg-[hsl(var(--accent)/0.2)] transition-colors"
+              className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium bg-[hsl(var(--accent)/0.1)] text-[hsl(var(--accent))] hover:bg-[hsl(var(--accent)/0.2)] transition-colors"
             >
               <ExternalLink size={10} /> Прогноз
             </button>

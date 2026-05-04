@@ -220,8 +220,7 @@ model = "mistral-small-latest"  # Экономия ~60% токенов
 ### Интеграция в проект
 
 Файлы:
-- `backend/app/services/llm_service.py` - универсальный сервис
-- `backend/app/llm/groq_provider.py` - прямой доступ к Groq
+- `backend/app/services/llm_service.py` — универсальный сервис (в т.ч. Groq: `_init_groq` / `_call_groq`)
 - `backend/.env` - конфигурация
 
 ### Переключение провайдера
@@ -256,8 +255,8 @@ client = AsyncOpenAI(
   - Выбрана стратегия адаптивного выбора модели по типу задачи
   - Оптимизированы температура и max_tokens
 - **12.02.2026:** Создан LangGraph Agent с tools
-  - См. детали: `docs/LANGGRAPH_AGENT.md`
-  - Tools: search_hotels, search_events, get_weather, forecast_occupancy
+  - См. детали: `docs/research/LANGGRAPH_AGENT.md`
+  - Tools: search_hotels, search_events, get_weather, forecast_occupancy, get_statistics
   - Параметры по Mistral Best Practices: temp=0.1, top_p=0.9
 - **25.03.2026:** Mistral утверждён как основной провайдер (LLM_PROVIDER=mistral)
   - GigaChat → корпоративный + эмбеддинги (GigaChatEmbeddings)
@@ -394,6 +393,7 @@ model = "mistral-large-latest"  # Лучший для сложных задач 
 | `search_events` | Поиск событий |
 | `get_weather` | Текущая погода (OpenMeteo API) |
 | `forecast_occupancy` | Прогноз загрузки (ForecastAgent) |
+| `get_statistics` | KPI и агрегированная статистика |
 
 ### Граф
 
@@ -412,10 +412,11 @@ search_hotels:     ✅ Работает
 search_events:     ✅ Работает
 get_weather:       ✅ Работает
 forecast_occupancy:✅ Работает
+get_statistics:    ✅ Работает
 Mermaid:           ✅ Генерируется
 ```
 
-Подробности: `docs/LANGGRAPH_AGENT.md`
+Подробности: `docs/research/LANGGRAPH_AGENT.md`
 
 ---
 
@@ -438,7 +439,7 @@ Mermaid:           ✅ Генерируется
 │  ├───────────────────────────┤    ├───────────────────────────┤    │
 │  │ Использование:            │    │ Использование:            │    │
 │  │ • Chat API с tools        │    │ • RAG (generate_response) │    │
-│  │ • /api/chat/tools         │    │ • extract_structured()    │    │
+│  │ • /api/query (режим tools)│    │ • extract_structured()    │    │
 │  └───────────────────────────┘    └───────────────────────────┘    │
 │                                                                      │
 │  Документация:                                                       │

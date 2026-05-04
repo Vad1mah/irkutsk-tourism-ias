@@ -277,10 +277,14 @@ class DBService:
         ds = self._to_date(event.get("date_start"))
         if not ds:
             return False
+        eid = event.get("event_id") or event.get("id")
+        if not eid:
+            logger.warning("Skipping event without ID: %s", event.get("title", "unknown"))
+            return False
         async with async_session() as s:
             try:
                 stmt = pg_insert(Event).values(
-                    event_id=event.get("event_id", event.get("id", "")),
+                    event_id=eid,
                     title=event.get("title", ""),
                     description=event.get("description"),
                     date_start=ds,
@@ -316,8 +320,11 @@ class DBService:
             ds = self._to_date(ev.get("date_start"))
             if not ds:
                 continue
+            eid = ev.get("event_id") or ev.get("id")
+            if not eid:
+                continue
             rows.append({
-                "event_id": ev.get("event_id", ev.get("id", "")),
+                "event_id": eid,
                 "title": ev.get("title", ""),
                 "description": ev.get("description"),
                 "date_start": ds,
@@ -368,19 +375,25 @@ class DBService:
     async def save_hotels(self, hotels: list[dict]) -> int:
         if not hotels:
             return 0
-        rows = [
-            {
-                "id": h["id"],
-                "name": h["name"],
+        rows = []
+        for h in hotels:
+            hid = h.get("id")
+            hname = h.get("name")
+            if not hid or not hname:
+                logger.warning(f"Пропущен отель без id/name: {h}")
+                continue
+            rows.append({
+                "id": hid,
+                "name": hname,
                 "city": h.get("city", ""),
                 "district": h.get("district"),
                 "lat": h.get("lat"),
                 "lon": h.get("lon"),
                 "rating": h.get("rating"),
                 "min_price": h.get("min_price"),
-            }
-            for h in hotels
-        ]
+            })
+        if not rows:
+            return 0
         async with async_session() as s:
             try:
                 stmt = pg_insert(Hotel).values(rows)
@@ -406,18 +419,24 @@ class DBService:
     async def save_statistics(self, stats: list[dict]) -> int:
         if not stats:
             return 0
-        rows = [
-            {
-                "id": st["id"],
-                "date": st["date"],
+        rows = []
+        for st in stats:
+            sid = st.get("id")
+            sdate = st.get("date")
+            if not sid or not sdate:
+                logger.warning(f"Пропущена статистика без id/date: {st}")
+                continue
+            rows.append({
+                "id": sid,
+                "date": sdate,
                 "rooms_num": st.get("rooms_num"),
                 "free_rooms_amount": st.get("free_rooms_amount"),
                 "available_rooms_percent": st.get("available_rooms_percent"),
                 "min_price": st.get("min_price"),
                 "max_capacity": st.get("max_capacity"),
-            }
-            for st in stats
-        ]
+            })
+        if not rows:
+            return 0
         async with async_session() as s:
             try:
                 stmt = pg_insert(HotelStatistic).values(rows)
@@ -428,6 +447,7 @@ class DBService:
                         "free_rooms_amount": stmt.excluded.free_rooms_amount,
                         "available_rooms_percent": stmt.excluded.available_rooms_percent,
                         "min_price": stmt.excluded.min_price,
+                        "max_capacity": stmt.excluded.max_capacity,
                     },
                 )
                 await s.execute(stmt)
@@ -439,38 +459,38 @@ class DBService:
 
     async def get_total_metrics(self) -> dict:
         async with async_session() as s:
-            hotels_count = (
-                await s.execute(select(func.count()).select_from(Hotel))
-            ).scalar() or 0
+            combined = text("""
+                SELECT
+                    (SELECT count(*) FROM hotels) AS hotels_count,
+                    (SELECT count(DISTINCT city) FROM hotels) AS cities_count,
+                    (SELECT count(*) FROM events) AS events_count,
+                    COALESCE(s.total_rooms, 0) AS total_rooms,
+                    COALESCE(s.free_rooms, 0) AS free_rooms,
+                    COALESCE(s.avg_avail, 0) AS avg_avail
+                FROM (
+                    SELECT
+                        sum(rooms_num) AS total_rooms,
+                        sum(free_rooms_amount) AS free_rooms,
+                        avg(available_rooms_percent) AS avg_avail
+                    FROM hotel_statistics
+                    WHERE date = (SELECT max(date) FROM hotel_statistics)
+                ) s
+            """)
+            row = (await s.execute(combined)).one_or_none()
 
-            cities_count = (
-                await s.execute(select(func.count(func.distinct(Hotel.city))))
-            ).scalar() or 0
-
-            events_count = (
-                await s.execute(select(func.count()).select_from(Event))
-            ).scalar() or 0
-
-            stats_q = select(
-                func.sum(HotelStatistic.rooms_num),
-                func.sum(HotelStatistic.free_rooms_amount),
-                func.avg(HotelStatistic.available_rooms_percent),
-            ).where(
-                HotelStatistic.date == select(func.max(HotelStatistic.date)).scalar_subquery()
-            )
-            row = (await s.execute(stats_q)).one_or_none()
-
-            total_rooms = int(row[0] or 0) if row else 0
-            free_rooms = int(row[1] or 0) if row else 0
-            avg_avail = float(row[2] or 0) if row else 0
+            if not row:
+                return {
+                    "total_hotels": 0, "total_cities": 0, "total_events": 0,
+                    "total_rooms": 0, "free_rooms": 0, "avg_occupancy": 0.0,
+                }
 
             return {
-                "total_hotels": hotels_count,
-                "total_cities": cities_count,
-                "total_events": events_count,
-                "total_rooms": total_rooms,
-                "free_rooms": free_rooms,
-                "avg_occupancy": round(100.0 - avg_avail, 1),
+                "total_hotels": int(row.hotels_count or 0),
+                "total_cities": int(row.cities_count or 0),
+                "total_events": int(row.events_count or 0),
+                "total_rooms": int(row.total_rooms or 0),
+                "free_rooms": int(row.free_rooms or 0),
+                "avg_occupancy": round(100.0 - float(row.avg_avail or 0), 1),
             }
 
     async def get_districts_statistics(self) -> list[dict]:
@@ -584,13 +604,133 @@ class DBService:
                 await s.rollback()
                 raise
 
+    async def get_weekday_heatmap(self, district: str | None = None) -> list[dict]:
+        """Тепловая карта загрузки: день недели (1=Пн..7=Вс) × месяц (1..12)."""
+        async with async_session() as s:
+            q_text = """
+                SELECT
+                    EXTRACT(ISODOW FROM hs.date)::int AS weekday,
+                    EXTRACT(MONTH FROM hs.date)::int AS month,
+                    AVG(100.0 - hs.available_rooms_percent) AS avg_occupancy,
+                    COUNT(*) AS samples
+                FROM hotel_statistics hs
+                JOIN hotels h ON h.id = hs.id
+                WHERE hs.available_rooms_percent IS NOT NULL
+            """
+            params: dict = {}
+            if district:
+                q_text += " AND h.district = :district"
+                params["district"] = district
+            q_text += " GROUP BY 1, 2 ORDER BY 1, 2"
+            result = await s.execute(text(q_text), params)
+            return [
+                {
+                    "weekday": int(r.weekday),
+                    "month": int(r.month),
+                    "occupancy": round(float(r.avg_occupancy or 0), 1),
+                    "samples": int(r.samples or 0),
+                }
+                for r in result
+            ]
+
+    async def get_pickup_pace(
+        self, district: str | None = None, days: int = 30,
+    ) -> list[dict]:
+        """Динамика бронирований за последние N дней (район или весь регион)."""
+        from datetime import timedelta as _td
+
+        date_from = date.today() - _td(days=days)
+        async with async_session() as s:
+            q_text = """
+                SELECT
+                    hs.date AS date,
+                    SUM(hs.rooms_num) AS total_rooms,
+                    SUM(hs.free_rooms_amount) AS free_rooms,
+                    COUNT(DISTINCT hs.id) AS hotels_count
+                FROM hotel_statistics hs
+                JOIN hotels h ON h.id = hs.id
+                WHERE hs.date >= :date_from
+            """
+            params: dict = {"date_from": date_from}
+            if district:
+                q_text += " AND h.district = :district"
+                params["district"] = district
+            q_text += " GROUP BY hs.date ORDER BY hs.date"
+            result = await s.execute(text(q_text), params)
+            return [
+                {
+                    "date": r.date.isoformat() if r.date else None,
+                    "total_rooms": int(r.total_rooms or 0),
+                    "free_rooms": int(r.free_rooms or 0),
+                    "hotels_count": int(r.hotels_count or 0),
+                }
+                for r in result
+                if r.date is not None
+            ]
+
+    async def export_occupancy_rows(
+        self,
+        district: str | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        limit: int = 50000,
+    ) -> list[dict]:
+        """Сырые ряды для CSV-экспорта (для исследовательских задач)."""
+        async with async_session() as s:
+            q_text = """
+                SELECT
+                    hs.date,
+                    h.id AS hotel_id,
+                    h.name AS hotel_name,
+                    h.district,
+                    h.city,
+                    hs.rooms_num,
+                    hs.free_rooms_amount,
+                    hs.available_rooms_percent,
+                    hs.min_price
+                FROM hotel_statistics hs
+                JOIN hotels h ON h.id = hs.id
+                WHERE 1=1
+            """
+            params: dict = {}
+            if district:
+                q_text += " AND h.district = :district"
+                params["district"] = district
+            if date_from:
+                q_text += " AND hs.date >= :date_from"
+                params["date_from"] = date_from
+            if date_to:
+                q_text += " AND hs.date <= :date_to"
+                params["date_to"] = date_to
+            q_text += " ORDER BY hs.date DESC, h.id LIMIT :limit"
+            params["limit"] = limit
+            result = await s.execute(text(q_text), params)
+            return [
+                {
+                    "date": r.date.isoformat() if r.date else "",
+                    "hotel_id": r.hotel_id or "",
+                    "hotel_name": r.hotel_name or "",
+                    "district": r.district or "",
+                    "city": r.city or "",
+                    "rooms_num": r.rooms_num or 0,
+                    "free_rooms_amount": r.free_rooms_amount or 0,
+                    "available_rooms_percent": r.available_rooms_percent or 0.0,
+                    "min_price": r.min_price or 0,
+                }
+                for r in result
+            ]
+
     async def create_tables(self) -> None:
+        """Create tables if they don't exist. For schema changes use Alembic:
+        cd backend && alembic revision --autogenerate -m "description"
+        cd backend && alembic upgrade head
+        """
         from app.db.models import Base
         from app.db.session import engine
 
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-        logger.info("PostgreSQL tables created")
+        logger.info("PostgreSQL tables ensured (for schema changes use: alembic upgrade head)")
 
 
 db_service = DBService()
