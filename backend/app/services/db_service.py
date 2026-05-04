@@ -1,6 +1,6 @@
 """PostgreSQL сервис данных."""
 import logging
-from datetime import date, time
+from datetime import date, datetime, time
 
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -985,6 +985,95 @@ class DBService:
                 .where(Forecast.model == "ensemble")
             )).all()
             return {r[0]: r[1] for r in rows if r[1] is not None}
+
+    async def get_hotels_count(self) -> int:
+        """Количество отелей в базе данных."""
+        if not self.is_connected:
+            return 0
+        try:
+            async with async_session() as s:
+                return (await s.execute(select(func.count(Hotel.id)))).scalar_one()
+        except Exception as exc:
+            logger.error("get_hotels_count: %s", exc)
+            return 0
+
+    async def get_events_count(self) -> int:
+        """Количество событий в базе данных."""
+        if not self.is_connected:
+            return 0
+        try:
+            async with async_session() as s:
+                return (await s.execute(select(func.count(Event.event_id)))).scalar_one()
+        except Exception as exc:
+            logger.error("get_events_count: %s", exc)
+            return 0
+
+    async def get_data_date_range(self) -> dict:
+        """Диапазон дат данных (min/max дата в hotel_statistics)."""
+        if not self.is_connected:
+            return {"from": None, "to": None}
+        try:
+            async with async_session() as s:
+                row = (await s.execute(
+                    select(func.min(HotelStatistic.date), func.max(HotelStatistic.date))
+                )).first()
+                return {
+                    "from": row[0].isoformat() if row and row[0] else None,
+                    "to": row[1].isoformat() if row and row[1] else None,
+                }
+        except Exception as exc:
+            logger.error("get_data_date_range: %s", exc)
+            return {"from": None, "to": None}
+
+    async def detect_gap_periods(self, min_days: int = 7) -> list[dict]:
+        """Находит периоды без данных в hotel_statistics длиннее min_days дней.
+
+        Args:
+            min_days: Минимальная длина пропуска в днях.
+
+        Returns:
+            Список словарей с полями from, to, gap_days, reason.
+        """
+        if not self.is_connected:
+            return []
+        try:
+            async with async_session() as s:
+                result = await s.execute(text("""
+                    SELECT d_prev, d_next, gap_days FROM (
+                        SELECT
+                            date AS d_prev,
+                            LEAD(date) OVER (ORDER BY date) AS d_next,
+                            (LEAD(date) OVER (ORDER BY date) - date) AS gap_days
+                        FROM (SELECT DISTINCT date FROM hotel_statistics) t
+                    ) gaps
+                    WHERE gap_days > :min_days
+                    ORDER BY d_prev
+                """), {"min_days": min_days})
+                rows = result.all()
+                return [
+                    {
+                        "from": r[0].isoformat() if r[0] else None,
+                        "to": r[1].isoformat() if r[1] else None,
+                        "gap_days": int(r[2]) if r[2] is not None else None,
+                        "reason": "data_collection_offline",
+                    }
+                    for r in rows
+                ]
+        except Exception as exc:
+            logger.error("detect_gap_periods: %s", exc)
+            return []
+
+    async def get_last_data_refresh(self) -> datetime | None:
+        """Дата последнего обновления данных (MAX updated_at в hotel_statistics)."""
+        if not self.is_connected:
+            return None
+        try:
+            async with async_session() as s:
+                row = (await s.execute(select(func.max(HotelStatistic.updated_at)))).first()
+                return row[0] if row else None
+        except Exception as exc:
+            logger.error("get_last_data_refresh: %s", exc)
+            return None
 
     async def create_tables(self) -> None:
         """Create tables if they don't exist. For schema changes use Alembic:

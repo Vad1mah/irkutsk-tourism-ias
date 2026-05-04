@@ -912,6 +912,23 @@ async def get_data_coverage(
     }
 
 
+@router.get("/metadata")
+async def get_metadata(data: DataServiceDep) -> dict[str, Any]:
+    """Метаданные системы: счётчики, диапазон данных, gap-периоды."""
+    hotels = await data.get_hotels_count()
+    events = await data.get_events_count()
+    date_range = await data.get_data_date_range()
+    gaps = await data.detect_gap_periods(min_days=7)
+    last = await data.get_last_data_refresh()
+    return {
+        "hotels_count": hotels,
+        "events_count": events,
+        "data_range": date_range,
+        "last_refresh": last.isoformat() if last else None,
+        "gap_periods": gaps,
+    }
+
+
 @router.get("/price-history")
 async def get_price_history(
     data: DataServiceDep,
