@@ -13,6 +13,7 @@ from app.dependencies import (
     ChromaServiceDep,
     verify_api_key,
 )
+from app.config import settings
 from app.services.cache_service import cache_service
 
 logger = logging.getLogger(__name__)
@@ -20,36 +21,59 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/query", tags=["query"])
 
 _STREAM_COUNTER_KEY = "query:active_streams"
-_STREAM_TTL_SECONDS = 600  # автосброс зависших
-_MAX_CONCURRENT_STREAMS = 3
 
 
 async def increment_active_stream() -> int:
-    """Атомарно увеличить счётчик активных SSE-стримов (Redis INCR)."""
-    if cache_service.client is None:
+    """Атомарно увеличить счётчик активных SSE-стримов (Redis INCR).
+
+    TTL устанавливается один раз (EXPIRE NX) — не сбрасывается на каждый вызов.
+    Returns:
+        Новое значение счётчика, или 0 если Redis недоступен.
+    """
+    if cache_service.client is None or not cache_service.is_connected:
         return 0
-    val = await cache_service.client.incr(_STREAM_COUNTER_KEY)
-    await cache_service.client.expire(_STREAM_COUNTER_KEY, _STREAM_TTL_SECONDS)
-    return int(val)
+    try:
+        async with cache_service.client.pipeline() as pipe:
+            pipe.incr(_STREAM_COUNTER_KEY)
+            pipe.expire(_STREAM_COUNTER_KEY, settings.stream_ttl_seconds, nx=True)
+            results = await pipe.execute()
+            return int(results[0])
+    except Exception as exc:
+        logger.warning("increment_active_stream failed: %s", exc)
+        return 0
 
 
 async def decrement_active_stream() -> int:
-    """Атомарно уменьшить счётчик активных SSE-стримов (Redis DECR)."""
-    if cache_service.client is None:
+    """Атомарно уменьшить счётчик активных SSE-стримов (Redis DECR).
+
+    Returns:
+        Новое значение счётчика (≥ 0), или 0 если Redis недоступен.
+    """
+    if cache_service.client is None or not cache_service.is_connected:
         return 0
-    val = await cache_service.client.decr(_STREAM_COUNTER_KEY)
-    if val < 0:
-        await cache_service.client.set(_STREAM_COUNTER_KEY, 0)
+    try:
+        val = await cache_service.client.decr(_STREAM_COUNTER_KEY)
+        return int(val) if val >= 0 else 0
+    except Exception as exc:
+        logger.warning("decrement_active_stream failed: %s", exc)
         return 0
-    return int(val)
 
 
 async def get_active_streams() -> int:
-    """Получить текущее значение счётчика активных SSE-стримов."""
-    if cache_service.client is None:
+    """Получить текущее значение счётчика активных SSE-стримов.
+
+    Returns:
+        Текущее значение (≥ 0), или 0 если Redis недоступен.
+    """
+    if cache_service.client is None or not cache_service.is_connected:
         return 0
-    val = await cache_service.client.get(_STREAM_COUNTER_KEY)
-    return int(val or 0)
+    try:
+        val = await cache_service.client.get(_STREAM_COUNTER_KEY)
+        n = int(val or 0)
+        return max(n, 0)
+    except Exception as exc:
+        logger.warning("get_active_streams failed: %s", exc)
+        return 0
 
 
 @router.post("", response_model=QueryResponse)
@@ -111,14 +135,14 @@ async def stream_query(request: QueryRequest, chroma: ChromaServiceDep):
             detail="Сервис временно недоступен. Попробуйте позже."
         )
 
-    current = await get_active_streams()
-    if current >= _MAX_CONCURRENT_STREAMS:
+    val = await increment_active_stream()
+    if val > settings.stream_max_concurrent:
+        await decrement_active_stream()
         raise HTTPException(429, "Too many concurrent streams")
 
     from app.services.main_agent import main_agent
 
     async def event_generator():
-        await increment_active_stream()
         agen = main_agent.stream(
             message=request.text.strip(),
             session_id=request.session_id,

@@ -31,6 +31,7 @@ async def test_concurrent_stream_increments_are_atomic(redis_client):
     # Патчим cache_service.client на наш тестовый клиент
     from app.services.cache_service import cache_service
     original_client = cache_service._client
+    original_connected = cache_service._connected
     cache_service._client = redis_client
     cache_service._connected = True
 
@@ -44,6 +45,8 @@ async def test_concurrent_stream_increments_are_atomic(redis_client):
 
         # Cleanup
         await asyncio.gather(*(decrement_active_stream() for _ in range(100)))
+        after_decrement = await get_active_streams()
+        assert after_decrement == initial, f"Counter not restored: {after_decrement} vs {initial}"
     finally:
         cache_service._client = original_client
-        cache_service._connected = original_client is not None
+        cache_service._connected = original_connected

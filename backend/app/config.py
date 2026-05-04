@@ -107,6 +107,10 @@ class Settings(BaseSettings):
     rate_limit_period: int = 60
     environment: Literal["development", "staging", "production"] = "development"
 
+    # SSE stream limits
+    stream_max_concurrent: int = 3
+    stream_ttl_seconds: int = 600
+
     @field_validator("rate_limit_requests", "rate_limit_period")
     @classmethod
     def _positive_int(cls, v: int) -> int:
