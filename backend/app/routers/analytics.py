@@ -182,64 +182,79 @@ async def get_correlation_data(
             except (ValueError, IndexError):
                 continue
     
+    MIN_SAMPLES_PER_MONTH = 5
+
     # Формируем результат
     months_data = []
     missing_periods = []  # Пропущенные периоды
-    
+
     for month in range(1, 13):
         month_data = monthly_stats.get(month, {"occupancy": [], "price": [], "events": 0})
         occupancies = month_data["occupancy"]
         prices = month_data["price"]
-        
-        avg_occ = round(sum(occupancies) / len(occupancies), 1) if occupancies else 0
+
+        samples = len(occupancies)
+        avg_occ = round(sum(occupancies) / samples, 1) if occupancies else 0
         avg_price = round(sum(prices) / len(prices)) if prices else 0
-        
-        has_data = len(occupancies) > 0
-        
+
+        has_data = samples > 0
+        is_gap = samples < MIN_SAMPLES_PER_MONTH
+
         months_data.append({
             "month": _get_month_name(month),
             "occupancy": avg_occ,
             "avgPrice": avg_price,
             "events": month_data["events"],
             "season": _get_season(month),
-            "hasData": has_data,  # Флаг наличия данных
+            "hasData": has_data,
+            "samples": samples,
+            "is_gap": is_gap,
         })
-        
-        # Если нет данных — добавляем в missing_periods
+
+        # Если нет данных или gap — добавляем в missing_periods
         if not has_data:
             missing_periods.append({
                 "month": _get_month_name(month),
                 "monthIndex": month,
                 "reason": "Парсер был неактивен" if year == 2025 and month in [7, 8, 9] else "Нет данных",
             })
-    
-    # Расчёт корреляции Пирсона
-    occupancies = [m["occupancy"] for m in months_data if m["occupancy"] > 0]
-    events = [m["events"] for m in months_data if m["occupancy"] > 0]
-    
-    correlation = 0.0
-    if len(occupancies) >= 2 and len(events) >= 2:
-        n = min(len(occupancies), len(events))
-        occupancies = occupancies[:n]
-        events = events[:n]
-        
-        mean_occ = sum(occupancies) / n
-        mean_evt = sum(events) / n
-        
-        numerator = sum((o - mean_occ) * (e - mean_evt) for o, e in zip(occupancies, events))
-        denom_occ = sum((o - mean_occ) ** 2 for o in occupancies) ** 0.5
-        denom_evt = sum((e - mean_evt) ** 2 for e in events) ** 0.5
-        
+        elif is_gap:
+            missing_periods.append({
+                "month": _get_month_name(month),
+                "monthIndex": month,
+                "reason": f"Малая выборка ({samples} записей)",
+            })
+
+    # Расчёт корреляции Пирсона только по месяцам с достаточной выборкой
+    filtered_pairs = [
+        (m["events"], m["occupancy"])
+        for m in months_data
+        if not m["is_gap"] and m["occupancy"] > 0
+    ]
+
+    correlation: float | None = None
+    if len(filtered_pairs) >= 3:
+        n = len(filtered_pairs)
+        events_vals = [p[0] for p in filtered_pairs]
+        occ_vals = [p[1] for p in filtered_pairs]
+
+        mean_occ = sum(occ_vals) / n
+        mean_evt = sum(events_vals) / n
+
+        numerator = sum((o - mean_occ) * (e - mean_evt) for e, o in filtered_pairs)
+        denom_occ = sum((o - mean_occ) ** 2 for o in occ_vals) ** 0.5
+        denom_evt = sum((e - mean_evt) ** 2 for e in events_vals) ** 0.5
+
         if denom_occ * denom_evt > 0:
             correlation = round(numerator / (denom_occ * denom_evt), 2)
-    
-    # Пик и минимум (только из месяцев с данными)
-    valid_months = [m for m in months_data if m["occupancy"] > 0]
+
+    # Пик и минимум (только из месяцев с достаточными данными)
+    valid_months = [m for m in months_data if not m["is_gap"] and m["occupancy"] > 0]
     peak_month = max(valid_months, key=lambda x: x["occupancy"])["month"] if valid_months else None
     low_month = min(valid_months, key=lambda x: x["occupancy"])["month"] if valid_months else None
-    
+
     avg_occupancy = round(sum(m["occupancy"] for m in valid_months) / len(valid_months), 1) if valid_months else None
-    
+
     result = {
         "months": months_data,
         "correlation_coefficient": correlation,
