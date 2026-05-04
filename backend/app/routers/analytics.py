@@ -3,14 +3,15 @@ import asyncio
 import csv
 import io
 import time
+from datetime import date, date as _date, timedelta
 from typing import Any, Literal
 from fastapi import APIRouter, HTTPException, Depends, Query
 from fastapi.responses import StreamingResponse
-from datetime import date, timedelta
 from collections import defaultdict
 import logging
 
 from app.constants import VALID_DISTRICTS, CITY_TO_DISTRICT, DEFAULT_DISTRICT, DISTRICT_CENTERS, SEASON_MONTHS, MIN_SAMPLES_PER_MONTH
+from app.services.methodology_service import methodology_service
 from app.dependencies import (
     DataServiceDep, WeatherServiceDep, EnsembleServiceDep, CacheServiceDep,
 )
@@ -489,15 +490,15 @@ async def get_events_impact(
     data: DataServiceDep,
     cache: CacheServiceDep,
     method: Literal["naive", "seasonal_corrected"] = "seasonal_corrected",
-    window_weeks: int = Query(3, ge=1, le=52, description="Окно для baseline-расчёта (недели). Используется в seasonal_corrected (D2)."),
+    window_weeks: int = Query(3, ge=1, le=52, description="Окно для baseline-расчёта (недели). Используется в seasonal_corrected."),
 ) -> list[dict[str, Any]]:
     """Влияние событий на загруженность: сравнение в дни событий vs обычные дни.
 
     Args:
         method: Метод расчёта. ``naive`` — простая разница event_day vs avg.
-            ``seasonal_corrected`` — скорректированный (полная реализация в Task D2,
-            пока fallback на naive с маркером ``method=naive_fallback``).
-        window_weeks: Не используется в текущей реализации (зарезервировано для D2).
+            ``seasonal_corrected`` — скорректированный baseline по weekday ±window_weeks недель,
+            исключая дни других событий.
+        window_weeks: Размер окна для baseline (недели), только для seasonal_corrected.
     """
     cache_key = f"analytics:events-impact:{DEFAULT_DISTRICT}:{method}"
     cached = await cache.get(cache_key)
@@ -507,12 +508,81 @@ async def get_events_impact(
     if method == "naive":
         result = await _events_impact_naive(data)
     else:
-        # seasonal_corrected будет реализован в Task D2 — пока fallback на naive с пометкой
-        result = await _events_impact_naive(data)
-        for r in result:
-            r["method"] = "naive_fallback"
+        result = await _events_impact_seasonal_corrected(data, window_weeks=window_weeks)
 
     await cache.set(cache_key, result, ttl=300)
+    return result
+
+
+async def _events_impact_seasonal_corrected(
+    data: DataServiceProtocol,
+    window_weeks: int = 3,
+) -> list[dict[str, Any]]:
+    """Corrected impact: baseline по weekday в окне ±N недель, исключая другие event-дни."""
+    if not data.is_connected:
+        raise HTTPException(503, "БД не подключена")
+
+    events = await data.get_events()
+    if not events:
+        return []
+
+    # Карта occupancy по районам
+    districts = {e.get("district") for e in events if e.get("district")}
+    history_per_district: dict[str, list[tuple[_date, float]]] = {}
+    for d in districts:
+        rows = await data.get_occupancy_by_district(d)
+        history_per_district[d] = [
+            (r["date"], r["avg_occupancy"])
+            for r in rows
+            if r.get("avg_occupancy") is not None
+        ]
+
+    # Множество дат-событий для исключения из baseline
+    event_dates_per_district: dict[str, set[_date]] = {}
+    for e in events:
+        d = e.get("district")
+        ds = e.get("date_start")
+        if d and ds:
+            if isinstance(ds, str):
+                try:
+                    ds = _date.fromisoformat(ds[:10])
+                except ValueError:
+                    continue
+            event_dates_per_district.setdefault(d, set()).add(ds)
+
+    result: list[dict[str, Any]] = []
+    for e in events:
+        d = e.get("district")
+        ds = e.get("date_start")
+        if not d or not ds:
+            continue
+        if isinstance(ds, str):
+            try:
+                ds = _date.fromisoformat(ds[:10])
+            except ValueError:
+                continue
+        history = history_per_district.get(d, [])
+        observed = next((occ for dd, occ in history if dd == ds), None)
+        if observed is None:
+            continue
+        baseline = methodology_service.compute_seasonal_baseline(
+            target_date=ds,
+            target_weekday=ds.weekday(),
+            occupancy_history=history,
+            event_dates=event_dates_per_district.get(d, set()),
+            window_weeks=window_weeks,
+        )
+        impact = methodology_service.corrected_impact(observed=observed, baseline=baseline)
+        result.append({
+            "event": e.get("title"),
+            "date": ds.isoformat() if hasattr(ds, "isoformat") else str(ds),
+            "district": d,
+            "occupancy_on_day": round(observed, 2),
+            **impact,
+        })
+
+    # Сортировка по модулю delta_pct убыв.
+    result.sort(key=lambda r: abs(r.get("delta_pct") or 0), reverse=True)
     return result
 
 
