@@ -22,6 +22,7 @@ from app.dependencies import (
     CacheServiceDep,
 )
 from app.executor import run_sync
+from app.services.cache_service import build_ensemble_cache_key
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/forecast", tags=["forecast"])
@@ -314,7 +315,7 @@ async def get_ensemble_forecast(
     - weighted_average: Взвешенное по качеству
     - best_model: Лучшая модель
     """
-    cache_key = cache_svc.cache_key("forecast:ensemble", district, days_ahead, method)
+    cache_key = build_ensemble_cache_key(district=district, days=days_ahead)
     cached = await cache_svc.get(cache_key)
     if cached:
         logger.info(f"Ensemble forecast cache hit: {district}")

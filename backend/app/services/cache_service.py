@@ -121,3 +121,25 @@ class CacheService:
 
 
 cache_service = CacheService()
+
+# Версия модели ensemble — бампать при изменении весов или признаков.
+ENSEMBLE_MODEL_VERSION = "ens-v2-2026-05"
+
+
+def build_ensemble_cache_key(
+    district: str,
+    days: int,
+    model_version: str = ENSEMBLE_MODEL_VERSION,
+) -> str:
+    """Построить cache key для ensemble прогноза.
+
+    Args:
+        district: Название района.
+        days: Горизонт прогноза в днях.
+        model_version: Версия модели; отличная версия → отдельный ключ,
+            что исключает возврат устаревших данных после переобучения.
+
+    Returns:
+        Строка вида ``forecast:ensemble:<version>:<district>:<days>``.
+    """
+    return f"forecast:ensemble:{model_version}:{district}:{days}"
