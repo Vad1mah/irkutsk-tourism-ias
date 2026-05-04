@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 import logging
 from typing import Any
 
+from app.services.parser_health_service import parser_health_service
 from app.parsers import (
     fetch_events_irk,
     fetch_events_culture38,
@@ -20,6 +21,12 @@ from app.scheduler import get_scheduler
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/parser", tags=["parser"])
+
+
+@router.get("/health")
+async def parser_health() -> list[dict]:
+    """Статус каждого парсера: last_run, status, items_collected, error."""
+    return await parser_health_service.list_all()
 
 
 @router.post("/hotels", dependencies=[Depends(verify_api_key)])

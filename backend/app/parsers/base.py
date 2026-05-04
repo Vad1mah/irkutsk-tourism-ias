@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.config import settings
 from app.parsers.anti_detection import get_random_user_agent
+from app.services.parser_health_service import parser_health_service
 
 logger = logging.getLogger(__name__)
 
@@ -209,11 +210,36 @@ class BaseParser(ABC):
     async def fetch_events(self, **kwargs) -> list[ParsedEvent]:
         """
         Получить список событий.
-        
+
         Должен быть реализован в каждом парсере.
         """
         pass
-    
+
+    async def run_with_health(self, **kwargs) -> list[ParsedEvent]:
+        """Обёртка над fetch_events с отчётом в ParserHealthService.
+
+        Субклассы не обязаны переопределять этот метод — достаточно
+        реализовать fetch_events(). Вызывается планировщиком и роутерами
+        вместо прямого fetch_events(), чтобы каждый запуск фиксировался
+        в Redis hash ``parser_health``.
+        """
+        try:
+            items = await self.fetch_events(**kwargs)
+            await parser_health_service.report(
+                parser_id=self.config.name,
+                status="ok",
+                items_collected=len(items),
+            )
+            return items
+        except Exception as exc:
+            await parser_health_service.report(
+                parser_id=self.config.name,
+                status="fail",
+                items_collected=0,
+                error=str(exc)[:500],
+            )
+            raise
+
     def get_stats(self) -> dict[str, Any]:
         """Получить статистику парсера."""
         return {
