@@ -49,7 +49,7 @@ async def _warmup_forecast_cache():
         points = result.get("ensemble", [])
         logger.info(f"Warmup: ensemble прогрев завершён, {len(points)} точек для {DEFAULT_DISTRICT}")
 
-        key = build_ensemble_cache_key(district=DEFAULT_DISTRICT, days=days)
+        key = build_ensemble_cache_key(district=DEFAULT_DISTRICT, days=days, method="weighted_average")
         if cache_service.is_connected:
             await cache_service.set(key, {
                 "district": DEFAULT_DISTRICT,

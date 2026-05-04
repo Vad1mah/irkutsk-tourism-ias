@@ -315,7 +315,7 @@ async def get_ensemble_forecast(
     - weighted_average: Взвешенное по качеству
     - best_model: Лучшая модель
     """
-    cache_key = build_ensemble_cache_key(district=district, days=days_ahead)
+    cache_key = build_ensemble_cache_key(district=district, days=days_ahead, method=method)
     cached = await cache_svc.get(cache_key)
     if cached:
         logger.info(f"Ensemble forecast cache hit: {district}")

@@ -129,17 +129,22 @@ ENSEMBLE_MODEL_VERSION = "ens-v2-2026-05"
 def build_ensemble_cache_key(
     district: str,
     days: int,
+    method: str = "weighted_average",
     model_version: str = ENSEMBLE_MODEL_VERSION,
 ) -> str:
-    """Построить cache key для ensemble прогноза.
+    """Cache key для ensemble forecast.
+
+    Включает model_version (для invalidation на retrain) и method (для разделения weighted_average / best_model / simple_average).
+    Старые ключи без model_version естественно истекут по TTL.
 
     Args:
         district: Название района.
         days: Горизонт прогноза в днях.
+        method: Метод объединения моделей.
         model_version: Версия модели; отличная версия → отдельный ключ,
             что исключает возврат устаревших данных после переобучения.
 
     Returns:
-        Строка вида ``forecast:ensemble:<version>:<district>:<days>``.
+        Строка вида ``forecast:ensemble:<version>:<district>:<days>:<method>``.
     """
-    return f"forecast:ensemble:{model_version}:{district}:{days}"
+    return f"forecast:ensemble:{model_version}:{district}:{days}:{method}"

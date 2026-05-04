@@ -19,3 +19,14 @@ def test_ensemble_cache_key_default_model_version():
     assert ENSEMBLE_MODEL_VERSION in key
     assert "Иркутский" in key
     assert "14" in key
+
+
+def test_ensemble_cache_key_includes_method():
+    """Different methods yield different cache keys."""
+    from app.services.cache_service import build_ensemble_cache_key
+
+    k_weighted = build_ensemble_cache_key(district="Иркутский", days=14, method="weighted_average")
+    k_best = build_ensemble_cache_key(district="Иркутский", days=14, method="best_model")
+    assert k_weighted != k_best
+    assert "weighted_average" in k_weighted
+    assert "best_model" in k_best
