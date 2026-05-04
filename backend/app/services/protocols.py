@@ -73,6 +73,14 @@ class DataServiceProtocol(Protocol):
     async def detect_gap_periods(self, min_days: int = 7) -> list[dict]: ...
     async def get_last_data_refresh(self) -> datetime | None: ...
 
+    async def compute_proxy_pickup(
+        self,
+        *,
+        district: str,
+        days_ahead: int,
+        lookback_days: int,
+    ) -> list[dict]: ...
+
 
 @runtime_checkable
 class ForecastServiceProtocol(Protocol):

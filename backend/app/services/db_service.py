@@ -1076,6 +1076,78 @@ class DBService:
             logger.error("get_last_data_refresh: %s", exc)
             return None
 
+    async def compute_proxy_pickup(
+        self,
+        *,
+        district: str,
+        days_ahead: int,
+        lookback_days: int,
+    ) -> list[dict]:
+        """Прокси-pickup: разница occupancy между двумя snapshot'ами для будущих дат.
+
+        Ограничение: таблица hotel_statistics хранит одну строку на (hotel_id, date)
+        без временно́й метки snapshot'а.  Настоящий pickup требовал бы двух snapshot'ов —
+        «сегодня» и «lookback_days назад» — для одной и той же future_date.
+        Поскольку такой timestamp отсутствует, метод возвращает текущий уровень occupancy
+        для каждой будущей даты и pickup_pct=0.0, явно документируя ограничение через
+        поле methodology в ответе.
+
+        Args:
+            district: Район Иркутской области.
+            days_ahead: Количество будущих дней для анализа.
+            lookback_days: Запрошенный горизонт ретроспективы (сохраняется для ответа).
+
+        Returns:
+            Список словарей с ключами date, occupancy_today, occupancy_lookback, pickup_pct.
+        """
+        if not self.is_connected:
+            return []
+        from datetime import timedelta as _td
+        today = date.today()
+        futures = [today + _td(days=i) for i in range(1, days_ahead + 1)]
+
+        try:
+            async with async_session() as s:
+                q_text = """
+                    SELECT
+                        hs.date,
+                        AVG(100.0 - hs.available_rooms_percent) AS occupancy
+                    FROM hotel_statistics hs
+                    JOIN hotels h ON h.id = hs.id
+                    WHERE h.district = :district
+                      AND hs.available_rooms_percent IS NOT NULL
+                      AND hs.date = ANY(:futures)
+                    GROUP BY hs.date
+                    ORDER BY hs.date
+                """
+                result = await s.execute(
+                    text(q_text),
+                    {"district": district, "futures": futures},
+                )
+                rows = result.all()
+
+            by_date: dict[date, float] = {r[0]: float(r[1] or 0.0) for r in rows}
+
+            points: list[dict] = []
+            for fd in futures:
+                today_val = by_date.get(fd)
+                # Without per-snapshot timestamps we cannot distinguish "occupancy seen
+                # today" vs "occupancy seen lookback_days ago" for the same future date.
+                # Both slots receive the same value; pickup_pct is therefore 0.0 when data
+                # exists and None when it doesn't — caller documents this via methodology.
+                prev_val = today_val
+                pickup = 0.0 if today_val is not None else None
+                points.append({
+                    "date": fd.isoformat(),
+                    "occupancy_today": round(today_val, 2) if today_val is not None else None,
+                    "occupancy_lookback": round(prev_val, 2) if prev_val is not None else None,
+                    "pickup_pct": pickup,
+                })
+            return points
+        except Exception as exc:
+            logger.error("compute_proxy_pickup: %s", exc)
+            return []
+
     async def create_tables(self) -> None:
         """Create tables if they don't exist. For schema changes use Alembic:
         cd backend && alembic revision --autogenerate -m "description"

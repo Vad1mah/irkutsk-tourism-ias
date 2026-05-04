@@ -289,6 +289,33 @@ class AnalyticsMetadataResponse(BaseModel):
     gap_periods: list[GapPeriod] = Field(default_factory=list)
 
 
+class BookingPacePoint(BaseModel):
+    """Одна точка proxy-pickup: будущая дата + дельта загрузки."""
+    date: str  # ISO
+    occupancy_today: float | None = None
+    occupancy_lookback: float | None = None
+    pickup_pct: float | None = None
+
+
+class BookingPaceSummary(BaseModel):
+    """Сводка по pickup за период."""
+    avg_pickup_pct: float | None = None
+    max_pickup_pct: float | None = None
+    min_pickup_pct: float | None = None
+    trend: str  # "ускорение" | "замедление" | "стабильно"
+
+
+class BookingPaceResponse(BaseModel):
+    """Ответ endpoint /api/analytics/booking-pace."""
+    district: str
+    days_ahead: int
+    lookback_days: int
+    method: str = "daily_proxy_pickup"
+    methodology: str
+    points: list[BookingPacePoint]
+    summary: BookingPaceSummary
+
+
 class ValidationPoint(BaseModel):
     """Точка валидации (прогноз или факт)."""
     date: str

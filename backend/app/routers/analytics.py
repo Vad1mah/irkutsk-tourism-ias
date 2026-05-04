@@ -21,6 +21,7 @@ from app.models.schemas import (
     KPIResponse, CityHotels,
     TripSummary, EventBrief, WeatherDay, BestDate,
     AnalyticsMetadataResponse, DataDateRange, GapPeriod,
+    BookingPacePoint, BookingPaceSummary, BookingPaceResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -1540,6 +1541,74 @@ async def get_weekday_heatmap(
         ),
     }
     await cache.set(cache_key, response, ttl=600)
+    return response
+
+
+@router.get("/booking-pace", response_model=BookingPaceResponse)
+async def booking_pace(
+    data: DataServiceDep,
+    cache: CacheServiceDep,
+    district: str = DEFAULT_DISTRICT,
+    days_ahead: int = Query(14, ge=1, le=90),
+    lookback_days: int = Query(7, ge=1, le=30),
+) -> BookingPaceResponse:
+    """Proxy-pickup для будущих дат: разница загрузки между двумя временны́ми срезами.
+
+    Методология: pickup_pct = occupancy(future_date, today) - occupancy(future_date, today - lookback_days).
+    При положительной дельте загрузка «набирается» — сигнал для пересмотра тарифов.
+
+    Ограничение текущей реализации: hotel_statistics не хранит timestamp snapshot'а,
+    поэтому два среза для одной future_date недостижимы.  Endpoint возвращает
+    pickup_pct=0.0 там, где данные есть, и None там, где данных нет.
+    Поле methodology содержит явное описание ограничения.
+    """
+    cache_key = f"analytics:booking-pace:{district}:{days_ahead}:{lookback_days}"
+    cached = await cache.get(cache_key)
+    if cached:
+        return BookingPaceResponse(**cached)
+
+    points_raw = await data.compute_proxy_pickup(
+        district=district,
+        days_ahead=days_ahead,
+        lookback_days=lookback_days,
+    )
+    pickups = [p["pickup_pct"] for p in points_raw if p.get("pickup_pct") is not None]
+
+    if not pickups:
+        trend = "стабильно"
+    elif len(pickups) >= 3:
+        recent_sum = sum(pickups[-3:])
+        if recent_sum > 0.5:
+            trend = "ускорение"
+        elif recent_sum < -0.5:
+            trend = "замедление"
+        else:
+            trend = "стабильно"
+    else:
+        trend = "стабильно"
+
+    summary = BookingPaceSummary(
+        avg_pickup_pct=round(sum(pickups) / len(pickups), 2) if pickups else None,
+        max_pickup_pct=max(pickups) if pickups else None,
+        min_pickup_pct=min(pickups) if pickups else None,
+        trend=trend,
+    )
+    response = BookingPaceResponse(
+        district=district,
+        days_ahead=days_ahead,
+        lookback_days=lookback_days,
+        method="daily_proxy_pickup",
+        methodology=(
+            "pickup_pct = occupancy(future_date, today) - occupancy(future_date, today - lookback_days). "
+            "Ограничение: hotel_statistics не хранит timestamp snapshot'а, поэтому два временны́х среза "
+            "для одной future_date недостижимы в текущей схеме БД. "
+            "pickup_pct=0.0 означает наличие данных при отсутствии временно́й дельты; "
+            "pickup_pct=null — данных за эту дату нет совсем."
+        ),
+        points=[BookingPacePoint(**p) for p in points_raw],
+        summary=summary,
+    )
+    await cache.set(cache_key, response.model_dump(), ttl=180)
     return response
 
 
