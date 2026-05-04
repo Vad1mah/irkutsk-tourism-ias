@@ -137,7 +137,7 @@ async def init_events_table(data_svc: DataServiceDep, with_demo_data: bool = Que
     inserted = 0
     if with_demo_data:
         demo_events = _get_demo_events()
-        inserted = await data_svc.insert_events_batch(demo_events)
+        inserted = await data_svc.upsert_events_batch(demo_events)
 
     return {
         "status": "ok",
@@ -249,7 +249,7 @@ async def refresh_events(data_svc: DataServiceDep, days_ahead: int = Query(7, de
     try:
         raw_irk = await fetch_events_irk(days_ahead=days_ahead)
         events_irk = _parse_irk_events(raw_irk)
-        inserted = await data_svc.insert_events_batch(events_irk)
+        inserted = await data_svc.upsert_events_batch(events_irk)
         total_added += inserted
         if inserted > 0:
             sources.append(f"irk.ru ({inserted})")
@@ -260,7 +260,7 @@ async def refresh_events(data_svc: DataServiceDep, days_ahead: int = Query(7, de
     try:
         raw_culture38 = await fetch_events_culture38(days_ahead=days_ahead)
         events_culture38 = _parse_culture38_events(raw_culture38)
-        inserted = await data_svc.insert_events_batch(events_culture38)
+        inserted = await data_svc.upsert_events_batch(events_culture38)
         total_added += inserted
         if inserted > 0:
             sources.append(f"culture38.ru ({inserted})")
@@ -371,7 +371,7 @@ async def load_historical_events(
                 "url": e.get("url", ""),
             })
 
-        inserted = await data_svc.insert_events_batch(events_batch)
+        inserted = await data_svc.upsert_events_batch(events_batch)
 
         return {
             "status": "ok",
@@ -421,7 +421,7 @@ async def fetch_major_events(data_svc: DataServiceDep) -> dict[str, Any]:
                 "url": e.get("url", ""),
             })
 
-        inserted = await data_svc.insert_events_batch(events_batch)
+        inserted = await data_svc.upsert_events_batch(events_batch)
 
         return {
             "status": "ok",

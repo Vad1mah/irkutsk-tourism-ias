@@ -65,7 +65,7 @@ class DataCollectorScheduler:
             count = len(events)
 
             if events:
-                saved = await data_service.insert_events_batch(events)
+                saved = await data_service.upsert_events_batch(events)
                 logger.info(f"Собрано {count} событий, сохранено {saved}")
                 await self._reindex_chroma()
             else:
@@ -139,7 +139,7 @@ class DataCollectorScheduler:
             count = len(events)
 
             if events:
-                saved = await data_service.insert_events_batch(events)
+                saved = await data_service.upsert_events_batch(events)
                 logger.info(f"Собрано {count} событий из Telegram, сохранено {saved}")
                 await self._reindex_chroma()
             else:

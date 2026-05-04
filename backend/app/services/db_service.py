@@ -327,32 +327,43 @@ class DBService:
                 await s.rollback()
                 return False
 
+    def _build_event_row(self, ev: dict) -> dict | None:
+        """Преобразует входящий dict парсера в row для INSERT/UPSERT events.
+
+        Args:
+            ev: Словарь с данными события от парсера.
+
+        Returns:
+            Словарь с полями для вставки, или None если event_id/date_start отсутствуют.
+        """
+        ds = self._to_date(ev.get("date_start"))
+        eid = ev.get("event_id") or ev.get("id")
+        if not ds or not eid:
+            return None
+        return {
+            "event_id": eid,
+            "title": ev.get("title", ""),
+            "description": ev.get("description"),
+            "date_start": ds,
+            "date_end": self._to_date(ev.get("date_end")),
+            "event_type": ev.get("event_type"),
+            "location": self._clean_location(ev.get("location")),
+            "source_id": ev.get("source_id", ev.get("source", "")),
+            "url": ev.get("url"),
+            "time_start": ev.get("time_start"),
+            "price_min": ev.get("price_min"),
+            "price_max": ev.get("price_max"),
+            "image_url": ev.get("image_url"),
+            "address": ev.get("address"),
+            "age_restriction": ev.get("age_restriction"),
+        }
+
     async def insert_events_batch(self, events: list[dict]) -> int:
         rows = []
         for ev in events:
-            ds = self._to_date(ev.get("date_start"))
-            if not ds:
-                continue
-            eid = ev.get("event_id") or ev.get("id")
-            if not eid:
-                continue
-            rows.append({
-                "event_id": eid,
-                "title": ev.get("title", ""),
-                "description": ev.get("description"),
-                "date_start": ds,
-                "date_end": self._to_date(ev.get("date_end")),
-                "event_type": ev.get("event_type"),
-                "location": self._clean_location(ev.get("location")),
-                "source_id": ev.get("source_id", ev.get("source", "")),
-                "url": ev.get("url"),
-                "time_start": ev.get("time_start"),
-                "price_min": ev.get("price_min"),
-                "price_max": ev.get("price_max"),
-                "image_url": ev.get("image_url"),
-                "address": ev.get("address"),
-                "age_restriction": ev.get("age_restriction"),
-            })
+            row = self._build_event_row(ev)
+            if row:
+                rows.append(row)
         if not rows:
             return 0
         async with async_session() as s:
@@ -399,29 +410,9 @@ class DBService:
         """
         rows = []
         for ev in events:
-            ds = self._to_date(ev.get("date_start"))
-            if not ds:
-                continue
-            eid = ev.get("event_id") or ev.get("id")
-            if not eid:
-                continue
-            rows.append({
-                "event_id": eid,
-                "title": ev.get("title", ""),
-                "description": ev.get("description"),
-                "date_start": ds,
-                "date_end": self._to_date(ev.get("date_end")),
-                "event_type": ev.get("event_type"),
-                "location": self._clean_location(ev.get("location")),
-                "source_id": ev.get("source_id", ev.get("source", "")),
-                "url": ev.get("url"),
-                "time_start": ev.get("time_start"),
-                "price_min": ev.get("price_min"),
-                "price_max": ev.get("price_max"),
-                "image_url": ev.get("image_url"),
-                "address": ev.get("address"),
-                "age_restriction": ev.get("age_restriction"),
-            })
+            row = self._build_event_row(ev)
+            if row:
+                rows.append(row)
         if not rows:
             return 0
         async with async_session() as s:
