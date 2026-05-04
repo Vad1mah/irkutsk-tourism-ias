@@ -495,6 +495,87 @@ async def compare_all_models(
         return response
 
 
+LLM_EXPLAIN_TIMEOUT_S = 5.0
+
+
+def _extract_factors_from_ensemble(result: dict) -> list[dict]:
+    """Достаёт топ-5 факторов из feature_importance ensemble."""
+    fi = (result or {}).get("feature_importance", {})
+    if isinstance(fi, dict):
+        # Может быть {"xgboost": {...}} или плоским dict
+        inner = fi.get("xgboost", fi)
+        if isinstance(inner, dict):
+            return [
+                {"name": k, "importance": v}
+                for k, v in sorted(inner.items(), key=lambda x: -x[1])[:5]
+            ]
+    return []
+
+
+def _build_factor_explanation(district: str, days: int, factors: list[dict]) -> str:
+    if not factors:
+        return (
+            f"Прогноз на {days} дней по району «{district}» построен на ансамбле моделей. "
+            f"Подробное объяснение временно недоступно (AI-сервис не отвечает)."
+        )
+    top = ", ".join(f["name"] for f in factors[:3])
+    return (
+        f"Прогноз на {days} дней по району «{district}» опирается на исторический ряд занятости "
+        f"и набор признаков. Главные факторы по важности: {top}. "
+        f"Развёрнутое AI-объяснение временно недоступно — показаны топ-5 факторов из XGBoost."
+    )
+
+
+async def _explain_with_fallback(
+    district: str,
+    days_ahead: int,
+    target_date: str | None,
+) -> dict:
+    """Вызывает forecast_agent с таймаутом; при ошибке возвращает factor-only fallback."""
+    from app.services.forecast_agent import forecast_agent
+
+    factors: list[dict] = []
+    try:
+        result = await asyncio.wait_for(
+            forecast_agent.run(
+                district=district,
+                days_ahead=days_ahead,
+                target_date=target_date,
+            ),
+            timeout=LLM_EXPLAIN_TIMEOUT_S,
+        )
+        if result and result.get("explanation"):
+            factors = _extract_factors_from_ensemble(result)
+            return {
+                "district": district,
+                "target_date": target_date or str(date.today() + timedelta(days=7)),
+                "best_model": result.get("best_model", ""),
+                "forecasts": result.get("forecasts", {}),
+                "factors": factors or result.get("factors", []),
+                "explanation": result.get("explanation", ""),
+                "recommendation": result.get("recommendation", ""),
+                "processing_time": round(result.get("processing_time", 0), 2),
+                "error": result.get("error"),
+                "source": "llm",
+            }
+    except (asyncio.TimeoutError, Exception) as exc:
+        logger.warning("forecast.explain LLM failed: %s — using factor-only fallback", exc)
+
+    fallback_text = _build_factor_explanation(district, days_ahead, factors)
+    return {
+        "district": district,
+        "target_date": target_date or str(date.today() + timedelta(days=7)),
+        "best_model": "",
+        "forecasts": {},
+        "factors": factors,
+        "explanation": fallback_text,
+        "recommendation": "",
+        "processing_time": 0,
+        "error": None,
+        "source": "fallback",
+    }
+
+
 @router.get("/explain")
 async def get_explained_forecast(
     district: str = DEFAULT_DISTRICT,
@@ -510,32 +591,11 @@ async def get_explained_forecast(
     - Объяснение на естественном языке
     - Рекомендации
 
+    При недоступности AI-сервиса возвращает factor-only fallback (HTTP 200, source=fallback).
+
     Args:
         district: Район для прогноза
         days_ahead: Количество дней прогноза
         target_date: Конкретная дата для объяснения (YYYY-MM-DD)
     """
-    # Импортируем forecast_agent локально т.к. он сложный
-    from app.services.forecast_agent import forecast_agent
-
-    try:
-        result = await forecast_agent.run(
-            district=district,
-            days_ahead=days_ahead,
-            target_date=target_date,
-        )
-        
-        return {
-            "district": district,
-            "target_date": target_date or str(date.today() + timedelta(days=7)),
-            "best_model": result.get("best_model", ""),
-            "forecasts": result.get("forecasts", {}),
-            "factors": result.get("factors", []),
-            "explanation": result.get("explanation", ""),
-            "recommendation": result.get("recommendation", ""),
-            "processing_time": round(result.get("processing_time", 0), 2),
-            "error": result.get("error"),
-        }
-    except Exception as e:
-        logger.error(f"Explain forecast error: {e}")
-        raise HTTPException(status_code=500, detail="Не удалось сгенерировать объяснение прогноза.")
+    return await _explain_with_fallback(district, days_ahead, target_date)
