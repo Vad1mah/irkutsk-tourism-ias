@@ -3,6 +3,10 @@
 Добавляет 6 колонок и UNIQUE constraint для дедупликации.
 Безопасна к повторному запуску — каждый ALTER обёрнут в try/except UniqueViolation.
 
+При первом запуске удаляет дубли (source_id, date_start, title), оставляя строку
+с наименьшим event_id. Операция необратима — рекомендуется сделать дамп таблицы
+events перед первым запуском.
+
 Запуск:
     cd backend
     .\\venv\\Scripts\\python.exe scripts\\migrate_event_schema_v2.py
@@ -87,28 +91,23 @@ async def migrate() -> None:
             logger.info("added column events.%s (%s)", col_name, col_ddl)
 
     async with async_engine.begin() as conn:
-        exists = await constraint_exists(conn, DEDUP_CONSTRAINT_NAME)
-
-    if exists:
-        logger.info("constraint %s already exists — skip", DEDUP_CONSTRAINT_NAME)
-    else:
-        async with async_engine.begin() as conn:
+        if await constraint_exists(conn, DEDUP_CONSTRAINT_NAME):
+            logger.info("constraint %s already exists — skip", DEDUP_CONSTRAINT_NAME)
+        else:
             removed = await remove_duplicates(conn)
             logger.info("removed %d duplicate events before UNIQUE constraint", removed)
-
-        try:
-            async with async_engine.begin() as conn:
+            try:
                 await conn.execute(text(DEDUP_CONSTRAINT_DDL))
-            logger.info("added UNIQUE constraint %s", DEDUP_CONSTRAINT_NAME)
-        except (ProgrammingError, IntegrityError) as exc:
-            pgcode = getattr(exc.orig, "pgcode", None)
-            if pgcode in (DUPLICATE_OBJECT_PGCODE, UNIQUE_VIOLATION_PGCODE):
-                logger.warning(
-                    "could not add %s (pgcode=%s): unexpected duplicates remain",
-                    DEDUP_CONSTRAINT_NAME, pgcode,
-                )
-            else:
-                raise
+                logger.info("added UNIQUE constraint %s", DEDUP_CONSTRAINT_NAME)
+            except (ProgrammingError, IntegrityError) as exc:
+                pgcode = getattr(exc.orig, "pgcode", None)
+                if pgcode in (DUPLICATE_OBJECT_PGCODE, UNIQUE_VIOLATION_PGCODE):
+                    logger.warning(
+                        "could not add %s (pgcode=%s): unexpected duplicates remain",
+                        DEDUP_CONSTRAINT_NAME, pgcode,
+                    )
+                else:
+                    raise
 
 
 if __name__ == "__main__":
