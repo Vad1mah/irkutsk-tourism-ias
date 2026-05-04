@@ -316,6 +316,28 @@ class BookingPaceResponse(BaseModel):
     summary: BookingPaceSummary
 
 
+class OccupancyPoint(BaseModel):
+    """Точка временного ряда загрузки."""
+    date: str
+    occupancy: float
+
+
+class OccupancyTimeseriesSummary(BaseModel):
+    """Сводка по временному ряду загрузки."""
+    min: float | None = None
+    max: float | None = None
+    avg: float | None = None
+    samples: int
+
+
+class OccupancyTimeseriesResponse(BaseModel):
+    """Ответ endpoint /api/analytics/occupancy-timeseries."""
+    district: str
+    days: int
+    points: list[OccupancyPoint]
+    summary: OccupancyTimeseriesSummary
+
+
 class ValidationPoint(BaseModel):
     """Точка валидации (прогноз или факт)."""
     date: str

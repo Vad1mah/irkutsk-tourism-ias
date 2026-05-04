@@ -22,6 +22,7 @@ from app.models.schemas import (
     TripSummary, EventBrief, WeatherDay, BestDate,
     AnalyticsMetadataResponse, DataDateRange, GapPeriod,
     BookingPacePoint, BookingPaceSummary, BookingPaceResponse,
+    OccupancyPoint, OccupancyTimeseriesSummary, OccupancyTimeseriesResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -1858,3 +1859,56 @@ async def export_data(
             "X-Total-Rows": str(len(rows)),
         },
     )
+
+
+@router.get("/occupancy-timeseries", response_model=OccupancyTimeseriesResponse)
+async def occupancy_timeseries(
+    data: DataServiceDep,
+    cache: CacheServiceDep,
+    district: str = DEFAULT_DISTRICT,
+    days: int = Query(30, ge=1, le=365),
+) -> OccupancyTimeseriesResponse:
+    """
+    Временной ряд загрузки по районам за последние N дней.
+
+    Args:
+        district: Район Иркутской области.
+        days: Глубина истории (1–365 дней).
+
+    Returns:
+        Список точек day-by-day + сводка min/max/avg/samples.
+    """
+    cache_key = f"analytics:occupancy-timeseries:{district}:{days}"
+    cached = await cache.get(cache_key)
+    if cached:
+        return OccupancyTimeseriesResponse(**cached)
+
+    today = _date.today()
+    cutoff = today - timedelta(days=days)
+    rows = await data.get_occupancy_by_district(district, date_from=cutoff, date_to=today)
+    points_raw = sorted(
+        [
+            {
+                "date": r["date"].isoformat() if hasattr(r["date"], "isoformat") else str(r["date"]),
+                "occupancy": round(r["avg_occupancy"], 2),
+            }
+            for r in rows
+            if r.get("avg_occupancy") is not None
+        ],
+        key=lambda p: p["date"],
+    )
+    occs = [p["occupancy"] for p in points_raw]
+    summary = OccupancyTimeseriesSummary(
+        min=min(occs) if occs else None,
+        max=max(occs) if occs else None,
+        avg=round(sum(occs) / len(occs), 2) if occs else None,
+        samples=len(occs),
+    )
+    response = OccupancyTimeseriesResponse(
+        district=district,
+        days=days,
+        points=[OccupancyPoint(**p) for p in points_raw],
+        summary=summary,
+    )
+    await cache.set(cache_key, response.model_dump(), ttl=300)
+    return response
