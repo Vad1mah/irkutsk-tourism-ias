@@ -10,7 +10,7 @@ from datetime import date, timedelta
 from collections import defaultdict
 import logging
 
-from app.constants import VALID_DISTRICTS, CITY_TO_DISTRICT, DEFAULT_DISTRICT, DISTRICT_CENTERS, SEASON_MONTHS
+from app.constants import VALID_DISTRICTS, CITY_TO_DISTRICT, DEFAULT_DISTRICT, DISTRICT_CENTERS, SEASON_MONTHS, MIN_SAMPLES_PER_MONTH
 from app.dependencies import (
     DataServiceDep, WeatherServiceDep, EnsembleServiceDep, CacheServiceDep,
 )
@@ -182,8 +182,6 @@ async def get_correlation_data(
             except (ValueError, IndexError):
                 continue
     
-    MIN_SAMPLES_PER_MONTH = 5
-
     # Формируем результат
     months_data = []
     missing_periods = []  # Пропущенные периоды
@@ -229,7 +227,7 @@ async def get_correlation_data(
     filtered_pairs = [
         (m["events"], m["occupancy"])
         for m in months_data
-        if not m["is_gap"] and m["occupancy"] > 0
+        if not m["is_gap"] and m["occupancy"] is not None
     ]
 
     correlation: float | None = None

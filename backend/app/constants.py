@@ -186,6 +186,8 @@ AVG_MONTHLY_TEMP_IRKUTSK: dict[int, float] = {
 # Пороги загрузки и прогнозирования
 # ---------------------------------------------------------------------------
 
+MIN_SAMPLES_PER_MONTH: int = 5  # для расчёта корреляции и определения gap-периодов
+
 OCCUPANCY_MIN: float = 0.0
 OCCUPANCY_MAX: float = 100.0
 

@@ -3,18 +3,21 @@ import pytest
 
 
 @pytest.mark.asyncio
-async def test_correlation_skips_months_with_few_samples(client):
+async def test_correlation_is_gap_flag_matches_samples_threshold(client):
     response = await client.get("/api/analytics/correlation")
     assert response.status_code == 200
     data = response.json()
-    # Каждый возвращаемый месяц должен иметь samples >= 5 (или явный gap-flag)
     for m in data.get("months", []):
-        if m.get("occupancy") is not None and m.get("occupancy") != 0:
-            assert m.get("samples", 0) >= 5 or m.get("is_gap"), (
-                f"Month {m.get('month')} has occupancy data but only {m.get('samples')} samples"
+        if m.get("is_gap"):
+            assert m.get("samples", 0) < 5, (
+                f"Month {m.get('month')} has is_gap=True but samples={m.get('samples')}"
             )
-    # Должен быть список missing_periods
-    assert "missing_periods" in data
+        else:
+            assert m.get("samples", 0) >= 5, (
+                f"Month {m.get('month')} has is_gap=False but samples={m.get('samples')}"
+            )
+    # missing_periods should still be a list
+    assert isinstance(data.get("missing_periods"), list)
 
 
 @pytest.mark.asyncio
