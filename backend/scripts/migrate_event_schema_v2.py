@@ -62,6 +62,19 @@ async def constraint_exists(conn, name: str) -> bool:
     return result.first() is not None
 
 
+async def remove_duplicates(conn) -> int:
+    """Оставляет только одну строку на (source_id, date_start, title), у которой min event_id."""
+    result = await conn.execute(text("""
+        DELETE FROM events e
+        USING events e2
+        WHERE e.source_id = e2.source_id
+          AND e.date_start = e2.date_start
+          AND e.title = e2.title
+          AND e.event_id > e2.event_id
+    """))
+    return result.rowcount or 0
+
+
 async def migrate() -> None:
     # Use separate transactions per DDL statement so a failure in one
     # does not roll back the others (PostgreSQL DDL is transactional).
@@ -79,6 +92,10 @@ async def migrate() -> None:
     if exists:
         logger.info("constraint %s already exists — skip", DEDUP_CONSTRAINT_NAME)
     else:
+        async with async_engine.begin() as conn:
+            removed = await remove_duplicates(conn)
+            logger.info("removed %d duplicate events before UNIQUE constraint", removed)
+
         try:
             async with async_engine.begin() as conn:
                 await conn.execute(text(DEDUP_CONSTRAINT_DDL))
@@ -87,8 +104,7 @@ async def migrate() -> None:
             pgcode = getattr(exc.orig, "pgcode", None)
             if pgcode in (DUPLICATE_OBJECT_PGCODE, UNIQUE_VIOLATION_PGCODE):
                 logger.warning(
-                    "could not add %s (pgcode=%s): duplicates exist — clean events table "
-                    "(Task B1) before re-running",
+                    "could not add %s (pgcode=%s): unexpected duplicates remain",
                     DEDUP_CONSTRAINT_NAME, pgcode,
                 )
             else:
