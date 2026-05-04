@@ -513,6 +513,7 @@ def _extract_factors_from_ensemble(result: dict) -> list[dict]:
 
 
 def _build_factor_explanation(district: str, days: int, factors: list[dict]) -> str:
+    """Возвращает русский текст-объяснение прогноза на основе топ-факторов XGBoost."""
     if not factors:
         return (
             f"Прогноз на {days} дней по району «{district}» построен на ансамбле моделей. "
@@ -535,6 +536,7 @@ async def _explain_with_fallback(
     from app.services.forecast_agent import forecast_agent
 
     factors: list[dict] = []
+    source: str = "llm_error"
     try:
         result = await asyncio.wait_for(
             forecast_agent.run(
@@ -544,8 +546,8 @@ async def _explain_with_fallback(
             ),
             timeout=LLM_EXPLAIN_TIMEOUT_S,
         )
+        factors = _extract_factors_from_ensemble(result)
         if result and result.get("explanation"):
-            factors = _extract_factors_from_ensemble(result)
             return {
                 "district": district,
                 "target_date": target_date or str(date.today() + timedelta(days=7)),
@@ -558,8 +560,17 @@ async def _explain_with_fallback(
                 "error": result.get("error"),
                 "source": "llm",
             }
-    except (asyncio.TimeoutError, Exception) as exc:
-        logger.warning("forecast.explain LLM failed: %s — using factor-only fallback", exc)
+        # result returned but no explanation — fall through to factor-only fallback
+        logger.info("forecast.explain: run() returned empty explanation, using factor-only fallback")
+        source = "llm_empty"
+    except asyncio.TimeoutError:
+        logger.warning("forecast.explain timed out after %.1fs", LLM_EXPLAIN_TIMEOUT_S)
+        factors = []
+        source = "llm_timeout"
+    except Exception as exc:
+        logger.warning("forecast.explain LLM error: %s — using factor-only fallback", exc)
+        factors = []
+        source = "llm_error"
 
     fallback_text = _build_factor_explanation(district, days_ahead, factors)
     return {
@@ -572,7 +583,7 @@ async def _explain_with_fallback(
         "recommendation": "",
         "processing_time": 0,
         "error": None,
-        "source": "fallback",
+        "source": source,
     }
 
 
