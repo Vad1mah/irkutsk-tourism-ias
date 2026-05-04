@@ -9,6 +9,7 @@ import logging
 from app.models.schemas import (
     ForecastRequest, ForecastResponse, ForecastPoint,
     EnsembleResponse, CompareModelsResponse, CompareAllResponse,
+    ForecastValidationResponse,
 )
 from app.constants import DEFAULT_DISTRICT
 from app.dependencies import (
@@ -610,3 +611,77 @@ async def get_explained_forecast(
         target_date: Конкретная дата для объяснения (YYYY-MM-DD)
     """
     return await _explain_with_fallback(district, days_ahead, target_date)
+
+
+@router.get("/{district}/validation", response_model=ForecastValidationResponse)
+async def forecast_validation(
+    district: str,
+    data: DataServiceDep,
+    days_back: int = Query(14, ge=1, le=90),
+) -> ForecastValidationResponse:
+    """Forecast vs Actual для самовалидации модели.
+
+    Сравнивает ранее сохранённые ensemble-прогнозы с фактическими данными
+    за последние days_back дней. Если прогнозов нет — возвращает samples=0.
+
+    Args:
+        district: Название района (напр. «Иркутский»).
+        days_back: Горизонт сравнения в днях (1–90).
+
+    Returns:
+        RMSE, MAE и попарные ряды forecasted/actual.
+    """
+    import math
+    from datetime import date, timedelta
+
+    today = date.today()
+    target_dates = [today - timedelta(days=i) for i in range(days_back, 0, -1)]
+
+    try:
+        saved = await data.get_saved_forecasts(district=district, dates=target_dates)
+    except Exception:
+        logger.warning("forecast_validation: get_saved_forecasts failed", exc_info=True)
+        saved = {}
+
+    try:
+        actual_rows = await data.get_occupancy_by_district(district)
+    except Exception:
+        logger.warning("forecast_validation: get_occupancy_by_district failed", exc_info=True)
+        actual_rows = []
+
+    actual_map: dict[date, float] = {
+        r["date"]: r["avg_occupancy"]
+        for r in actual_rows
+        if r.get("avg_occupancy") is not None
+    }
+
+    pairs: list[tuple[float, float]] = []
+    forecasted: list[dict] = []
+    actual: list[dict] = []
+    for d in target_dates:
+        f = saved.get(d)
+        a = actual_map.get(d)
+        if f is None or a is None:
+            continue
+        pairs.append((f, a))
+        forecasted.append({"date": d.isoformat(), "occupancy": f})
+        actual.append({"date": d.isoformat(), "occupancy": a})
+
+    if not pairs:
+        return ForecastValidationResponse(
+            district=district, days_back=days_back, samples=0,
+            rmse=None, mae=None, rmse_per_day=[], forecasted=[], actual=[],
+        )
+
+    rmse = math.sqrt(sum((f - a) ** 2 for f, a in pairs) / len(pairs))
+    mae = sum(abs(f - a) for f, a in pairs) / len(pairs)
+    return ForecastValidationResponse(
+        district=district,
+        days_back=days_back,
+        samples=len(pairs),
+        rmse=round(rmse, 2),
+        mae=round(mae, 2),
+        rmse_per_day=[round(abs(f - a), 2) for f, a in pairs],
+        forecasted=forecasted,
+        actual=actual,
+    )

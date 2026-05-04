@@ -5,7 +5,7 @@ from datetime import date, time
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from app.db.models import Event, Hotel, HotelStatistic
+from app.db.models import Event, Forecast, Hotel, HotelStatistic
 from app.db.session import async_session
 from app.models.schemas import Hotel as HotelSchema
 from app.models.schemas import HotelStatistics as HotelStatsSchema
@@ -908,6 +908,29 @@ class DBService:
                 }
                 for r in result
             ]
+
+    async def get_saved_forecasts(
+        self, *, district: str, dates: list[date]
+    ) -> dict[date, float]:
+        """Возвращает {date -> predicted_occupancy} из таблицы forecasts (model='ensemble').
+
+        Args:
+            district: Название района.
+            dates: Список дат для выборки.
+
+        Returns:
+            Словарь {дата: прогнозная загруженность}.
+        """
+        if not self.is_connected or not dates:
+            return {}
+        async with async_session() as s:
+            rows = (await s.execute(
+                select(Forecast.forecast_date, Forecast.predicted_occupancy)
+                .where(Forecast.district == district)
+                .where(Forecast.forecast_date.in_(dates))
+                .where(Forecast.model == "ensemble")
+            )).all()
+            return {r[0]: r[1] for r in rows if r[1] is not None}
 
     async def create_tables(self) -> None:
         """Create tables if they don't exist. For schema changes use Alembic:
