@@ -500,7 +500,7 @@ async def get_events_impact(
             исключая дни других событий.
         window_weeks: Размер окна для baseline (недели), только для seasonal_corrected.
     """
-    cache_key = f"analytics:events-impact:{DEFAULT_DISTRICT}:{method}"
+    cache_key = f"analytics:events-impact:{DEFAULT_DISTRICT}:{method}:{window_weeks}"
     cached = await cache.get(cache_key)
     if cached:
         return cached
@@ -512,6 +512,30 @@ async def get_events_impact(
 
     await cache.set(cache_key, result, ttl=300)
     return result
+
+
+def _resolve_district(e: dict) -> str:
+    """Резолвит район из event-dict: либо явный district, либо CITY_TO_DISTRICT по location."""
+    d = e.get("district")
+    if d:
+        return d
+    location = (e.get("location") or "").lower()
+    return next(
+        (dist for city, dist in CITY_TO_DISTRICT.items() if city in location),
+        DEFAULT_DISTRICT,
+    )
+
+
+def _to_date(val: object) -> _date | None:
+    """Конвертирует строку/date в _date, возвращает None при ошибке."""
+    if val is None:
+        return None
+    if isinstance(val, _date):
+        return val
+    try:
+        return _date.fromisoformat(str(val)[:10])
+    except (ValueError, TypeError):
+        return None
 
 
 async def _events_impact_seasonal_corrected(
@@ -526,8 +550,8 @@ async def _events_impact_seasonal_corrected(
     if not events:
         return []
 
-    # Карта occupancy по районам
-    districts = {e.get("district") for e in events if e.get("district")}
+    # Карта occupancy по районам (резолвим район через _resolve_district)
+    districts = {_resolve_district(e) for e in events if e.get("date_start")}
     history_per_district: dict[str, list[tuple[_date, float]]] = {}
     for d in districts:
         rows = await data.get_occupancy_by_district(d)
@@ -537,30 +561,25 @@ async def _events_impact_seasonal_corrected(
             if r.get("avg_occupancy") is not None
         ]
 
-    # Множество дат-событий для исключения из baseline
+    # Множество дат-событий для исключения из baseline (с поддержкой многодневных событий)
     event_dates_per_district: dict[str, set[_date]] = {}
     for e in events:
-        d = e.get("district")
-        ds = e.get("date_start")
-        if d and ds:
-            if isinstance(ds, str):
-                try:
-                    ds = _date.fromisoformat(ds[:10])
-                except ValueError:
-                    continue
-            event_dates_per_district.setdefault(d, set()).add(ds)
+        d = _resolve_district(e)
+        ds = _to_date(e.get("date_start"))
+        de = _to_date(e.get("date_end")) or ds
+        if not ds:
+            continue
+        cur = ds
+        while cur <= de:
+            event_dates_per_district.setdefault(d, set()).add(cur)
+            cur += timedelta(days=1)
 
     result: list[dict[str, Any]] = []
     for e in events:
-        d = e.get("district")
-        ds = e.get("date_start")
-        if not d or not ds:
+        d = _resolve_district(e)
+        ds = _to_date(e.get("date_start"))
+        if not ds:
             continue
-        if isinstance(ds, str):
-            try:
-                ds = _date.fromisoformat(ds[:10])
-            except ValueError:
-                continue
         history = history_per_district.get(d, [])
         observed = next((occ for dd, occ in history if dd == ds), None)
         if observed is None:
@@ -575,7 +594,7 @@ async def _events_impact_seasonal_corrected(
         impact = methodology_service.corrected_impact(observed=observed, baseline=baseline)
         result.append({
             "event": e.get("title"),
-            "date": ds.isoformat() if hasattr(ds, "isoformat") else str(ds),
+            "date": ds.isoformat(),
             "district": d,
             "occupancy_on_day": round(observed, 2),
             **impact,
@@ -636,19 +655,12 @@ async def _events_impact_naive(data: DataServiceProtocol) -> list[dict[str, Any]
     result = []
     for event in diverse_events:
         title = event.get("title", "")
-        location = event.get("location", "")
         date_start = event.get("date_start")
 
         if not date_start:
             continue
 
-        district = DEFAULT_DISTRICT
-        if location:
-            loc_lower = location.lower()
-            for city, dist in CITY_TO_DISTRICT.items():
-                if city in loc_lower:
-                    district = dist
-                    break
+        district = _resolve_district(event)
 
         if isinstance(date_start, str):
             try:
