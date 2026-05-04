@@ -396,3 +396,39 @@ class SegmentsResponse(BaseModel):
     by_accommodation_type: dict[str, dict]
     size_thresholds: dict[str, int]
 
+
+class HotelSegmentBenchmarkHotel(BaseModel):
+    """Данные отеля для бенчмарка."""
+    id: str
+    name: str | None = None
+    district: str | None = None
+    rooms_num: int | None = None
+
+
+class HotelSegmentBenchmarkSegment(BaseModel):
+    """Параметры сегмента для сравнения."""
+    district: str | None = None
+    size_bucket: str  # "mini" | "mid" | "large"
+
+
+class HotelSegmentMetrics(BaseModel):
+    """Метрики конкретного отеля."""
+    occupancy: float | None = None
+    min_price: int | None = None
+
+
+class SegmentAvgMetrics(BaseModel):
+    """Средние метрики по сегменту."""
+    n: int
+    avg_occupancy: float | None = None
+    avg_price: int | None = None
+
+
+class HotelSegmentBenchmarkResponse(BaseModel):
+    """Ответ endpoint /api/hotels/{id}/segment-benchmark."""
+    hotel: HotelSegmentBenchmarkHotel
+    segment: HotelSegmentBenchmarkSegment
+    hotel_metrics: HotelSegmentMetrics
+    segment_metrics: SegmentAvgMetrics
+    n_in_segment: int
+

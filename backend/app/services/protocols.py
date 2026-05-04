@@ -86,6 +86,15 @@ class DataServiceProtocol(Protocol):
     async def segments_by_size(self) -> dict[str, dict]: ...
     async def segments_by_accommodation_type(self) -> dict[str, dict]: ...
 
+    async def get_hotel_latest_stats(self, hotel_id: str) -> dict: ...
+    async def compute_segment_metrics(
+        self,
+        *,
+        district: str | None,
+        size_bucket: str,
+        exclude_hotel_id: str | None = None,
+    ) -> dict: ...
+
 
 @runtime_checkable
 class ForecastServiceProtocol(Protocol):

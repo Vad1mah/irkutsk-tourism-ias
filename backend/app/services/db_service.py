@@ -1234,6 +1234,92 @@ class DBService:
             logger.error("segments_by_accommodation_type: %s", exc)
             return {}
 
+    async def get_hotel_latest_stats(self, hotel_id: str) -> dict:
+        """Последняя запись статистики для конкретного отеля.
+
+        Args:
+            hotel_id: ID отеля.
+
+        Returns:
+            Словарь с ключами date, rooms_num, occupancy, min_price. Пустой dict при ошибке.
+        """
+        if not self.is_connected:
+            return {}
+        try:
+            async with async_session() as s:
+                row = (await s.execute(
+                    select(HotelStatistic)
+                    .where(HotelStatistic.id == hotel_id)
+                    .order_by(HotelStatistic.date.desc())
+                    .limit(1)
+                )).scalar_one_or_none()
+                if not row:
+                    return {}
+                return {
+                    "date": row.date.isoformat() if row.date else None,
+                    "rooms_num": row.rooms_num,
+                    "occupancy": round(100 - (row.available_rooms_percent or 0), 2),
+                    "min_price": row.min_price,
+                }
+        except Exception as exc:
+            logger.error("get_hotel_latest_stats: %s", exc)
+            return {}
+
+    async def compute_segment_metrics(
+        self,
+        *,
+        district: str | None,
+        size_bucket: str,
+        exclude_hotel_id: str | None = None,
+    ) -> dict:
+        """Средние метрики по сегменту «район × размерная категория».
+
+        Args:
+            district: Район Иркутской области.
+            size_bucket: "mini" (≤15), "mid" (16-50) или "large" (51+).
+            exclude_hotel_id: ID отеля, который следует исключить из расчёта (self-exclusion).
+
+        Returns:
+            Словарь с ключами n, avg_occupancy, avg_price.
+        """
+        if not self.is_connected or not district:
+            return {"n": 0, "avg_occupancy": None, "avg_price": None}
+        bounds = {"mini": (0, 15), "mid": (16, 50), "large": (51, 10_000)}.get(size_bucket, (0, 10_000))
+        try:
+            async with async_session() as s:
+                params = {
+                    "district": district,
+                    "min_r": bounds[0],
+                    "max_r": bounds[1],
+                    "exclude_id": exclude_hotel_id,
+                }
+                row = (await s.execute(text("""
+                    WITH latest AS (
+                        SELECT DISTINCT ON (h.id) h.id, h.district, hs.rooms_num,
+                               hs.available_rooms_percent, hs.min_price
+                        FROM hotels h
+                        JOIN hotel_statistics hs ON hs.id = h.id
+                        WHERE h.district = :district
+                          AND hs.rooms_num BETWEEN :min_r AND :max_r
+                          AND (CAST(:exclude_id AS TEXT) IS NULL OR h.id <> CAST(:exclude_id AS TEXT))
+                        ORDER BY h.id, hs.date DESC
+                    )
+                    SELECT COUNT(*) AS n,
+                           AVG(100 - available_rooms_percent) AS avg_occ,
+                           AVG(min_price) AS avg_price
+                    FROM latest
+                """), params)).first()
+                if not row:
+                    return {"n": 0, "avg_occupancy": None, "avg_price": None}
+                return {
+                    "n": int(row[0] or 0),
+                    "avg_occupancy": round(float(row[1] or 0), 2) if row[1] is not None else None,
+                    "avg_price": int(row[2] or 0) if row[2] is not None else None,
+                }
+        except Exception as exc:
+            logger.error("compute_segment_metrics: %s", exc)
+            return {"n": 0, "avg_occupancy": None, "avg_price": None}
+
     async def create_tables(self) -> None:
         """Create tables if they don't exist. For schema changes use Alembic:
         cd backend && alembic revision --autogenerate -m "description"

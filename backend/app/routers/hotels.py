@@ -3,7 +3,15 @@ from datetime import date
 from typing import Any
 import logging
 
-from app.models.schemas import Hotel, HotelStatistics
+from app.models.schemas import (
+    Hotel,
+    HotelStatistics,
+    HotelSegmentBenchmarkHotel,
+    HotelSegmentBenchmarkResponse,
+    HotelSegmentBenchmarkSegment,
+    HotelSegmentMetrics,
+    SegmentAvgMetrics,
+)
 from app.dependencies import DataServiceDep, CacheServiceDep
 from app.constants import VALID_DISTRICTS
 
@@ -77,3 +85,51 @@ async def get_hotel_statistics(
     )
     await cache_svc.set(cache_key, [s.model_dump() for s in stats], ttl=600)
     return stats
+
+
+@router.get("/{hotel_id}/segment-benchmark", response_model=HotelSegmentBenchmarkResponse)
+async def hotel_segment_benchmark(
+    hotel_id: str,
+    data_svc: DataServiceDep,
+) -> HotelSegmentBenchmarkResponse:
+    """Сравнение отеля с сегментом «район × размерная категория»."""
+    hotel = await data_svc.get_hotel_by_id(hotel_id)
+    if not hotel:
+        raise HTTPException(status_code=404, detail="Hotel not found")
+
+    own_stats = await data_svc.get_hotel_latest_stats(hotel_id)
+    hotel_dict = hotel.model_dump()
+    rooms_num = own_stats.get("rooms_num") or hotel_dict.get("rooms_num") or 0
+    if rooms_num and rooms_num <= 15:
+        size_bucket = "mini"
+    elif rooms_num and rooms_num <= 50:
+        size_bucket = "mid"
+    else:
+        size_bucket = "large"
+    district = hotel_dict.get("district")
+
+    segment = await data_svc.compute_segment_metrics(
+        district=district,
+        size_bucket=size_bucket,
+        exclude_hotel_id=hotel_id,
+    )
+
+    return HotelSegmentBenchmarkResponse(
+        hotel=HotelSegmentBenchmarkHotel(
+            id=hotel_id,
+            name=hotel_dict.get("name"),
+            district=district,
+            rooms_num=rooms_num if rooms_num else None,
+        ),
+        segment=HotelSegmentBenchmarkSegment(district=district, size_bucket=size_bucket),
+        hotel_metrics=HotelSegmentMetrics(
+            occupancy=own_stats.get("occupancy"),
+            min_price=own_stats.get("min_price"),
+        ),
+        segment_metrics=SegmentAvgMetrics(
+            n=segment.get("n", 0),
+            avg_occupancy=segment.get("avg_occupancy"),
+            avg_price=segment.get("avg_price"),
+        ),
+        n_in_segment=segment.get("n", 0),
+    )
