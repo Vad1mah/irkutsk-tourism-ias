@@ -115,3 +115,40 @@ async def test_event_dedup_on_conflict(setup_services):
     # Cleanup
     await db_service.delete_event_by_id("test-dedup-1")
     await db_service.delete_event_by_id("test-dedup-2")
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_event_dedup_preserves_existing_description(setup_services):
+    """COALESCE: повторная вставка с description=None не стирает существующее описание."""
+    from app.services.db_service import db_service
+    from app.services.data_service import data_service
+
+    if not data_service.is_connected:
+        pytest.skip("DB not available")
+
+    payload = {
+        "event_id": "test-coalesce-1",
+        "title": "Тест COALESCE",
+        "date_start": date(2099, 1, 2),
+        "source_id": "test_coalesce",
+        "description": "First description",
+    }
+    await db_service.upsert_event(**payload)
+
+    # Вторая вставка с description=None — существующее описание должно сохраниться
+    payload2 = {**payload, "event_id": "test-coalesce-2", "description": None}
+    await db_service.upsert_event(**payload2)
+
+    rows = await data_service.get_events(
+        date_from=date(2099, 1, 2),
+        date_to=date(2099, 1, 2),
+    )
+    matching = [r for r in rows if r.get("title") == "Тест COALESCE"]
+    assert len(matching) == 1
+    assert matching[0].get("description") == "First description", (
+        f"Expected description preserved, got: {matching[0].get('description')}"
+    )
+
+    # Cleanup
+    await db_service.delete_event_by_id("test-coalesce-1")
+    await db_service.delete_event_by_id("test-coalesce-2")

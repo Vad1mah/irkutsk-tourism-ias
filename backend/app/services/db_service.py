@@ -403,7 +403,7 @@ class DBService:
         image_url: str | None = None,
         address: str | None = None,
         age_restriction: str | None = None,
-    ) -> None:
+    ) -> bool:
         """Вставить или обновить событие с дедупликацией по (source_id, date_start, title).
 
         Args:
@@ -422,55 +422,75 @@ class DBService:
             image_url: URL изображения.
             address: Физический адрес.
             age_restriction: Возрастное ограничение.
-        """
-        async with async_session() as s:
-            ins = pg_insert(Event).values(
-                event_id=event_id,
-                title=title,
-                description=description,
-                date_start=date_start,
-                date_end=date_end,
-                event_type=event_type,
-                location=self._clean_location(location),
-                source_id=source_id,
-                url=url,
-                time_start=time_start,
-                price_min=price_min,
-                price_max=price_max,
-                image_url=image_url,
-                address=address,
-                age_restriction=age_restriction,
-            )
-            stmt = ins.on_conflict_do_update(
-                constraint="uq_events_dedup",
-                set_={
-                    "description": func.coalesce(ins.excluded.description, Event.description),
-                    "event_type": func.coalesce(ins.excluded.event_type, Event.event_type),
-                    "location": func.coalesce(ins.excluded.location, Event.location),
-                    "url": func.coalesce(ins.excluded.url, Event.url),
-                    "time_start": func.coalesce(ins.excluded.time_start, Event.time_start),
-                    "price_min": func.coalesce(ins.excluded.price_min, Event.price_min),
-                    "price_max": func.coalesce(ins.excluded.price_max, Event.price_max),
-                    "image_url": func.coalesce(ins.excluded.image_url, Event.image_url),
-                    "address": func.coalesce(ins.excluded.address, Event.address),
-                    "age_restriction": func.coalesce(ins.excluded.age_restriction, Event.age_restriction),
-                    "updated_at": func.now(),
-                },
-            )
-            await s.execute(stmt)
-            await s.commit()
 
-    async def delete_event_by_id(self, event_id: str) -> None:
+        Returns:
+            True если операция успешна, False при ошибке или отсутствии соединения.
+        """
+        if not self.is_connected:
+            return False
+        try:
+            async with async_session() as s:
+                ins = pg_insert(Event).values(
+                    event_id=event_id,
+                    title=title,
+                    description=description,
+                    date_start=date_start,
+                    date_end=date_end,
+                    event_type=event_type,
+                    location=self._clean_location(location),
+                    source_id=source_id,
+                    url=url,
+                    time_start=time_start,
+                    price_min=price_min,
+                    price_max=price_max,
+                    image_url=image_url,
+                    address=address,
+                    age_restriction=age_restriction,
+                )
+                stmt = ins.on_conflict_do_update(
+                    constraint="uq_events_dedup",
+                    set_={
+                        "description": func.coalesce(ins.excluded.description, Event.__table__.c.description),
+                        "event_type": func.coalesce(ins.excluded.event_type, Event.__table__.c.event_type),
+                        "location": func.coalesce(ins.excluded.location, Event.__table__.c.location),
+                        "url": func.coalesce(ins.excluded.url, Event.__table__.c.url),
+                        "time_start": func.coalesce(ins.excluded.time_start, Event.__table__.c.time_start),
+                        "price_min": func.coalesce(ins.excluded.price_min, Event.__table__.c.price_min),
+                        "price_max": func.coalesce(ins.excluded.price_max, Event.__table__.c.price_max),
+                        "image_url": func.coalesce(ins.excluded.image_url, Event.__table__.c.image_url),
+                        "address": func.coalesce(ins.excluded.address, Event.__table__.c.address),
+                        "age_restriction": func.coalesce(ins.excluded.age_restriction, Event.__table__.c.age_restriction),
+                        "updated_at": func.now(),
+                    },
+                )
+                await s.execute(stmt)
+                await s.commit()
+            return True
+        except Exception as exc:
+            logger.error("upsert_event failed for %s: %s", event_id, exc)
+            return False
+
+    async def delete_event_by_id(self, event_id: str) -> bool:
         """Удалить событие по первичному ключу event_id.
 
         Args:
             event_id: Идентификатор события для удаления.
+
+        Returns:
+            True если операция успешна, False при ошибке или отсутствии соединения.
         """
-        async with async_session() as s:
-            await s.execute(
-                delete(Event).where(Event.event_id == event_id)
-            )
-            await s.commit()
+        if not self.is_connected:
+            return False
+        try:
+            async with async_session() as s:
+                await s.execute(
+                    delete(Event).where(Event.event_id == event_id)
+                )
+                await s.commit()
+            return True
+        except Exception as exc:
+            logger.error("delete_event_by_id failed for %s: %s", event_id, exc)
+            return False
 
     async def delete_events_by_source(self, source: str) -> int:
         async with async_session() as s:

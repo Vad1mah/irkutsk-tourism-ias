@@ -12,6 +12,7 @@ from sqlalchemy import (
     String,
     Text,
     Time,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -103,6 +104,7 @@ class Event(Base):
     )
 
     __table_args__ = (
+        UniqueConstraint("source_id", "date_start", "title", name="uq_events_dedup"),
         Index("idx_events_date", "date_start"),
         Index("idx_events_source", "source_id"),
         Index("idx_events_type", "event_type"),
