@@ -1,5 +1,5 @@
 """SQLAlchemy ORM модели для PostgreSQL."""
-from datetime import date, datetime
+from datetime import date, datetime, time
 
 from sqlalchemy import (
     CheckConstraint,
@@ -11,6 +11,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    Time,
     func,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -88,6 +89,12 @@ class Event(Base):
     location: Mapped[str | None] = mapped_column(Text)
     source_id: Mapped[str] = mapped_column(String(50), nullable=False)
     url: Mapped[str | None] = mapped_column(Text)
+    time_start: Mapped[time | None] = mapped_column(Time, nullable=True)
+    price_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    price_max: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    age_restriction: Mapped[str | None] = mapped_column(String(10), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now()
     )
