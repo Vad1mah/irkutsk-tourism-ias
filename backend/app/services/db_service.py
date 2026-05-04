@@ -1076,6 +1076,34 @@ class DBService:
             logger.error("get_last_data_refresh: %s", exc)
             return None
 
+    async def collect_min_prices(self, *, district: str, days: int) -> list[int]:
+        """Возвращает все min_price из hotel_statistics за последние N дней по району.
+
+        Args:
+            district: Район Иркутской области.
+            days: Глубина выборки в днях.
+
+        Returns:
+            Список ненулевых значений min_price (целые числа).
+        """
+        if not self.is_connected:
+            return []
+        from datetime import timedelta as _td
+        cutoff = date.today() - _td(days=days)
+        try:
+            async with async_session() as s:
+                rows = (await s.execute(
+                    select(HotelStatistic.min_price)
+                    .join(Hotel, Hotel.id == HotelStatistic.id)
+                    .where(Hotel.district == district)
+                    .where(HotelStatistic.date >= cutoff)
+                    .where(HotelStatistic.min_price.is_not(None))
+                )).all()
+                return [r[0] for r in rows if r[0] is not None]
+        except Exception as exc:
+            logger.error("collect_min_prices: %s", exc)
+            return []
+
     async def compute_proxy_pickup(
         self,
         *,

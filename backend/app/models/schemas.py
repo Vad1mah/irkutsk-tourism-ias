@@ -355,3 +355,15 @@ class ForecastValidationResponse(BaseModel):
     forecasted: list[ValidationPoint] = Field(default_factory=list)
     actual: list[ValidationPoint] = Field(default_factory=list)
 
+
+class PriceDistributionResponse(BaseModel):
+    """Распределение min_price по перцентилям за N дней."""
+    district: str
+    days: int
+    samples: int
+    p10: int | None = None
+    p25: int | None = None
+    p50: int | None = None
+    p75: int | None = None
+    p90: int | None = None
+

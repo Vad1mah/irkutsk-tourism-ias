@@ -23,6 +23,7 @@ from app.models.schemas import (
     AnalyticsMetadataResponse, DataDateRange, GapPeriod,
     BookingPacePoint, BookingPaceSummary, BookingPaceResponse,
     OccupancyPoint, OccupancyTimeseriesSummary, OccupancyTimeseriesResponse,
+    PriceDistributionResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -1910,5 +1911,47 @@ async def occupancy_timeseries(
         points=[OccupancyPoint(**p) for p in points_raw],
         summary=summary,
     )
+    await cache.set(cache_key, response.model_dump(), ttl=300)
+    return response
+
+
+@router.get("/price-distribution", response_model=PriceDistributionResponse)
+async def price_distribution(
+    data: DataServiceDep,
+    cache: CacheServiceDep,
+    district: str = DEFAULT_DISTRICT,
+    days: int = Query(30, ge=1, le=365),
+) -> PriceDistributionResponse:
+    """Перцентили min_price (p10/p25/p50/p75/p90) по району за N дней."""
+    cache_key = f"analytics:price-distribution:{district}:{days}"
+    cached = await cache.get(cache_key)
+    if cached:
+        return PriceDistributionResponse(**cached)
+
+    prices = await data.collect_min_prices(district=district, days=days)
+    if not prices:
+        response = PriceDistributionResponse(
+            district=district, days=days, samples=0,
+            p10=None, p25=None, p50=None, p75=None, p90=None,
+        )
+    else:
+        import statistics
+        sorted_p = sorted(prices)
+        n = len(sorted_p)
+
+        def _pct(p: int) -> int:
+            idx = min(int(n * p / 100), n - 1)
+            return sorted_p[idx]
+
+        response = PriceDistributionResponse(
+            district=district,
+            days=days,
+            samples=n,
+            p10=_pct(10),
+            p25=_pct(25),
+            p50=int(statistics.median(prices)),
+            p75=_pct(75),
+            p90=_pct(90),
+        )
     await cache.set(cache_key, response.model_dump(), ttl=300)
     return response

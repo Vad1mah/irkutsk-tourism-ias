@@ -81,6 +81,8 @@ class DataServiceProtocol(Protocol):
         lookback_days: int,
     ) -> list[dict]: ...
 
+    async def collect_min_prices(self, *, district: str, days: int) -> list[int]: ...
+
 
 @runtime_checkable
 class ForecastServiceProtocol(Protocol):
