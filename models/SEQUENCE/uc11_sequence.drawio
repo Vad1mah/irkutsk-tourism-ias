@@ -1,0 +1,171 @@
+<mxfile host="app.diagrams.net" modified="2026-05-04T00:00:00.000Z" agent="b2b-rebuild" version="22.0.0">
+  <diagram id="uc11-seq" name="UC11 Sequence">
+    <mxGraphModel dx="1200" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- sd frame -->
+        <mxCell id="frame" value="sd [UC11: &#1040;&#1085;&#1072;&#1083;&#1080;&#1079; &#1089;&#1086;&#1073;&#1099;&#1090;&#1080;&#1081; &#1089; corrected impact]" style="text;html=1;strokeColor=#0066CC;fillColor=none;align=left;verticalAlign=top;spacingLeft=8;spacingRight=4;fontSize=14;fontStyle=1;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="20" y="10" width="600" height="30" as="geometry"/>
+        </mxCell>
+
+        <!-- Lifeline headers -->
+        <mxCell id="lh1" value="&#1055;&#1086;&#1083;&#1100;&#1079;&#1086;&#1074;&#1072;&#1090;&#1077;&#1083;&#1100;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="50" width="120" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="lh2" value="Frontend&#xa;(Analytics)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6b656;fontStyle=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="220" y="50" width="120" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="lh3" value="AnalyticsRouter&#xa;(FastAPI)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="420" y="50" width="130" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="lh4" value="DataService" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="630" y="50" width="120" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="lh5" value="MethodologyService" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="840" y="50" width="140" height="40" as="geometry"/>
+        </mxCell>
+
+        <!-- Lifelines (vertical dashed lines) -->
+        <mxCell id="ll1" style="endArrow=none;dashed=1;strokeColor=#6c8ebf;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="100" y="90"/><mxPoint x="100" y="1080"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="ll2" style="endArrow=none;dashed=1;strokeColor=#d6b656;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="280" y="90"/><mxPoint x="280" y="1080"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="ll3" style="endArrow=none;dashed=1;strokeColor=#82b366;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="485" y="90"/><mxPoint x="485" y="1080"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="ll4" style="endArrow=none;dashed=1;strokeColor=#9673a6;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="690" y="90"/><mxPoint x="690" y="1080"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="ll5" style="endArrow=none;dashed=1;strokeColor=#b85450;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="910" y="90"/><mxPoint x="910" y="1080"/></Array></mxGeometry>
+        </mxCell>
+
+        <!-- Messages -->
+        <!-- 1: User → Frontend: открыть tab «События» -->
+        <mxCell id="m1" value="&#1086;&#1090;&#1082;&#1088;&#1099;&#1090;&#1100; tab &#171;&#1057;&#1086;&#1073;&#1099;&#1090;&#1080;&#1103;&#187;" style="endArrow=block;endFill=1;fontSize=10;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="100" y="140"/><mxPoint x="280" y="140"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="m1l" value="1" style="text;html=1;fontSize=9;" vertex="1" parent="1"><mxGeometry x="180" y="125" width="20" height="15" as="geometry"/></mxCell>
+
+        <!-- 2: Frontend → AnalyticsRouter: GET /api/analytics/events-impact?method=seasonal_corrected&window_weeks=3 -->
+        <mxCell id="m2" value="GET /api/analytics/events-impact&#xa;?method=seasonal_corrected&amp;window_weeks=3" style="endArrow=block;endFill=1;fontSize=10;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="280" y="180"/><mxPoint x="485" y="180"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="m2l" value="2" style="text;html=1;fontSize=9;" vertex="1" parent="1"><mxGeometry x="375" y="163" width="20" height="15" as="geometry"/></mxCell>
+
+        <!-- 3: AnalyticsRouter → DataService: get_events() -->
+        <mxCell id="m3" value="get_events()" style="endArrow=block;endFill=1;fontSize=10;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="485" y="220"/><mxPoint x="690" y="220"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="m3l" value="3" style="text;html=1;fontSize=9;" vertex="1" parent="1"><mxGeometry x="580" y="205" width="20" height="15" as="geometry"/></mxCell>
+
+        <!-- 4: DataService → AnalyticsRouter: list[Event] -->
+        <mxCell id="m4" value="list[Event]" style="endArrow=open;dashed=1;fontSize=10;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="690" y="255"/><mxPoint x="485" y="255"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="m4l" value="4" style="text;html=1;fontSize=9;" vertex="1" parent="1"><mxGeometry x="580" y="240" width="20" height="15" as="geometry"/></mxCell>
+
+        <!-- loop frame: для каждого district -->
+        <mxCell id="loopframe1" value="loop [&#1076;&#1083;&#1103; &#1082;&#1072;&#1078;&#1076;&#1086;&#1075;&#1086; district &#1074; events]" style="text;html=1;strokeColor=#006600;fillColor=#EAFFEA;align=left;verticalAlign=top;spacingLeft=6;fontSize=10;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="440" y="280" width="300" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="loopborder1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#006600;strokeWidth=1;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="440" y="278" width="300" height="80" as="geometry"/>
+        </mxCell>
+
+        <!-- 5: AnalyticsRouter → DataService: get_occupancy_by_district(district) -->
+        <mxCell id="m5" value="get_occupancy_by_district(district)" style="endArrow=block;endFill=1;fontSize=10;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="485" y="315"/><mxPoint x="690" y="315"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="m5l" value="5" style="text;html=1;fontSize=9;" vertex="1" parent="1"><mxGeometry x="580" y="300" width="20" height="15" as="geometry"/></mxCell>
+
+        <!-- 6: DataService → AnalyticsRouter: list[OccupancyPoint] -->
+        <mxCell id="m6" value="list[OccupancyPoint]" style="endArrow=open;dashed=1;fontSize=10;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="690" y="345"/><mxPoint x="485" y="345"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="m6l" value="6" style="text;html=1;fontSize=9;" vertex="1" parent="1"><mxGeometry x="580" y="330" width="20" height="15" as="geometry"/></mxCell>
+
+        <!-- internal: build event_dates_per_district -->
+        <mxCell id="m7" value="build event_dates_per_district" style="endArrow=block;endFill=1;fontSize=10;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="485" y="385"/><mxPoint x="510" y="385"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="m7l" value="7" style="text;html=1;fontSize=9;" vertex="1" parent="1"><mxGeometry x="455" y="370" width="20" height="15" as="geometry"/></mxCell>
+
+        <!-- loop frame: для каждого event с district + date -->
+        <mxCell id="loopframe2" value="loop [&#1076;&#1083;&#1103; &#1082;&#1072;&#1078;&#1076;&#1086;&#1075;&#1086; event &#1089; district + date]" style="text;html=1;strokeColor=#660000;fillColor=#FFEAEA;align=left;verticalAlign=top;spacingLeft=6;fontSize=10;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="440" y="410" width="560" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="loopborder2" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#660000;strokeWidth=1;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="440" y="408" width="560" height="320" as="geometry"/>
+        </mxCell>
+
+        <!-- 8: AnalyticsRouter → MethodologyService: compute_seasonal_baseline -->
+        <mxCell id="m8" value="compute_seasonal_baseline(target_date, weekday, history, event_dates, window_weeks=3)" style="endArrow=block;endFill=1;fontSize=10;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="485" y="450"/><mxPoint x="910" y="450"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="m8l" value="8" style="text;html=1;fontSize=9;" vertex="1" parent="1"><mxGeometry x="690" y="433" width="20" height="15" as="geometry"/></mxCell>
+
+        <!-- 9: MethodologyService internal: filter by weekday, ±3 weeks, exclude event_dates -->
+        <mxCell id="m9" value="filter by weekday, &#177;3 weeks,&#xa;exclude event_dates &amp; target_date" style="endArrow=block;endFill=1;fontSize=10;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="910" y="490"/><mxPoint x="960" y="490"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="m9l" value="9" style="text;html=1;fontSize=9;" vertex="1" parent="1"><mxGeometry x="878" y="475" width="20" height="15" as="geometry"/></mxCell>
+
+        <!-- 10: MethodologyService → AnalyticsRouter: SeasonalBaseline {mean, std, n_samples, confidence} -->
+        <mxCell id="m10" value="SeasonalBaseline {mean, std, n_samples, confidence}" style="endArrow=open;dashed=1;fontSize=10;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="910" y="530"/><mxPoint x="485" y="530"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="m10l" value="10" style="text;html=1;fontSize=9;" vertex="1" parent="1"><mxGeometry x="690" y="515" width="20" height="15" as="geometry"/></mxCell>
+
+        <!-- 11: AnalyticsRouter → MethodologyService: corrected_impact(observed, baseline) -->
+        <mxCell id="m11" value="corrected_impact(observed, baseline)" style="endArrow=block;endFill=1;fontSize=10;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="485" y="570"/><mxPoint x="910" y="570"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="m11l" value="11" style="text;html=1;fontSize=9;" vertex="1" parent="1"><mxGeometry x="690" y="553" width="20" height="15" as="geometry"/></mxCell>
+
+        <!-- 12: MethodologyService → AnalyticsRouter: {delta_pct, ci_lower, ci_upper, baseline_mean, n_samples, confidence, method} -->
+        <mxCell id="m12" value="{delta_pct, ci_lower, ci_upper,&#xa;baseline_mean, n_samples, confidence,&#xa;method='seasonal_corrected'}" style="endArrow=open;dashed=1;fontSize=10;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="910" y="620"/><mxPoint x="485" y="620"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="m12l" value="12" style="text;html=1;fontSize=9;" vertex="1" parent="1"><mxGeometry x="690" y="605" width="20" height="15" as="geometry"/></mxCell>
+
+        <!-- end loop: sort + top-N -->
+        <mxCell id="m13" value="sort by abs(delta_pct) desc, top-N" style="endArrow=block;endFill=1;fontSize=10;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="485" y="760"/><mxPoint x="510" y="760"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="m13l" value="13" style="text;html=1;fontSize=9;" vertex="1" parent="1"><mxGeometry x="455" y="745" width="20" height="15" as="geometry"/></mxCell>
+
+        <!-- 14: AnalyticsRouter → Frontend: list[CorrectedEventsImpact] -->
+        <mxCell id="m14" value="list[CorrectedEventsImpact]" style="endArrow=open;dashed=1;fontSize=10;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="485" y="800"/><mxPoint x="280" y="800"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="m14l" value="14" style="text;html=1;fontSize=9;" vertex="1" parent="1"><mxGeometry x="375" y="785" width="20" height="15" as="geometry"/></mxCell>
+
+        <!-- alt frame: confidence='low' -->
+        <mxCell id="altframe" value="alt [confidence='low']" style="text;html=1;strokeColor=#AA6600;fillColor=#FFF8E0;align=left;verticalAlign=top;spacingLeft=6;fontSize=10;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="160" y="825" width="260" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="altborder" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#AA6600;strokeWidth=1;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="160" y="823" width="260" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- 15: Frontend internal: пометить строку badge «недостаточно данных» -->
+        <mxCell id="m15" value="&#1087;&#1086;&#1084;&#1077;&#1090;&#1080;&#1090;&#1100; &#1089;&#1090;&#1088;&#1086;&#1082;&#1091; badge&#xa;&#171;&#1085;&#1077;&#1076;&#1086;&#1089;&#1090;&#1072;&#1090;&#1086;&#1095;&#1085;&#1086; &#1076;&#1072;&#1085;&#1085;&#1099;&#1093;&#187;" style="endArrow=block;endFill=1;fontSize=10;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="280" y="860"/><mxPoint x="310" y="860"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="m15l" value="15" style="text;html=1;fontSize=9;" vertex="1" parent="1"><mxGeometry x="250" y="845" width="20" height="15" as="geometry"/></mxCell>
+
+        <!-- 16: Frontend → User: таблица delta_pct цветом + фильтр -->
+        <mxCell id="m16" value="&#1090;&#1072;&#1073;&#1083;&#1080;&#1094;&#1072; delta_pct &#1094;&#1074;&#1077;&#1090;&#1086;&#1084; + &#1092;&#1080;&#1083;&#1100;&#1090;&#1088; &#171;&#1090;&#1086;&#1083;&#1100;&#1082;&#1086; impact &#8805; 5%&#187;" style="endArrow=open;dashed=1;fontSize=10;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="280" y="920"/><mxPoint x="100" y="920"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="m16l" value="16" style="text;html=1;fontSize=9;" vertex="1" parent="1"><mxGeometry x="180" y="905" width="20" height="15" as="geometry"/></mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
