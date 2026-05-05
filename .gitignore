@@ -48,4 +48,4 @@ test_report*.json
 *_TEST_REPORT.md
 *_TEST_SUMMARY.md
 EXECUTIVE_SUMMARY.md
-TEST_REPORTS_INDEX.md
+TEST_REPORTS_INDEX.mdpytest_out.txt
