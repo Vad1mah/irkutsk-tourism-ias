@@ -16,6 +16,24 @@ logger = logging.getLogger(__name__)
 # Rate limiting между запросами
 RATE_LIMIT_DELAY = 0.5  # секунд
 
+_PRICE_MIN_RE = re.compile(
+    r"от\s+(\d{2,5})\s*(?:₽|руб(?:лей|ля)?\.?|р\.?)(?:\b|(?=\s|,|$))",
+    re.IGNORECASE,
+)
+
+
+def _extract_price_min(text: str | None) -> int | None:
+    """Возвращает min цену из текста (RU formats: 'от N руб', 'от N₽')."""
+    if not text:
+        return None
+    m = _PRICE_MIN_RE.search(text)
+    if not m:
+        return None
+    try:
+        return int(m.group(1))
+    except (ValueError, TypeError):
+        return None
+
 
 async def fetch_events_zeroevent(years: list[int] | None = None, by_month: bool = True) -> list[dict[str, Any]]:
     """
@@ -169,11 +187,13 @@ def _parse_zeroevent_html(html: str, year: int) -> list[dict[str, Any]]:
             
             content = f"zeroevent_{start_date}_{name}"
             event_id = f"zeroevent_{hashlib.md5(content.encode()).hexdigest()[:12]}"
-            
+            description = _clean_html(item.get("description", ""))
+            price_min = _extract_price_min(description) if description else None
+
             events.append({
                 "id": event_id,
                 "title": name,
-                "description": _clean_html(item.get("description", "")),
+                "description": description,
                 "date_start": str(start_date),
                 "date_end": str(end_date) if end_date else None,
                 "event_type": detect_event_type(name),
@@ -181,6 +201,7 @@ def _parse_zeroevent_html(html: str, year: int) -> list[dict[str, Any]]:
                 "source": "zeroevent",
                 "url": item.get("url", ""),
                 "image_url": item.get("image", ""),
+                "price_min": price_min,
             })
     
     except json.JSONDecodeError as e:
