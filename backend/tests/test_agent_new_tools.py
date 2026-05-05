@@ -503,6 +503,27 @@ class TestNewToolsRegistration:
         ]:
             assert expected in TOOLS_BY_NAME
 
+    def test_system_prompt_has_methodology_rules(self):
+        """System prompt must include 8 methodological rules for B2B response format."""
+        from app.services.main_agent import AGENT_SYSTEM_PROMPT
+        prompt = AGENT_SYSTEM_PROMPT.lower()
+        # Rule 1 — район
+        assert "район" in prompt
+        # Rule 2 — период
+        assert "период" in prompt
+        # Rule 3 — метод / методологию
+        assert "методолог" in prompt or "метод" in prompt
+        # Rule 4 — база для сравнения / baseline
+        assert "baseline" in prompt or "базу" in prompt or "базе" in prompt or "сравнения" in prompt
+        # Rule 5 — не выдумывай при нехватке данных
+        assert "не хватает" in prompt or "не выдумыва" in prompt or "нехватк" in prompt
+        # Rule 6 — сегментный benchmark
+        assert "сегмент" in prompt
+        # Rule 7 — прокси
+        assert "прокси" in prompt
+        # Rule 8 — gap / июль-сентябрь 2025
+        assert "gap" in prompt or "июль" in prompt or "пробел" in prompt
+
     def test_new_tools_are_async(self):
         from app.services.main_agent import (
             get_top_events_by_impact,
