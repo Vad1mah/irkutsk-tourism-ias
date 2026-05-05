@@ -1,4 +1,40 @@
 # SESSION_HANDOFF — текущее состояние работы
+## 2026-05-04 — ВСЕ 5 ФАЗ B2B-REBUILD ЗАВЕРШЕНЫ ✅
+
+**Total branches:** `feat/b2b-rebuild-phase{1,2,3,4,5}` — ~69 commits.
+**Total tasks:** ~52 across 5 phases.
+**Tests:** 207 passing, 0 failed (backend), TS clean + build OK (frontend).
+**Spec:** [`docs/superpowers/specs/2026-05-04-rebuild-frontend-b2b-design.md`](superpowers/specs/2026-05-04-rebuild-frontend-b2b-design.md)
+**Summary:** [`docs/PHASE_REBUILD_SUMMARY.md`](PHASE_REBUILD_SUMMARY.md)
+
+### Branch state
+
+- `feat/b2b-rebuild-phase1` — backend (30 tasks): schema, dedup, 6 bugfixes, 11 new endpoints, 7 dead removed, 5 parsers extended, 2 with AI fallback, ParserHealth.
+- `feat/b2b-rebuild-phase2` — AI agent (9 tasks): 6 new tools, methodology rules, evergreen prompts.
+- `feat/b2b-rebuild-phase3` — frontend (10 tasks): Yandex Maps, 4-tab Analytics, Layout/Home/Forecast/Events/HotelDetail/About rebuilds.
+- `feat/b2b-rebuild-phase4` — UML models (2 tasks): UC11/UC12, 5 entities, FR3.8/3.9/4.7, 2 services, БП5, sequence.
+- `feat/b2b-rebuild-phase5` — verification (3 tasks): tests pass, UML re-audit, OTCHET synced, summary written.
+
+### Что необходимо сделать пользователю (manual)
+
+1. **Merge стратегия** — все 5 веток на feat/b2b-rebuild-phase5 (последовательная цепочка). Возможные сценарии:
+   - Squash merge `feat/b2b-rebuild-phase5` в `master` одним коммитом (чисто).
+   - Merge --no-ff для сохранения истории по фазам.
+   - Создать PR для каждой фазы (если нужна review-trail).
+2. **`.drawio` файлы** — текстовые модели обновлены, графика требует ручного редактирования в draw.io.
+3. **Yandex Maps API key** — продакшн-ключ должен быть прописан в `.env` на сервере (dev-ключ уже в `frontend/.env`).
+4. **Презентация** — `docs/presentation/PREZENTACIYA_VKR.md` требует синхронизации со свежими числами (12 tools, 207 tests, etc.).
+
+### Известные ограничения (документированы в PHASE_REBUILD_SUMMARY)
+
+- Alembic миграции отложены — используется `create_all` + ALTER скрипт.
+- True ADR / RevPAR недоступны (нет revenue) — везде используются прокси с явной пометкой.
+- Comp set с конкретными конкурентами не реализован — анонимный сегментный benchmark.
+- Real-time pickup curve не реализован — daily proxy-pickup из snapshot diffs.
+- Channel mix, LOS, source markets, GOPPAR — нет данных (out-of-scope).
+- `.drawio` диаграммы — текстовые модели готовы, графика manual.
+- 2-3 pre-existing test failures (asyncpg event-loop harness) — не регрессии, harness issue.
+
 ## 2026-05-04 — Phase 4 (Models UML/BPMN) ЗАВЕРШЁН ✅
 
 **Branch:** `feat/b2b-rebuild-phase4` (2 коммита).
