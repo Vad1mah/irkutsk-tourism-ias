@@ -4,11 +4,110 @@ import { useQuery, useMutation } from '@tanstack/react-query'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts'
-import { Building2, MapPin, Star, ArrowLeft, TrendingUp, DollarSign, Sparkles, Loader2, AlertCircle } from 'lucide-react'
+import { Building2, MapPin, Star, ArrowLeft, TrendingUp, DollarSign, Sparkles, Loader2, AlertCircle, GitCompare } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardContent, Badge, Button } from '../components/ui'
 import { ErrorState } from '../components/ErrorState'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { api } from '../api/client'
+import type { HotelSegmentBenchmarkResponse } from '../api/client'
+
+function _fmtDelta(delta: number | null, unit: string): string {
+  if (delta == null) return '—'
+  const sign = delta >= 0 ? '+' : ''
+  return `${sign}${delta.toFixed(1)}${unit}`
+}
+
+function SegmentBenchmarkBlock({ benchmark }: { benchmark: HotelSegmentBenchmarkResponse | undefined }) {
+  if (!benchmark) return null
+
+  const { hotel, segment, hotel_metrics, segment_metrics, n_in_segment } = benchmark
+
+  if (n_in_segment === 0) {
+    return (
+      <Card variant="glass">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <GitCompare className="w-5 h-5 text-[hsl(var(--primary))]" />
+            <CardTitle>Сравнение с сегментом</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-4">
+            В сегменте нет других объектов для сравнения
+          </p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const occDelta = hotel_metrics.occupancy != null && segment_metrics.avg_occupancy != null
+    ? hotel_metrics.occupancy - segment_metrics.avg_occupancy
+    : null
+  const priceDelta = hotel_metrics.min_price != null && segment_metrics.avg_price != null
+    ? hotel_metrics.min_price - segment_metrics.avg_price
+    : null
+
+  const sizeBucketLabel: Record<string, string> = { mini: 'мини', mid: 'средний', large: 'крупный' }
+  const bucketLabel = sizeBucketLabel[segment.size_bucket] ?? segment.size_bucket
+
+  const rows: { metric: string; hotel: string; segment: string; delta: string; positive: boolean | null }[] = [
+    {
+      metric: 'Загрузка',
+      hotel: hotel_metrics.occupancy != null ? `${hotel_metrics.occupancy.toFixed(1)}%` : '—',
+      segment: segment_metrics.avg_occupancy != null ? `${segment_metrics.avg_occupancy.toFixed(1)}%` : '—',
+      delta: _fmtDelta(occDelta, '%'),
+      positive: occDelta != null ? occDelta >= 0 : null,
+    },
+    {
+      metric: 'Мин. цена',
+      hotel: hotel_metrics.min_price != null ? `${hotel_metrics.min_price.toLocaleString()} ₽` : '—',
+      segment: segment_metrics.avg_price != null ? `${segment_metrics.avg_price.toLocaleString()} ₽` : '—',
+      delta: priceDelta != null ? _fmtDelta(priceDelta, ' ₽') : '—',
+      positive: priceDelta != null ? priceDelta >= 0 : null,
+    },
+  ]
+
+  return (
+    <Card variant="glass">
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <GitCompare className="w-5 h-5 text-[hsl(var(--primary))]" />
+          <CardTitle>Сравнение с сегментом</CardTitle>
+        </div>
+        <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
+          Сегмент: район «{segment.district ?? hotel.district ?? '—'}» × {bucketLabel} ({n_in_segment} объектов)
+        </p>
+      </CardHeader>
+      <CardContent>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-[hsl(var(--border))]">
+                <th className="text-left py-2 pr-4 font-medium text-[hsl(var(--muted-foreground))]">Метрика</th>
+                <th className="text-right py-2 pr-4 font-medium text-[hsl(var(--muted-foreground))]">Этот объект</th>
+                <th className="text-right py-2 pr-4 font-medium text-[hsl(var(--muted-foreground))]">Средний по сегменту</th>
+                <th className="text-right py-2 font-medium text-[hsl(var(--muted-foreground))]">Разница</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(({ metric, hotel: hotelVal, segment: segVal, delta, positive }) => (
+                <tr key={metric} className="border-b border-[hsl(var(--border)/0.5)] last:border-0">
+                  <td className="py-2.5 pr-4 font-medium">{metric}</td>
+                  <td className="py-2.5 pr-4 text-right tabular-nums">{hotelVal}</td>
+                  <td className="py-2.5 pr-4 text-right tabular-nums text-[hsl(var(--muted-foreground))]">{segVal}</td>
+                  <td className={`py-2.5 text-right tabular-nums font-semibold ${
+                    positive === null ? 'text-[hsl(var(--muted-foreground))]'
+                    : positive ? 'text-[hsl(var(--success))]' : 'text-[hsl(var(--destructive))]'
+                  }`}>{delta}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
 
 function HotelDetail() {
   const { id } = useParams<{ id: string }>()
@@ -29,6 +128,12 @@ function HotelDetail() {
   const { data: stats, isError: isStatsError } = useQuery({
     queryKey: ['hotel-stats', id],
     queryFn: () => api.getHotelStats(id!),
+    enabled: !!id,
+  })
+
+  const { data: benchmark } = useQuery({
+    queryKey: ['hotel-segment-benchmark', id],
+    queryFn: () => api.getHotelSegmentBenchmark(id!),
     enabled: !!id,
   })
 
@@ -122,6 +227,8 @@ function HotelDetail() {
           </div>
         </CardContent>
       </Card>
+
+      <SegmentBenchmarkBlock benchmark={benchmark} />
 
       {chartData.length > 0 ? (
         <>
