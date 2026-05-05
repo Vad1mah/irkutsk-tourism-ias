@@ -203,6 +203,112 @@ export type EventImpact = {
   impact: number | null
 }
 
+export type AnalyticsMetadata = {
+  hotels_count: number
+  events_count: number
+  data_range: { from: string | null; to: string | null }
+  last_refresh: string | null
+  gap_periods: Array<{ from: string | null; to: string | null; gap_days: number; reason: string }>
+}
+
+export type ParserHealth = {
+  parser_id: string
+  status: 'ok' | 'warn' | 'fail'
+  items_collected: number
+  error: string | null
+  last_run: string
+}
+
+export type BookingPacePoint = {
+  date: string
+  occupancy_today: number | null
+  occupancy_lookback: number | null
+  pickup_pct: number | null
+}
+
+export type BookingPaceResponse = {
+  district: string
+  days_ahead: number
+  lookback_days: number
+  method: string
+  methodology: string
+  points: BookingPacePoint[]
+  summary: {
+    avg_pickup_pct: number | null
+    max_pickup_pct: number | null
+    min_pickup_pct: number | null
+    trend: string
+  }
+}
+
+export type OccupancyTimeseriesResponse = {
+  district: string
+  days: number
+  points: Array<{ date: string; occupancy: number }>
+  summary: { min: number | null; max: number | null; avg: number | null; samples: number }
+}
+
+export type PriceDistributionResponse = {
+  district: string
+  days: number
+  samples: number
+  p10: number | null
+  p25: number | null
+  p50: number | null
+  p75: number | null
+  p90: number | null
+}
+
+export type CompareDistrictsResponse = {
+  days: number
+  districts: Array<{
+    district: string
+    occupancy: number | null
+    adr_proxy: number | null
+    revpar_proxy: number | null
+    samples: number
+  }>
+}
+
+export type SegmentsResponse = {
+  by_size: Record<string, { count: number; avg_occupancy: number | null; avg_price: number | null }>
+  by_accommodation_type: Record<string, { count: number; avg_price: number | null }>
+  size_thresholds: { mini_max: number; mid_max: number }
+}
+
+export type HotelSegmentBenchmarkResponse = {
+  hotel: { id: string; name: string | null; district: string | null; rooms_num: number | null }
+  segment: { district: string | null; size_bucket: string }
+  hotel_metrics: { occupancy: number | null; min_price: number | null }
+  segment_metrics: { n: number; avg_occupancy: number | null; avg_price: number | null }
+  n_in_segment: number
+}
+
+export type ForecastValidationResponse = {
+  district: string
+  days_back: number
+  samples: number
+  rmse: number | null
+  mae: number | null
+  mae_per_day: number[]
+  forecasted: Array<{ date: string; occupancy: number }>
+  actual: Array<{ date: string; occupancy: number }>
+}
+
+export type CorrectedEventsImpact = Array<{
+  event: string
+  date: string
+  district: string
+  occupancy_on_day: number
+  delta_pct: number | null
+  baseline_mean: number | null
+  ci_lower: number | null
+  ci_upper: number | null
+  n_samples: number
+  confidence: 'high' | 'medium' | 'low'
+  method: string
+}>
+
 export type MapHotel = {
   id: string; name: string; city: string; district: string
   lat: number; lon: number; rating: number | null; min_price: number | null
@@ -442,6 +548,45 @@ export const api = {
       body: JSON.stringify({ hotel_id: hotelId, days_ahead: daysAhead }),
       signal: AbortSignal.timeout(60_000),
     }),
+
+  getMetadata: () => request<AnalyticsMetadata>('/api/analytics/metadata'),
+
+  getParserHealth: () => request<ParserHealth[]>('/api/parser/health'),
+
+  getBookingPace: (district: string, daysAhead = 14, lookbackDays = 7) => {
+    const params = new URLSearchParams({ district, days_ahead: String(daysAhead), lookback_days: String(lookbackDays) })
+    return request<BookingPaceResponse>(`/api/analytics/booking-pace?${params}`)
+  },
+
+  getOccupancyTimeseries: (district: string, days = 30) => {
+    const params = new URLSearchParams({ district, days: String(days) })
+    return request<OccupancyTimeseriesResponse>(`/api/analytics/occupancy-timeseries?${params}`)
+  },
+
+  getPriceDistribution: (district: string, days = 30) => {
+    const params = new URLSearchParams({ district, days: String(days) })
+    return request<PriceDistributionResponse>(`/api/analytics/price-distribution?${params}`)
+  },
+
+  compareDistricts: (districts: string[], days = 30) => {
+    const params = new URLSearchParams({ districts: districts.join(','), days: String(days) })
+    return request<CompareDistrictsResponse>(`/api/analytics/compare-districts?${params}`)
+  },
+
+  getSegments: () => request<SegmentsResponse>('/api/analytics/segments'),
+
+  getHotelSegmentBenchmark: (hotelId: string) =>
+    request<HotelSegmentBenchmarkResponse>(`/api/hotels/${encodeURIComponent(hotelId)}/segment-benchmark`),
+
+  getForecastValidation: (district: string, daysBack = 14) => {
+    const params = new URLSearchParams({ days_back: String(daysBack) })
+    return request<ForecastValidationResponse>(`/api/forecast/${encodeURIComponent(district)}/validation?${params}`)
+  },
+
+  getEventsImpactCorrected: (windowWeeks = 3) => {
+    const params = new URLSearchParams({ method: 'seasonal_corrected', window_weeks: String(windowWeeks) })
+    return request<CorrectedEventsImpact>(`/api/analytics/events-impact?${params}`)
+  },
 
   exportUrl: (
     type: 'occupancy' | 'events' | 'hotels',
