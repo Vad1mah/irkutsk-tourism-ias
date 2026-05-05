@@ -1,4 +1,27 @@
 # SESSION_HANDOFF — текущее состояние работы
+## 2026-05-04 — Phase 4 (Models UML/BPMN) ЗАВЕРШЁН ✅
+
+**Branch:** `feat/b2b-rebuild-phase4` (2 коммита).
+
+### Что сделано
+
+- UC: UC11 «Анализ событий с corrected impact», UC12 «Сегментный benchmark отеля» — добавлены с pre-conditions, потоками, alt flows, cross-ref на FR/components.
+- DOMAIN: 5 новых сущностей — BookingSnapshot, EventImpactRecord, SegmentBenchmark, ParserHealthRecord, MethodologyRecord.
+- REQ: FR3.6/3.7 расширены (proxy disclaimer, gap-aware), FR3.8/3.9 (segment benchmark, proxy-pickup) — новые, FR4.7 (corrected impact) — уточнён, NFR7 (методологическая прозрачность) — новое.
+- COMPONENT: MethodologyService, ParserHealthService — новые компоненты; AnalyticsRouter +7 endpoint'ов, HotelsRouter +1, ForecastRouter +1 −4, EventsRouter −3; MainAgent 6→12 tools.
+- BP: БП5 «Методологическая калибровка» — пересчёт baseline по cron + audit log.
+- SEQUENCE: диаграмма для UC11 (User → AnalyticsRouter → DataService loop → MethodologyService twice → response).
+
+### `.drawio` файлы
+
+Текстовые .md обновлены. `.drawio` — за рамками текущего этапа (требуют ручного редактирования в draw.io). Зафиксировано как направление развития.
+
+### Что дальше — Phase 5 (Final Verification & Report)
+
+- Полный smoke на запущенном backend + frontend.
+- pytest + tsc.
+- Обновление final отчёта `docs/vkr/OTCHET_PO_PRAKTIKE.md` с цифрами Phase 1-4.
+- Обновление презентации.
 
 > **Этот файл — последний снимок прогресса.** Обновлять в конце каждой сессии. Перед стартом — прочитать целиком и сверить с `NORTH_STAR.md` + `REFOCUS_PLAN.md`.
 
