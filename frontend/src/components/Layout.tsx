@@ -12,6 +12,7 @@ import {
   PartyPopper,
   TrendingUp,
   LayoutDashboard,
+  MessageSquare,
   Menu,
   X,
   Sun,
@@ -125,6 +126,12 @@ const analyticalNavItems: NavItemConfig[] = [
     icon: PartyPopper,
     label: 'События и спрос',
     description: 'Влияние событий на загрузку',
+  },
+  {
+    to: '/chat',
+    icon: MessageSquare,
+    label: 'AI-аналитик',
+    description: 'Запрос к B2B-агенту на естественном языке',
   },
 ]
 
