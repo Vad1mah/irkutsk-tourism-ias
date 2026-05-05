@@ -3,6 +3,7 @@ import { api } from '../api/client'
 import {
   Info, Database, Brain, BarChart3, Globe, Shield,
   Cpu, Cloud, Layers, Zap, GitBranch, Server, Compass,
+  BookOpen, AlertTriangle, CheckCircle, XCircle, Clock,
 } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardContent, Badge } from '../components/ui'
 import { ErrorState } from '../components/ErrorState'
@@ -70,6 +71,8 @@ const DATA_SOURCES = [
 function About() {
   usePageTitle('О системе')
   const { data: kpi, isError: kpiError, refetch: refetchKpi } = useQuery({ queryKey: ['kpi'], queryFn: api.getKPI })
+  const { data: metadata } = useQuery({ queryKey: ['metadata'], queryFn: api.getMetadata })
+  const { data: parsers } = useQuery({ queryKey: ['parser-health'], queryFn: api.getParserHealth })
 
   return (
     <div className="space-y-6 animate-fade-in max-w-4xl mx-auto">
@@ -118,7 +121,9 @@ function About() {
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
             <div>
-              <p className="text-2xl font-bold text-[hsl(var(--primary))]">{kpi?.total_hotels || '490+'}</p>
+              <p className="text-2xl font-bold text-[hsl(var(--primary))]">
+                {metadata?.hotels_count ?? kpi?.total_hotels ?? '490+'}
+              </p>
               <p className="text-xs text-[hsl(var(--muted-foreground))]">Отелей в базе</p>
             </div>
             <div>
@@ -126,7 +131,9 @@ function About() {
               <p className="text-xs text-[hsl(var(--muted-foreground))]">Районов области</p>
             </div>
             <div>
-              <p className="text-2xl font-bold text-[hsl(var(--success))]">8</p>
+              <p className="text-2xl font-bold text-[hsl(var(--success))]">
+                {parsers ? parsers.length : 8}
+              </p>
               <p className="text-xs text-[hsl(var(--muted-foreground))]">Парсеров данных</p>
             </div>
             <div>
@@ -199,17 +206,52 @@ function About() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            {DATA_SOURCES.map(({ name, desc, count }) => (
-              <div key={name} className="p-3 rounded-xl bg-[hsl(var(--secondary)/0.3)]">
-                <p className="text-sm font-medium">{name}</p>
-                <p className="text-xs text-[hsl(var(--muted-foreground))]">{desc}</p>
-                <Badge variant="outline" size="sm" className="mt-1">
-                  {name === '101hotels.com' && kpi?.total_hotels ? `${kpi.total_hotels} отелей` : count}
-                </Badge>
-              </div>
-            ))}
-          </div>
+          {parsers && parsers.length > 0 ? (
+            <div className="space-y-2">
+              {parsers.map((p) => {
+                const statusIcon = p.status === 'ok'
+                  ? <CheckCircle size={14} className="text-[hsl(var(--success))] flex-shrink-0" />
+                  : p.status === 'warn'
+                  ? <AlertTriangle size={14} className="text-[hsl(var(--warning))] flex-shrink-0" />
+                  : <XCircle size={14} className="text-[hsl(var(--destructive))] flex-shrink-0" />
+                const badgeVariant = p.status === 'ok' ? 'success' : p.status === 'warn' ? 'warning' : 'danger'
+                const lastRunStr = p.last_run
+                  ? new Date(p.last_run).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+                  : '—'
+                return (
+                  <div key={p.parser_id} className="flex items-center gap-3 p-3 rounded-xl bg-[hsl(var(--secondary)/0.3)]">
+                    {statusIcon}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{p.parser_id}</p>
+                      <div className="flex items-center gap-1.5 mt-0.5 text-xs text-[hsl(var(--muted-foreground))]">
+                        <Clock size={11} />
+                        <span>{lastRunStr}</span>
+                        {p.error && <span className="text-[hsl(var(--destructive))] truncate">· {p.error}</span>}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {p.items_collected > 0 && (
+                        <span className="text-xs text-[hsl(var(--muted-foreground))]">{p.items_collected.toLocaleString()} зап.</span>
+                      )}
+                      <Badge variant={badgeVariant} size="sm">{p.status}</Badge>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              {DATA_SOURCES.map(({ name, desc, count }) => (
+                <div key={name} className="p-3 rounded-xl bg-[hsl(var(--secondary)/0.3)]">
+                  <p className="text-sm font-medium">{name}</p>
+                  <p className="text-xs text-[hsl(var(--muted-foreground))]">{desc}</p>
+                  <Badge variant="outline" size="sm" className="mt-1">
+                    {name === '101hotels.com' && kpi?.total_hotels ? `${kpi.total_hotels} отелей` : count}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -241,6 +283,67 @@ function About() {
           <p className="text-xs text-[hsl(var(--muted-foreground))] text-center mt-4">
             Docker Compose: PostgreSQL 16 + Redis 7 | Backend: Python 3.11+ | Frontend: Vite 7 + React 18
           </p>
+        </CardContent>
+      </Card>
+
+      <Card variant="glass">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <BookOpen className="w-5 h-5 text-[hsl(var(--success))]" />
+            <CardTitle>Методология</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3 text-sm">
+            {[
+              {
+                title: 'RevPAR и ADR',
+                body: 'RevPAR = ADR × Occupancy. Прокси-ADR = медиана min_price (реальный обычно на 15–30% выше). Прокси-RevPAR используется для сравнения трендов и районов, не для абсолютного ROI.',
+              },
+              {
+                title: 'Impact событий',
+                body: 'Corrected impact событий: baseline по похожим дням недели в окне ±3 нед., исключая другие event-дни. Метод: seasonal_corrected.',
+              },
+              {
+                title: 'Достоверность RMS-метрик',
+                body: 'high (≥5 объектов), medium (2–4), low (≤1).',
+              },
+              {
+                title: 'Период gap данных',
+                body: 'Июль–сентябрь 2025 (парсеры были временно отключены) — отмечен явно во всех графиках.',
+              },
+            ].map(({ title, body }) => (
+              <div key={title} className="p-3 rounded-xl bg-[hsl(var(--secondary)/0.3)]">
+                <p className="font-medium mb-1">{title}</p>
+                <p className="text-[hsl(var(--muted-foreground))]">{body}</p>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card variant="glass">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-[hsl(var(--warning))]" />
+            <CardTitle>Что не делает система (известные ограничения)</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2 text-sm">
+            {[
+              'Не показывает true ADR / RevPAR — используются прокси из min_price.',
+              'Не делает comp set с конкретными конкурентами — используется анонимный сегментный benchmark.',
+              'Не использует real-time pickup — только daily proxy-pickup из snapshot diffs.',
+              'Не учитывает channel mix (OTA vs direct), LOS, source markets, GOPPAR — нет данных.',
+              'Alembic migrations — направление развития; сейчас используется create_all + миграционный скрипт.',
+            ].map((item) => (
+              <div key={item} className="flex items-start gap-2 p-2.5 rounded-lg bg-[hsl(var(--secondary)/0.3)]">
+                <XCircle size={14} className="text-[hsl(var(--warning))] flex-shrink-0 mt-0.5" />
+                <p className="text-[hsl(var(--muted-foreground))]">{item}</p>
+              </div>
+            ))}
+          </div>
         </CardContent>
       </Card>
 
