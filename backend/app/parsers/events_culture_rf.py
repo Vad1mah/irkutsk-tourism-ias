@@ -24,6 +24,21 @@ from app.parsers.anti_detection import rate_limiter, response_cache
 logger = logging.getLogger(__name__)
 
 
+def _extract_address_from_jsonld(jsonld: dict) -> str | None:
+    """Извлекает street address из JSON-LD location.address."""
+    loc = jsonld.get("location")
+    if not isinstance(loc, dict):
+        return None
+    addr = loc.get("address")
+    if isinstance(addr, str):
+        return addr.strip() or None
+    if isinstance(addr, dict):
+        street = addr.get("streetAddress") or addr.get("addressLocality")
+        if street:
+            return str(street).strip() or None
+    return None
+
+
 _VENUE_KEYWORDS = re.compile(
     r'(музей|театр|дворец|филармония|библиотека|центр|галерея|ДК|клуб|зал)',
     re.IGNORECASE,
@@ -191,6 +206,7 @@ class CultureRFParser(BaseParser):
                     time_start=event_time,
                     event_type=detect_event_type(title),
                     location=location,
+                    address=None,  # заполняется через _extract_address_from_jsonld при наличии JSON-LD
                     price=price,
                     price_min=price_min if price_min and price_min > 0 else None,
                     source="culture_rf",
