@@ -24,6 +24,12 @@ export type Event = {
   location: string | null
   source_id: string
   url: string | null
+  time_start: string | null
+  address: string | null
+  price_min: number | null
+  price_max: number | null
+  image_url: string | null
+  age_restriction: string | null
 }
 
 export type QueryResponse = {

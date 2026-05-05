@@ -17,6 +17,7 @@ import { ErrorState } from '../components/ErrorState'
 import { exportChartPng } from '../utils/export'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { DEFAULT_DISTRICTS } from '../constants/districts'
+import { localizeFeature } from '../utils/localizeFeatures'
 
 type SeasonData = {
   month: string
@@ -91,6 +92,13 @@ function Forecast() {
     enabled: false,
     retry: 0,
     staleTime: 10 * 60 * 1000,
+  })
+
+  const { data: validationData, isLoading: loadingValidation } = useQuery({
+    queryKey: ['forecast-validation', district],
+    queryFn: () => api.getForecastValidation(district, 14),
+    retry: 1,
+    staleTime: 30 * 60 * 1000,
   })
 
   const isLoading = loadingEnsemble || loadingCompare
@@ -889,8 +897,9 @@ function Forecast() {
                       <YAxis
                         dataKey="name"
                         type="category"
-                        width={110}
-                        tick={{ fontSize: 10 }}
+                        width={140}
+                        tick={{ fontSize: 12 }}
+                        tickFormatter={(name: string) => localizeFeature(name)}
                         axisLine={false}
                         tickLine={false}
                       />
@@ -910,6 +919,68 @@ function Forecast() {
               </Card>
             )}
           </div>}
+
+          {/* Forecast Self-Validation */}
+          {viewMode === 'expert' && (
+            <Card variant="glass">
+              <CardHeader className="pb-2">
+                <div className="flex items-center gap-2">
+                  <BarChart3 className="w-5 h-5 text-[hsl(var(--success))]" />
+                  <CardTitle>Самовалидация модели</CardTitle>
+                </div>
+                <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                  Сравнение прошлых прогнозов с реальными данными за 14 дней
+                </p>
+              </CardHeader>
+              <CardContent>
+                {loadingValidation ? (
+                  <div className="h-32 skeleton rounded-xl" />
+                ) : !validationData || validationData.samples === 0 ? (
+                  <div className="flex items-start gap-3 p-4 rounded-xl bg-[hsl(var(--secondary))]">
+                    <AlertCircle className="w-5 h-5 text-[hsl(var(--muted-foreground))] flex-shrink-0 mt-0.5" />
+                    <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                      Прогнозы за прошлые периоды ещё не сохранены. Запустите ensemble-эндпоинт несколько раз — далее самовалидация заработает.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="p-3 rounded-xl bg-[hsl(var(--secondary))] text-center">
+                        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-1">RMSE</p>
+                        <p className="text-2xl font-bold tabular-nums">{validationData.rmse?.toFixed(2) ?? '—'}</p>
+                        <p className="text-xs text-[hsl(var(--muted-foreground))]">п.п. средняя ошибка</p>
+                      </div>
+                      <div className="p-3 rounded-xl bg-[hsl(var(--secondary))] text-center">
+                        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-1">MAE</p>
+                        <p className="text-2xl font-bold tabular-nums">{validationData.mae?.toFixed(2) ?? '—'}</p>
+                        <p className="text-xs text-[hsl(var(--muted-foreground))]">п.п. среднее отклонение</p>
+                      </div>
+                    </div>
+                    {validationData.mae_per_day && validationData.mae_per_day.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-2">MAE по дням</p>
+                        <ResponsiveContainer width="100%" height={140}>
+                          <BarChart data={validationData.mae_per_day.map((mae, i) => ({ day: `Д${i + 1}`, mae: Number(mae.toFixed(2)) }))}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                            <XAxis dataKey="day" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} label={{ value: 'Дата', position: 'insideBottom', offset: -2, fontSize: 10 }} />
+                            <YAxis tick={{ fontSize: 10 }} axisLine={false} tickLine={false} label={{ value: 'MAE, %', angle: -90, position: 'insideLeft', fontSize: 10 }} />
+                            <Tooltip
+                              formatter={(v: number) => [`${v}%`, 'MAE']}
+                              contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', color: 'hsl(var(--foreground))' }}
+                            />
+                            <Bar dataKey="mae" fill="hsl(var(--success))" radius={[4, 4, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+                    <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                      На основе {validationData.samples} сохранённых прогнозов
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* AI Explanation */}
           {viewMode !== 'simple' && (
