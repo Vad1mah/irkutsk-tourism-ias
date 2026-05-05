@@ -29,7 +29,7 @@
 
 **Стек фронтенда:** React 18, TypeScript 5.9, Tailwind CSS 4, Vite 7, Recharts (графики), ECharts (GeoMap + scatter).
 
-### 2. API-слой (FastAPI, 7 роутеров, 59 endpoints)
+### 2. API-слой (FastAPI, 7 роутеров, 59+ endpoints)
 
 #### 2.1. B2B-эндпоинты (основные для целевых сегментов)
 
@@ -38,7 +38,15 @@
 | `GET /api/analytics/revenue-summary` | RevPAR / ADR / Occupancy % за период (с фильтром по hotel_id или district) | UC10 | FR3.6 |
 | `GET /api/analytics/pickup-pace` | Pickup и Pace кривая бронирований за 30 дней до даты заезда | UC10 | FR3.6 |
 | `GET /api/analytics/weekday-heatmap` | Матрица 7×12 (дни недели × месяцы) средней загрузки | UC10, UC5 | FR3.7 |
-| `GET /api/analytics/events-impact` | Топ событий с расчётом Δ Occupancy | UC3 | FR4.7 |
+| `GET /api/analytics/events-impact` | Топ событий с расчётом Δ Occupancy (метод `seasonal_corrected` или `naive`; параметры `method`, `window_weeks`) | UC3, UC11 | FR4.7 |
+| `GET /api/analytics/booking-pace` | Daily proxy-pickup из дельт snapshot'ов (параметр `lookback_days`) | UC10 | FR3.9 |
+| `GET /api/analytics/occupancy-timeseries` | Временной ряд загрузки по району | UC5 | FR1.5 |
+| `GET /api/analytics/price-distribution` | Распределение цен по сегментам | UC5 | FR3.6 |
+| `GET /api/analytics/compare-districts` | Сравнение метрик по нескольким районам | UC5 | FR1.5 |
+| `GET /api/analytics/segments` | Агрегаты по сегментам (размер × район) | UC12 | FR3.8 |
+| `GET /api/analytics/metadata` | Методологические метаданные (MethodologyRecord) | UC4 | FR6.3, NFR7 |
+| `GET /api/hotels/{id}/segment-benchmark` | Сегментный benchmark отеля (own vs сегмент) | UC12 | FR3.8 |
+| `GET /api/forecast/{district}/validation` | Backtesting-валидация Ensemble на исторических данных | UC4 | FR3.5 |
 | `GET /api/analytics/heatmap` | Тепловая карта загрузки по районам и месяцам | UC5 | FR1.5 |
 | `GET /api/analytics/revenue-summary` | Сводка RevPAR / ADR / Occupancy по районам | UC5 | FR1.5 |
 | `GET /api/analytics/districts` | Сводка по 15 районам | UC5 | FR1.5 |
@@ -72,7 +80,7 @@
 | `GET /api/parser/health` | Состояние парсеров (HealthMonitor) | UC7 |
 | `GET /api/documents/...` | Управление документами в RAG | UC6 |
 
-### 3. Сервисный слой (16 сервисов)
+### 3. Сервисный слой (18 сервисов)
 
 | Сервис | Назначение | Используется компонентами |
 |--------|------------|---------------------------|
@@ -81,7 +89,7 @@
 | `neuralprophet_service` | NeuralProphet (sync, через `executor.run_sync`) | ensemble_service |
 | `xgboost_service` | XGBoost с quantile regression для CI | ensemble_service |
 | `feature_engineering` | 38 признаков: calendar, holidays, lags, rolling, weather, events, trend, prices | xgboost_service |
-| `main_agent` | LangGraph MainAgent + 6 tools + MemorySaver (B2B system prompt) | query.py |
+| `main_agent` | LangGraph MainAgent + 12 tools + MemorySaver (B2B system prompt, 8 методологических правил) | query.py |
 | `forecast_agent` | LangGraph ForecastAgent (объяснимые прогнозы) | main_agent |
 | `llm_service` | 6 LLM провайдеров (Mistral основной + GigaChat / Groq / DeepSeek / OpenRouter / Gemini) | main_agent, forecast_agent |
 | `data_service` | Доменный фасад БД: get_occupancy_by_district, get_hotels, get_events, get_revenue_summary | роутеры, agent tools |
@@ -92,6 +100,8 @@
 | `holidays_service` | Государственные и региональные праздники РФ | feature_engineering |
 | `poi_service` | Точки притяжения (POI) для feature engineering | feature_engineering |
 | `protocols.py` | Type protocols для DI и тестирования | все сервисы |
+| `methodology_service` | **[NEW]** Stateless сервис методологических вычислений (`backend/app/services/methodology_service.py`). Методы: `compute_seasonal_baseline(target_date, weekday, history, event_dates, window_weeks)` → `SeasonalBaseline`; `corrected_impact(observed, baseline)` → `{delta_pct, ci_lower, ci_upper, method}`. Связан с AnalyticsRouter | analytics.py |
+| `parser_health_service` | **[NEW]** Redis-backed сервис состояния парсеров (`backend/app/services/parser_health_service.py`). Redis hash `parser_health` с TTL 7 дней. Методы: `report(parser_id, status, items_collected, error)`, `list_all()` → `list[ParserHealthRecord]`. Интегрирован в `BaseParser.run_with_health()` lifecycle | parsers/base.py, parser.py |
 
 ### 4. Парсеры (~14 файлов)
 
@@ -132,9 +142,9 @@
 
 LangGraph StateGraph с MemorySaver (thread_id-based context) и Command pattern:
 
-**Системный промпт:** B2B-аналитик информационной системы для отельеров, региональной администрации и исследователей туристического рынка Иркутской области.
+**Системный промпт:** B2B-аналитик информационной системы для отельеров, региональной администрации и исследователей туристического рынка Иркутской области. **Расширен 8 методологическими правилами** (proxy-пометки, seasonal_corrected, gap-периоды, сегментный benchmark и т.д.).
 
-**6 tools:**
+**12 tools:**
 | Tool | Описание | Backend |
 |------|----------|---------|
 | `search_hotels` | Реестр объектов размещения региона (PostgreSQL + ChromaDB RAG) | data_service + chroma_service |
@@ -143,6 +153,12 @@ LangGraph StateGraph с MemorySaver (thread_id-based context) и Command pattern
 | `forecast_occupancy` | Ensemble прогноз с акцентом на RevPAR / Pickup | ensemble_service |
 | `get_statistics` | KPI рынка средств размещения | data_service |
 | `get_revenue_metrics` | RevPAR / ADR / Occupancy % (с прокси через `min_price`, если revenue отсутствует) | data_service |
+| `get_top_events_by_impact` | **[NEW]** Топ событий по corrected impact (seasonal_corrected метод) | analytics router + methodology_service |
+| `get_booking_pace` | **[NEW]** Proxy-pickup динамика (BookingSnapshot дельты) | analytics router |
+| `compare_districts` | **[NEW]** Сравнение метрик по нескольким районам | analytics router + data_service |
+| `compare_forecast_models` | **[NEW]** Сравнение RMSE/MAE/R² моделей прогнозирования | ensemble_service |
+| `get_occupancy_timeseries` | **[NEW]** Временной ряд загрузки по районам | data_service |
+| `get_price_distribution` | **[NEW]** Распределение цен по сегментам | data_service |
 
 ## Зависимости между компонентами
 
@@ -224,7 +240,7 @@ Browser (download)
 - **Vector DB:** ChromaDB
 - **ML:** Prophet, NeuralProphet, XGBoost, LightGBM, Ensemble (weighted average)
 - **LLM:** Mistral Large (основной), GigaChat / Groq / DeepSeek / OpenRouter / Gemini (fallback)
-- **AI Agents:** LangGraph (MainAgent + ForecastAgent, 6 tools, MemorySaver, Command pattern)
+- **AI Agents:** LangGraph (MainAgent + ForecastAgent, 12 tools, MemorySaver, Command pattern)
 - **Frontend:** React 18, TypeScript 5.9, Tailwind CSS 4, Vite 7
 - **Визуализация:** Recharts (графики, KPI), ECharts (GeoMap, scatter, heatmap)
 - **Инфраструктура:** Docker Compose, APScheduler, ThreadPoolExecutor, Redis sliding window rate limit

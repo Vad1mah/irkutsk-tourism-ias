@@ -32,8 +32,48 @@
 | UC8 | Автоматический сбор данных | Планировщик | Собрать события (8 источников), Собрать средства размещения (101Hotels + Xotelo), Собрать погоду (Open-Meteo), Обновить индекс ChromaDB | Уведомить Технического администратора (при ошибке) |
 | UC9 | Экспорт данных для исследовательских задач | Исследователь | Запросить выгрузку через `/api/analytics/export?type=...`, Сформировать CSV, Скачать файл | Выбрать тип данных (occupancy / events / hotels), Задать диапазон дат, Указать фильтр по району |
 | UC10 | Расчёт RMS-метрик: RevPAR, ADR, Pickup, Pace | Отельер | Получить агрегаты через `/api/analytics/revenue-summary`, Получить Pickup/Pace через `/api/analytics/pickup-pace`, Получить heatmap через `/api/analytics/weekday-heatmap` | Сравнить с прошлым периодом, Скачать метрики (CSV), Просмотреть тренд |
+| UC11 | Анализ событий с corrected impact | Отельер, Администратор региона | Получить список событий, Получить occupancy по районам, Вычислить seasonal baseline, Рассчитать corrected impact | Пометить событие badge «недостаточно данных» при confidence='low' |
+| UC12 | Сегментный benchmark отеля | Отельер | Найти отель, Определить сегмент (район × size_bucket), Вычислить метрики сегмента | Показать empty state при n_in_segment === 0 |
 
-## Структура диаграммы (10 страниц)
+## Описание UC11: Анализ событий с corrected impact
+
+- **Актёры:** Отельер, Администратор региона.
+- **Pre:** данные occupancy и события за период есть в БД.
+- **Триггер:** пользователь открывает Analytics → tab «События».
+
+**Основной поток:**
+1. UI вызывает `GET /api/analytics/events-impact?method=seasonal_corrected&window_weeks=3`.
+2. AnalyticsRouter получает список событий через DataService.
+3. Для каждого района строит карту occupancy по датам.
+4. Собирает множество event-дней per district (для исключения из baseline).
+5. Для каждого события вызывает `MethodologyService.compute_seasonal_baseline()` (фильтр по weekday, ±N недель, исключая event-дни).
+6. Получает `SeasonalBaseline {mean, std, n_samples, confidence}`.
+7. Вызывает `MethodologyService.corrected_impact(observed, baseline)` → delta_pct, ci_bounds, method='seasonal_corrected'.
+8. Возвращает топ-N событий по `abs(delta_pct)` desc.
+
+**Альт. поток A1:** confidence='low' → UI помечает строку badge'ом «недостаточно данных».
+
+**Связи:** FR4.7 (corrected), MethodologyService component.
+
+## Описание UC12: Сегментный benchmark отеля
+
+- **Актёр:** Отельер.
+- **Pre:** отель существует в реестре.
+- **Триггер:** открытие `/hotels/{id}` или нажатие "Сравнение с сегментом".
+
+**Основной поток:**
+1. UI вызывает `GET /api/hotels/{id}/segment-benchmark`.
+2. HotelsRouter находит отель через DataService.
+3. Определяет сегмент: район отеля × size_bucket (mini/mid/large по `rooms_num`).
+4. Вызывает `DataService.compute_segment_metrics(district, size_bucket, exclude_hotel_id)` — возвращает avg_occupancy, avg_min_price по сегменту.
+5. Возвращает HotelSegmentBenchmarkResponse.
+6. UI показывает таблицу own vs segment с дельтой.
+
+**Альт. поток A1:** `n_in_segment === 0` → UI empty state.
+
+**Связи:** FR3.8, SegmentBenchmark domain entity.
+
+## Структура диаграммы (12 страниц)
 
 1. **Общая диаграмма** - все актёры, все UC, отношения
 2. **UC1** - Получить прогноз загрузки (Ensemble)
@@ -45,6 +85,8 @@
 8. **UC8** - Автоматический сбор данных (APScheduler)
 9. **UC9** - Экспорт данных в CSV
 10. **UC10** - Расчёт RMS-метрик
+11. **UC11** - Анализ событий с corrected impact (MethodologyService)
+12. **UC12** - Сегментный benchmark отеля
 
 ## Отношения
 
@@ -69,6 +111,8 @@
 | UC8 | FR1.1–FR1.4, FR2.1–FR2.4, FR5.4 | 1.1.2–1.1.9 |
 | UC9 | FR6 | — |
 | UC10 | FR3.6, FR3.7 | — |
+| UC11 | FR4.7 (corrected), FR6.3 | — |
+| UC12 | FR3.8 | — |
 
 ---
 

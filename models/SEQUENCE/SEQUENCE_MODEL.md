@@ -130,6 +130,47 @@
 6. сохранитьВБД(данные) → PostgreSQL batch insert
 7. сформироватьЭмбеддинги() → GigaChatEmbeddings → ChromaDB.add()
 
+### UC11. Анализ событий с corrected impact
+
+**Участники:** Пользователь, Analytics (Frontend, tab «События»), AnalyticsRouter (FastAPI), DataService, MethodologyService
+
+**Ключевые сообщения:**
+
+```
+sd [UC11: Анализ событий с corrected impact]
+
+Пользователь → Analytics: открыть tab «События»
+Analytics → AnalyticsRouter: GET /api/analytics/events-impact?method=seasonal_corrected&window_weeks=3
+AnalyticsRouter → DataService: get_events()
+DataService → AnalyticsRouter: list[Event]
+
+loop [для каждого district в events]
+    AnalyticsRouter → DataService: get_occupancy_by_district(district)
+    DataService → AnalyticsRouter: list[OccupancyPoint]
+end
+
+AnalyticsRouter → AnalyticsRouter: build event_dates_per_district
+
+loop [для каждого event с district + date]
+    AnalyticsRouter → MethodologyService: compute_seasonal_baseline(target_date, weekday, history, event_dates, window_weeks=3)
+    MethodologyService → MethodologyService: filter by weekday, ±3 weeks, exclude event_dates and target_date
+    MethodologyService → AnalyticsRouter: SeasonalBaseline {mean, std, n_samples, confidence}
+    AnalyticsRouter → MethodologyService: corrected_impact(observed, baseline)
+    MethodologyService → AnalyticsRouter: {delta_pct, ci_lower, ci_upper, baseline_mean, n_samples, confidence, method='seasonal_corrected'}
+end
+
+AnalyticsRouter → AnalyticsRouter: sort by abs(delta_pct) desc, top-N
+AnalyticsRouter → Analytics: list[CorrectedEventsImpact]
+
+[confidence='low'] Analytics → Analytics: пометить строку badge «недостаточно данных»
+Analytics → Пользователь: таблица delta_pct цветом + фильтр «только impact ≥ 5%»
+```
+
+**Особенности:**
+- `MethodologyService` — stateless, без обращений к БД: вычисляет по переданной истории occupancy.
+- Если для события `n_samples < 5` → `confidence='low'` → UI показывает предупреждение.
+- Сортировка по `abs(delta_pct)` desc позволяет отельеру сразу видеть события наибольшего влияния.
+
 ## Связь с другими моделями
 
 | Модель | Связь |
@@ -141,5 +182,5 @@
 
 ## Файлы
 
-- `sequence_diagrams.drawio` - 7 диаграмм (по одной на каждый Use Case)
+- `sequence_diagrams.drawio` - 8 диаграмм (UC1–UC8 + UC11)
 

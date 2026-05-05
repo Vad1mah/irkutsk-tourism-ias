@@ -38,6 +38,11 @@
 | Планировщик (APScheduler) | Автоматический запуск задач по расписанию (события 6ч, отели 2ч, погода 3ч, Telegram 1ч) | UC8 |
 | Векторный индекс (ChromaDB) | Эмбеддинги документов для RAG-поиска (GigaChat Embeddings, 629+ документов) | UC1, UC3 |
 | Кэш (Redis) | Кэширование прогнозов и API-ответов (TTL 30 мин) | UC1, UC10 |
+| BookingSnapshot | Снимок occupancy на момент времени для будущей даты заезда. Поля: `snapshot_taken_at` (datetime), `target_date` (date), `district` (string), `occupancy_pct` (float). Используется для proxy-pickup (FR3.9) | UC10 |
+| EventImpactRecord | Рассчитанная impact-запись для события. Поля: `event_id` (FK Event), `district` (string), `baseline_occupancy_mean` (float), `observed_occupancy` (float), `delta_pct` (float), `ci_lower` / `ci_upper` (float), `n_samples` (int), `confidence` (enum: high/medium/low), `method` (string: 'seasonal_corrected' \| 'naive'), `computed_at` (datetime) | UC11 |
+| SegmentBenchmark | Агрегированные метрики по сегменту (район × размерная категория). Поля: `district` (string), `size_bucket` (enum: mini/mid/large), `n_in_segment` (int), `avg_occupancy` (float), `avg_min_price` (int), `computed_at` (datetime). Категории: mini ≤ 15 номеров / mid 16–50 / large 51+ | UC12 |
+| ParserHealthRecord | Redis-stored запись о статусе парсера. Поля: `parser_id` (string), `status` (enum: ok/warn/fail), `items_collected` (int), `error` (string nullable), `last_run` (datetime). Используется для `GET /api/parser/health`, FR-monitoring | UC7 |
+| MethodologyRecord | Методологическая запись для прозрачности. Поля: `metric_name` (string), `formula_text` (string), `version` (string), `valid_from` (datetime), `source_endpoint` (string). Связь с NFR7 «методологическая прозрачность» | UC4, UC9 |
 
 ## Отношения
 
@@ -86,6 +91,13 @@
 | Векторный индекс (ChromaDB) | используется для | AI-агент (LangGraph) |
 | Кэш (Redis) | хранит | Прогноз (Ensemble) |
 | Кэш (Redis) | хранит | RMS-метрика |
+| EventImpactRecord | связан с | Событие |
+| EventImpactRecord | рассчитан через | MethodologyRecord |
+| SegmentBenchmark | агрегирует | Статистика загруженности |
+| SegmentBenchmark | фильтруется по | Район |
+| BookingSnapshot | фиксирует | Статистика загруженности |
+| ParserHealthRecord | описывает | Источник данных |
+| Кэш (Redis) | хранит | ParserHealthRecord |
 
 ### Агрегации (часть-целое)
 
