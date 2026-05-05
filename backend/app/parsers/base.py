@@ -42,6 +42,7 @@ class ParsedEvent(BaseModel):
     source: str = Field(..., description="Источник данных")
     url: str | None = Field(None, description="Ссылка на событие")
     image_url: str | None = Field(None, description="URL изображения")
+    age_restriction: str | None = Field(None, description="Возрастное ограничение (например '12+')")
     category: str | None = Field(None, description="Категория")
     tags: list[str] = Field(default_factory=list, description="Теги")
     parsed_at: datetime = Field(default_factory=datetime.now, description="Время парсинга")

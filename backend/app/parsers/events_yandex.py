@@ -15,7 +15,7 @@ import json
 import re
 import logging
 import hashlib
-from datetime import datetime, date
+from datetime import datetime, date, time as _time
 from bs4 import BeautifulSoup
 
 from app.parsers.base import (
@@ -95,6 +95,84 @@ def _extract_location(text: str) -> str:
     if m:
         return _clean_location(m.group(0))[:100]
     return "Иркутск"
+
+
+def parse_yandex_jsonld_event(jsonld: dict, source_url: str) -> dict:
+    """Парсит одно событие из JSON-LD ответа afisha.yandex.ru.
+
+    Args:
+        jsonld: Словарь из тега <script type="application/ld+json">.
+        source_url: URL страницы-источника.
+
+    Returns:
+        dict с ключами: title, description, image_url, age_restriction,
+        time_start, url, date_start, location, price_min, price.
+    """
+    name = (jsonld.get("name") or "").strip()
+
+    # Дата и время из startDate
+    start_raw = jsonld.get("startDate") or ""
+    event_date: str = str(date.today())
+    time_start: _time | None = None
+    if start_raw:
+        try:
+            dt = datetime.fromisoformat(start_raw.replace("Z", "+00:00"))
+            event_date = str(dt.date())
+            time_start = dt.time()
+        except (ValueError, TypeError):
+            pass
+
+    # Описание до 2000 символов
+    desc_raw = (jsonld.get("description") or "").strip()
+    description: str | None = desc_raw[:2000] if desc_raw else None
+
+    # Изображение
+    image_raw = jsonld.get("image")
+    image_url: str | None = image_raw if isinstance(image_raw, str) else None
+
+    # age_restriction: "12-99" → "12+", "0-99" → None
+    age_raw: str = jsonld.get("typicalAgeRange") or ""
+    age_restriction: str | None = None
+    if isinstance(age_raw, str) and "-" in age_raw:
+        try:
+            min_age = int(age_raw.split("-")[0])
+            if min_age > 0:
+                age_restriction = f"{min_age}+"
+        except ValueError:
+            pass
+
+    # Место
+    location_data = jsonld.get("location", {})
+    if isinstance(location_data, dict):
+        location = location_data.get("name") or "Иркутск"
+    else:
+        location = "Иркутск"
+
+    # Цена
+    offers = jsonld.get("offers", {})
+    price_min: int | None = None
+    price: str | None = None
+    if isinstance(offers, dict):
+        raw_price = offers.get("lowPrice") or offers.get("price")
+        if raw_price is not None:
+            try:
+                price_min = int(raw_price)
+                price = f"от {price_min} руб"
+            except (ValueError, TypeError):
+                pass
+
+    return {
+        "title": name,
+        "description": description,
+        "image_url": image_url,
+        "age_restriction": age_restriction,
+        "time_start": time_start,
+        "url": source_url or jsonld.get("url"),
+        "date_start": event_date,
+        "location": location,
+        "price_min": price_min,
+        "price": price,
+    }
 
 
 class YandexAfishaParser(BaseParser):
@@ -256,7 +334,7 @@ class YandexAfishaParser(BaseParser):
         url = url_match.group(0) if url_match else None
         
         # Описание
-        description = text[:300].strip()
+        description = text[:2000].strip()
         
         event_id = self.generate_event_id(title, event_date, "yandex")
         event_type = detect_event_type(title, description)
@@ -310,63 +388,43 @@ class YandexAfishaParser(BaseParser):
     def _parse_jsonld_event(self, data: dict) -> list[ParsedEvent]:
         """Парсинг события из JSON-LD."""
         events = []
-        
+
         try:
-            title = data.get('name', '')
+            title = data.get("name", "")
             if not title:
                 return events
-            
-            # Дата
-            start_date = data.get('startDate', '')
-            if start_date:
-                try:
-                    dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
-                    event_date = str(dt.date())
-                    event_time = dt.strftime('%H:%M')
-                except (ValueError, AttributeError, TypeError):
-                    event_date = str(date.today())
-                    event_time = None
-            else:
-                event_date = str(date.today())
-                event_time = None
-            
-            # Место
-            location_data = data.get('location', {})
-            if isinstance(location_data, dict):
-                location = location_data.get('name', 'Иркутск')
-            else:
-                location = "Иркутск"
-            
-            # Цена
-            offers = data.get('offers', {})
-            price_min = None
-            price = None
-            if isinstance(offers, dict):
-                price_min = offers.get('lowPrice') or offers.get('price')
-                if price_min:
-                    price = f"от {price_min} руб"
-            
-            event_id = self.generate_event_id(title, event_date, "yandex")
-            
+
+            fields = parse_yandex_jsonld_event(data, source_url=data.get("url") or "")
+            event_id = self.generate_event_id(fields["title"], fields["date_start"], "yandex")
+
+            time_start = fields["time_start"]
+            # ParsedEvent.time_start ожидает str | None
+            time_start_str: str | None = None
+            if isinstance(time_start, _time):
+                time_start_str = time_start.strftime("%H:%M")
+            elif isinstance(time_start, str):
+                time_start_str = time_start
+
             event = ParsedEvent(
                 id=event_id,
-                title=title,
-                description=data.get('description', '')[:500] or None,
-                date_start=event_date,
-                time_start=event_time,
-                event_type=detect_event_type(title),
-                location=location,
-                price=price,
-                price_min=int(price_min) if price_min else None,
+                title=fields["title"],
+                description=fields["description"],
+                date_start=fields["date_start"],
+                time_start=time_start_str,
+                event_type=detect_event_type(fields["title"]),
+                location=fields["location"],
+                price=fields["price"],
+                price_min=fields["price_min"],
+                age_restriction=fields["age_restriction"],
                 source="yandex",
-                url=data.get('url'),
-                image_url=data.get('image'),
+                url=fields["url"] or None,
+                image_url=fields["image_url"],
             )
             events.append(event)
-            
+
         except Exception as e:
             self.logger.debug(f"Ошибка парсинга JSON-LD: {e}")
-        
+
         return events
 
 
