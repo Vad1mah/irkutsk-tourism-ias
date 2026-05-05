@@ -9,7 +9,7 @@ from app.dependencies import DataServiceDep, CacheServiceDep
 from app.dependencies.auth import verify_api_key
 
 logger = logging.getLogger(__name__)
-from app.parsers import fetch_events_irk, fetch_events_culture38, fetch_events_zeroevent
+from app.parsers import fetch_events_irk, fetch_events_culture38
 from app.parsers.events_major import get_major_events_2025_2026, get_school_holidays_2025_2026
 
 router = APIRouter(prefix="/api/events", tags=["events"])
@@ -127,116 +127,6 @@ def _parse_date(value) -> date | None:
     return None
 
 
-@router.post("/init", dependencies=[Depends(verify_api_key)])
-async def init_events_table(data_svc: DataServiceDep, with_demo_data: bool = Query(False, description="Добавить демо-данные")) -> dict[str, Any]:
-    """Создать таблицу events если она не существует."""
-    success = await data_svc.create_events_table()
-    if not success:
-        raise HTTPException(status_code=500, detail="Не удалось создать таблицу events")
-
-    inserted = 0
-    if with_demo_data:
-        demo_events = _get_demo_events()
-        inserted = await data_svc.upsert_events_batch(demo_events)
-
-    return {
-        "status": "ok",
-        "message": "Таблица events создана",
-        "demo_events_added": inserted,
-    }
-
-
-@router.delete("/demo", dependencies=[Depends(verify_api_key)])
-async def delete_demo_events(data_svc: DataServiceDep) -> dict[str, Any]:
-    """Удалить демо-события из базы.
-
-    Демо-события создавались для тестирования и могут вводить в заблуждение.
-    Рекомендуется удалить их перед production использованием.
-    """
-    deleted = await data_svc.delete_events_by_source("demo")
-    return {
-        "status": "ok",
-        "deleted_count": deleted,
-        "message": f"Удалено {deleted} демо-событий",
-    }
-
-
-def _get_demo_events() -> list[dict]:
-    """Получить демо-события для тестирования."""
-    from datetime import datetime, timedelta
-
-    today = datetime.now().date()
-
-    return [
-        {
-            "id": "demo_baikal_ice_2025",
-            "title": "Фестиваль ледяных скульптур на Байкале",
-            "description": "Ежегодный международный фестиваль ледяных скульптур в Листвянке",
-            "date_start": str(today + timedelta(days=5)),
-            "date_end": str(today + timedelta(days=7)),
-            "event_type": "festival",
-            "location": "п. Листвянка, набережная",
-            "source": "demo",
-            "url": "https://visitbaikal.ru",
-        },
-        {
-            "id": "demo_concert_philharmonic",
-            "title": "Концерт Иркутского симфонического оркестра",
-            "description": "Программа: Чайковский, Рахманинов",
-            "date_start": str(today + timedelta(days=2)),
-            "date_end": None,
-            "event_type": "concert",
-            "location": "Иркутская филармония",
-            "source": "demo",
-            "url": "https://filarmoniya-irk.ru",
-        },
-        {
-            "id": "demo_exhibition_art",
-            "title": "Выставка «Байкальские мотивы»",
-            "description": "Живопись и графика иркутских художников",
-            "date_start": str(today),
-            "date_end": str(today + timedelta(days=30)),
-            "event_type": "exhibition",
-            "location": "Иркутский художественный музей",
-            "source": "demo",
-            "url": "https://museum-irk.ru",
-        },
-        {
-            "id": "demo_sport_marathon",
-            "title": "Байкальский ледовый марафон",
-            "description": "Забег по льду Байкала на 42 км",
-            "date_start": str(today + timedelta(days=10)),
-            "date_end": None,
-            "event_type": "sport",
-            "location": "оз. Байкал, Листвянка — Танхой",
-            "source": "demo",
-            "url": "https://baikalmarathon.ru",
-        },
-        {
-            "id": "demo_theater_drama",
-            "title": "Спектакль «Чайка» А.П. Чехова",
-            "description": "Премьера сезона в Иркутском драмтеатре",
-            "date_start": str(today + timedelta(days=3)),
-            "date_end": None,
-            "event_type": "theater",
-            "location": "Иркутский драматический театр",
-            "source": "demo",
-            "url": "https://dramteatr.ru",
-        },
-        {
-            "id": "demo_gastro_festival",
-            "title": "Гастрономический фестиваль «Вкус Байкала»",
-            "description": "Дегустация блюд сибирской кухни, мастер-классы шеф-поваров",
-            "date_start": str(today + timedelta(days=14)),
-            "date_end": str(today + timedelta(days=16)),
-            "event_type": "festival",
-            "location": "130-й квартал, Иркутск",
-            "source": "demo",
-            "url": "https://visitirkutsk.ru",
-        },
-    ]
-
-
 @router.post("/refresh", dependencies=[Depends(verify_api_key)])
 async def refresh_events(data_svc: DataServiceDep, days_ahead: int = Query(7, description="Количество дней для поиска событий")) -> dict[str, Any]:
     """Обновить данные о событиях из источников."""
@@ -335,62 +225,6 @@ def _parse_culture38_events(raw_events: list[dict]) -> list[dict]:
         except Exception as e:
             logger.warning(f"Ошибка парсинга события culture38.ru: {e}")
     return events
-
-
-@router.post("/load-historical", dependencies=[Depends(verify_api_key)])
-async def load_historical_events(
-    data_svc: DataServiceDep,
-    years: str = Query("2024,2025", description="Годы через запятую (например: 2024,2025)")
-) -> dict[str, Any]:
-    """Загрузить исторические события из zeroevent.ru.
-
-    Этот источник содержит крупные события (концерты звёзд, балеты, спектакли)
-    с точными датами. Используется для обучения Prophet модели.
-    """
-    try:
-        year_list = [int(y.strip()) for y in years.split(",")]
-    except ValueError:
-        raise HTTPException(400, "Неверный формат годов. Используйте: 2024,2025")
-
-    await data_svc.create_events_table()
-
-    try:
-        raw_events = await fetch_events_zeroevent(years=year_list)
-
-        events_batch = []
-        for e in raw_events:
-            events_batch.append({
-                "id": e["id"],
-                "title": e["title"],
-                "description": e.get("description", ""),
-                "date_start": e["date_start"],
-                "date_end": e.get("date_end"),
-                "event_type": e.get("event_type", "event"),
-                "location": e.get("location", ""),
-                "source": "zeroevent.ru",
-                "url": e.get("url", ""),
-            })
-
-        inserted = await data_svc.upsert_events_batch(events_batch)
-
-        return {
-            "status": "ok",
-            "years_requested": year_list,
-            "events_found": len(raw_events),
-            "events_inserted": inserted,
-            "events_sample": [
-                {
-                    "date": e["date_start"],
-                    "title": e["title"][:50],
-                    "type": e.get("event_type", "event"),
-                    "location": e.get("location", "")[:30],
-                }
-                for e in raw_events[:5]
-            ],
-        }
-    except Exception as e:
-        logger.error(f"Ошибка загрузки событий: {e}")
-        raise HTTPException(500, "Ошибка загрузки событий. Проверьте логи.")
 
 
 @router.post("/fetch/major", dependencies=[Depends(verify_api_key)])

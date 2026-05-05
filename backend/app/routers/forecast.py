@@ -8,18 +8,16 @@ import logging
 
 from app.models.schemas import (
     ForecastRequest, ForecastResponse, ForecastPoint,
-    EnsembleResponse, CompareModelsResponse, CompareAllResponse,
+    EnsembleResponse, CompareAllResponse,
     ForecastValidationResponse, ValidationPoint,
 )
 from app.constants import DEFAULT_DISTRICT
 from app.dependencies import (
     DataServiceDep,
     ProphetServiceDep,
-    NeuralProphetServiceDep,
     XGBoostServiceDep,
     EnsembleServiceDep,
     WeatherServiceDep,
-    HolidaysServiceDep,
     CacheServiceDep,
 )
 from app.executor import run_sync
@@ -175,30 +173,6 @@ async def get_forecast(
     )
 
 
-@router.get("/holidays")
-async def get_holidays(
-    holidays_svc: HolidaysServiceDep,
-    date_from: date | None = None,
-    date_to: date | None = None,
-):
-    """Получить праздники в диапазоне дат."""
-    if not date_from:
-        date_from = date.today()
-    if not date_to:
-        date_to = date_from + timedelta(days=365)
-
-    holidays_list = holidays_svc.get_holidays_in_range(date_from, date_to)
-
-    return {
-        "date_from": date_from,
-        "date_to": date_to,
-        "holidays": [
-            {"date": str(h["date"]), "name": h["name"]}
-            for h in holidays_list
-        ],
-    }
-
-
 @router.get("/weather")
 async def get_weather(
     weather_svc: WeatherServiceDep,
@@ -212,90 +186,6 @@ async def get_weather(
         "location": DEFAULT_DISTRICT,
         "forecasts": forecast,
     }
-
-
-@router.post("/neural", response_model=ForecastResponse)
-async def get_neural_forecast(
-    request: ForecastRequest,
-    data_svc: DataServiceDep,
-    neuralprophet_svc: NeuralProphetServiceDep,
-    weather_svc: WeatherServiceDep,
-):
-    """Прогноз загруженности (NeuralProphet + авторегрессия + events)."""
-    return await _run_forecast(
-        request=request,
-        forecast_fn=neuralprophet_svc.forecast_occupancy_async,
-        min_history=14,
-        data_svc=data_svc,
-        weather_svc=weather_svc,
-        model_name="NeuralProphet",
-        n_lags=14,
-    )
-
-
-@router.get("/compare", response_model=CompareModelsResponse)
-async def compare_models(
-    data_svc: DataServiceDep,
-    prophet_svc: ProphetServiceDep,
-    neuralprophet_svc: NeuralProphetServiceDep,
-    weather_svc: WeatherServiceDep,
-    district: str = DEFAULT_DISTRICT,
-    days_ahead: int = 14,
-):
-    """Сравнить прогнозы Prophet и NeuralProphet."""
-    history = await _get_history(None, district, data_svc)
-
-    if len(history) < 14:
-        raise HTTPException(status_code=400, detail="Недостаточно данных для сравнения")
-
-    weather_data, events_data = await _get_weather_and_events(
-        history, days_ahead, weather_svc, data_svc
-    )
-
-    prophet_forecast: list[ForecastPoint] = []
-    try:
-        prophet_forecast = await prophet_svc.forecast_occupancy_async(
-            history=history, days_ahead=days_ahead,
-            weather_data=weather_data, events_data=events_data,
-        )
-    except Exception as e:
-        logger.error(f"Prophet error: {e}")
-
-    neural_forecast: list[ForecastPoint] = []
-    try:
-        neural_forecast = await neuralprophet_svc.forecast_occupancy_async(
-            history=history, days_ahead=days_ahead,
-            weather_data=weather_data, events_data=events_data,
-            n_lags=14,
-        )
-    except Exception as e:
-        logger.error(f"NeuralProphet error: {e}")
-
-    return {
-        "district": district,
-        "history_points": len(history),
-        "prophet": [{"date": f.date, "occupancy": f.occupancy} for f in prophet_forecast],
-        "neuralprophet": [{"date": f.date, "occupancy": f.occupancy} for f in neural_forecast],
-    }
-
-
-@router.post("/xgboost", response_model=ForecastResponse)
-async def get_xgboost_forecast(
-    request: ForecastRequest,
-    data_svc: DataServiceDep,
-    xgboost_svc: XGBoostServiceDep,
-    weather_svc: WeatherServiceDep,
-):
-    """Прогноз загруженности (XGBoost/LightGBM + 25 фичей)."""
-    return await _run_forecast(
-        request=request,
-        forecast_fn=xgboost_svc.forecast_occupancy_async,
-        min_history=30,
-        data_svc=data_svc,
-        weather_svc=weather_svc,
-        model_name="XGBoost",
-        model="ensemble",
-    )
 
 
 @router.get("/ensemble", response_model=EnsembleResponse)
