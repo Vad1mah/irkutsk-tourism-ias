@@ -43,6 +43,44 @@ KASSIR_CONFIG = ParserConfig(
     rate_limit_delay=1.5,
 )
 
+def _extract_address_from_jsonld(jsonld: dict) -> str | None:
+    """Извлекает street address из JSON-LD location.address.
+
+    Поддерживает 2 формата: PostalAddress dict и plain string.
+
+    Args:
+        jsonld: Словарь JSON-LD события.
+
+    Returns:
+        Строка адреса или None.
+    """
+    loc = jsonld.get("location")
+    if not isinstance(loc, dict):
+        return None
+    addr = loc.get("address")
+    if isinstance(addr, str):
+        return addr.strip() or None
+    if isinstance(addr, dict):
+        street = addr.get("streetAddress") or addr.get("addressLocality")
+        if street:
+            return str(street).strip() or None
+    return None
+
+
+def _extract_full_description(jsonld: dict) -> str | None:
+    """Возвращает description из JSON-LD, обрезанный до 2000 символов.
+
+    Args:
+        jsonld: Словарь JSON-LD события.
+
+    Returns:
+        Строка описания (до 2000 chars) или None.
+    """
+    desc = jsonld.get("description") or ""
+    desc = desc.strip()
+    return desc[:2000] if desc else None
+
+
 # Категории Kassir.ru
 KASSIR_CATEGORIES = {
     "koncerty": "концерты",
@@ -490,10 +528,11 @@ class KassirParser(BaseParser):
             return ParsedEvent(
                 id=event_id,
                 title=name,
-                description=data.get('description') or None,
+                description=_extract_full_description(data),
                 date_start=start_date,
                 event_type=detect_event_type(name, data.get('description', '')),
                 location=location_name,
+                address=_extract_address_from_jsonld(data),
                 source="kassir",
                 url=event_url,
             )
