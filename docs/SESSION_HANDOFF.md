@@ -2,6 +2,50 @@
 
 > **Этот файл — последний снимок прогресса.** Обновлять в конце каждой сессии. Перед стартом — прочитать целиком и сверить с `NORTH_STAR.md` + `REFOCUS_PLAN.md`.
 
+## 2026-05-04 — Phase 3 (Frontend Rebuild) ЗАВЕРШЁН ✅
+
+**Branch:** `feat/b2b-rebuild-phase3` (~12 коммитов).
+
+### Что сделано (10 задач)
+
+**A. Инфра:** установлен `@pbe/react-yandex-maps`; `client.ts` расширен 10 типизированными методами (D-серия Phase 1); `localizeFeatures.ts` (EN→RU маппинг); компоненты `GapAwareLineChart`, `MethodologyTooltip`.
+
+**B. Layout:** AI-чат (`/chat`, label «AI-аналитик», icon MessageSquare) восстановлен в sidebar в группе "Аналитика".
+
+**C. Home:** убран блок «Что доступно по сегментам», `DollarSign`→`Banknote` в KPI ADR/RevPAR, композитный график factual+forecast (vertical reference line at "today"), corrected events impact (через `getEventsImpactCorrected`), методология footer (источники из `/metadata`), `MethodologyTooltip` на ADR/RevPAR.
+
+**D. Analytics — 4 tabs:**
+- Регионы: RMS-таблица + filter "только достоверные" (high+medium) + mini bar chart top-5 RevPAR.
+- Сезонность: pickup/pace + weekday×month heatmap с gap-aware рендером (диагональная штриховка).
+- События: corrected impact таблица + filter "только impact ≥ 5%".
+- Сегменты: bar chart by_accommodation_type + size buckets KPI + price distribution percentiles.
+- Методология footer на всех вкладках.
+
+**E. Map:** замена ECharts контурной карты на Yandex Maps (`@pbe/react-yandex-maps`); `YandexMap` компонент с Placemark + balloon popup'ами (имя/номеров/загрузка/цена/ссылка). Удалены view-modes comparison (radar), overview (treemap), heatmap-14days. Sidebar с KPI и Top-5 RevPAR.
+
+**F. Forecast:** локализация feature_importance имён через `localizeFeature`, шрифт 12px, ширина Y-axis 140; новый блок "Самовалидация модели" с RMSE/MAE и mae_per_day chart (через `getForecastValidation`).
+
+**G. Events:** расширенный modal — image/address/time_start/price_min-max/age_restriction; corrected impact badge (↑/↓ %) на event cards.
+
+**H. HotelDetail:** блок "Сравнение с сегментом" (district × size_bucket benchmark via `getHotelSegmentBenchmark`).
+
+**I. About:** динамические counts из `/metadata`; список парсеров с health-status badge'ами (через `/parser/health`); методология блок (RevPAR прокси, corrected impact, gap-периоды); out-of-scope (true ADR, comp set, channel mix, GOPPAR, Alembic).
+
+### Тесты
+
+- `npx tsc --noEmit` — ✅ clean (0 errors).
+- `npm run build` — ✅ success.
+
+### Что дальше — Phase 4 (Models UML/BPMN)
+
+Обновление 6 моделей системы под B2B:
+- UC: добавить UC11 (Corrected impact) + UC12 (Segment benchmark).
+- DOMAIN: 5 новых сущностей (BookingSnapshot, EventImpactRecord, SegmentBenchmark, ParserHealth, MethodologyRecord).
+- REQ: FR3.8/3.9, FR4.7 corrected, FR6.3 extended, NFR7.
+- COMPONENT: Health-monitor + Methodology Service.
+- BP: БП5 «Методологическая калибровка».
+- SEQUENCE: для UC11.
+
 ## 2026-05-04 — Phase 2 (AI Agent) ЗАВЕРШЁН ✅
 
 **Branch:** `feat/b2b-rebuild-phase2` (3 commits после Phase 1).
