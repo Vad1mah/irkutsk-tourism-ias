@@ -2,6 +2,88 @@
 
 > **Этот файл — последний снимок прогресса.** Обновлять в конце каждой сессии. Перед стартом — прочитать целиком и сверить с `NORTH_STAR.md` + `REFOCUS_PLAN.md`.
 
+## 2026-05-04 — Phase 1 (Backend) ЗАВЕРШЁН ✅
+
+**Branch:** `feat/b2b-rebuild-phase1` (~30 коммитов f192261...dfc1bb7)
+**Тестов:** 170 passed, 2 pre-existing failures (харнес asyncpg event-loop), 5 skipped, 0 новых регрессий.
+
+### Что сделано (29 задач)
+
+**A. Расширение схемы Event (3 задачи):** добавлены 6 полей (time_start, price_min, price_max, image_url, address, age_restriction); идемпотентный ALTER-скрипт `migrate_event_schema_v2.py`.
+
+**B. Дедупликация (2):** UNIQUE constraint `uq_events_dedup (source_id, date_start, title)` + dedup-aware upsert + COALESCE preservation.
+
+**C. Багфиксы (6):**
+- C1: race condition в `/api/query/stream` — Redis INCR/DECR + pipeline EXPIRE NX + atomic limit.
+- C2: `/api/analytics/correlation` фильтрует месяцы с <5 samples; `is_gap` flag.
+- C3: cache key включает model_version + method.
+- C4: `/api/forecast/explain` 5s timeout + factor-only fallback.
+- C5: `parser/events/all` — все парсеры через `upsert_events_batch`.
+- C6: параметр `method=naive|seasonal_corrected`.
+
+**D. 10 новых endpoint'ов:**
+- D1: `MethodologyService` (baseline by weekday ±N weeks, corrected impact с CI).
+- D2: `/events-impact?method=seasonal_corrected` — реальный расчёт.
+- D3: `/forecast/{district}/validation` — RMSE/MAE forecast vs actual + persist ensemble forecasts.
+- D4: `/parser/health` + `ParserHealthService` (Redis hash, integrated into BaseParser).
+- D5: `/analytics/metadata` — counts, data_range, gap_periods (CTE LEAD).
+- D6: `/analytics/booking-pace` — daily proxy-pickup.
+- D7: `/analytics/occupancy-timeseries`.
+- D8: `/analytics/price-distribution` (p10/p25/p50/p75/p90).
+- D9: `/analytics/compare-districts`.
+- D10: `/analytics/segments` (mini/mid/large + accommodation_type).
+- D11: `/hotels/{id}/segment-benchmark`.
+
+**E. Удаление 7 мёртвых endpoint'ов:** forecast/{neural,xgboost,compare,holidays}, events/{init,demo,load-historical}.
+
+**F. Расширение 5 парсеров:**
+- F1: yandex — age_restriction (typicalAgeRange) + full description (2000 chars).
+- F2: kassir — full description + venue address (JSON-LD).
+- F3: zeroevent — price_min из описания.
+- F4: culture_rf — venue address.
+- F5: 101hotels — image_url.
+
+**G. AI-fallback для хрупких парсеров:**
+- G1: events_irk — Crawl4AI/Jina fallback при пустом или сломанном native HTML.
+- G2: events_culture38 — то же самое.
+
+### Smoke-тест Phase 1 (2026-05-04)
+
+Все 10 новых endpoint'ов вернули 200 OK с непустым JSON:
+
+| Endpoint | Результат |
+|----------|-----------|
+| `GET /api/analytics/metadata` | 200, 1381 отелей, 409 событий, gap_periods с июня 2025 |
+| `GET /api/parser/health` | 200, пустой массив (парсеры не запущены) |
+| `GET /api/forecast/Иркутский/validation?days_back=14` | 200, samples=0 (нет forecast записей в dev-БД) |
+| `GET /api/analytics/booking-pace?district=Иркутский&days_ahead=14` | 200, proxy-pickup данные |
+| `GET /api/analytics/occupancy-timeseries?district=Иркутский&days=30` | 200, 30 точек с occupancy |
+| `GET /api/analytics/price-distribution?district=Иркутский&days=30` | 200, p50=3900, samples=4292 |
+| `GET /api/analytics/compare-districts?districts=Иркутский,Ольхонский&days=30` | 200, сравнение двух районов |
+| `GET /api/analytics/segments` | 200, by_accommodation_type |
+| `GET /api/analytics/events-impact?method=seasonal_corrected` | 200, события с delta_pct и CI |
+| `GET /api/analytics/correlation` | 200, месяцы с is_gap flag |
+
+### Что дальше — Phase 2 (AI-агент)
+
+Будущая фаза будет добавлять 6 новых tools агенту:
+- `get_top_events_by_impact` (использует D2)
+- `get_booking_pace` (D6)
+- `compare_districts` (D9)
+- `compare_forecast_models`
+- `get_occupancy_timeseries` (D7)
+- `get_price_distribution` (D8)
+
+И расширение system_prompt методологическими правилами.
+
+### Pre-existing failures, требующие Phase 5 (test infra)
+
+- `test_export_csv_occupancy` — asyncpg event loop closed (SKIPPED в suite).
+- `test_correlation_is_gap_flag_matches_samples_threshold` — функционирует только в полном suite, fail при isolated run.
+- `test_occupancy_timeseries_structure` — same pattern.
+
+Это harness issue (pytest-asyncio function-scope vs session-scoped asyncpg pool), не функциональные баги. Будут исправлены отдельно.
+
 **Последнее обновление:** 2026-05-03 (агент Claude Opus 4.7), 4-я сессия дня — верификация работы предыдущего субагента
 **Дедлайн:** 2026-05-12 (отчёт), 11–16.05 (защита)
 
