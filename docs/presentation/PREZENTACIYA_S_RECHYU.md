@@ -38,11 +38,11 @@
 - Веб-платформа с тремя модулями:
   - Аналитика рынка: heatmap, RevPAR, Pickup/Pace
   - Прогноз спроса: ансамбль 3 ML-моделей (RMSE 3,85 п. п.)
-  - AI-аналитик: бизнес-запросы через LangGraph + 6 tools
+  - AI-аналитик: бизнес-запросы через LangGraph + 12 tools
 - CSV-экспорт для исследователей
 
 **РЕЧЬ:**
-Решение — веб-платформа с тремя модулями. Аналитика рынка отдаёт RMS-метрики по выбранному району и тепловую карту загрузки по дням недели и месяцам. Прогнозный модуль использует ансамбль из трёх ML-моделей и снизил RMSE до 3,85 процентных пунктов на горизонте до 14 дней. AI-аналитик на LangGraph с шестью инструментами работает с тем же ML-ядром в режиме бизнес-аналитика, не туристического консультанта. Для исследователей предусмотрен CSV-экспорт.
+Решение — веб-платформа с тремя модулями. Аналитика рынка отдаёт RMS-метрики по выбранному району и тепловую карту загрузки по дням недели и месяцам. Прогнозный модуль использует ансамбль из трёх ML-моделей и снизил RMSE до 3,85 процентных пунктов на горизонте до 14 дней. AI-аналитик на LangGraph с двенадцатью инструментами работает с тем же ML-ядром в режиме бизнес-аналитика, не туристического консультанта. Для исследователей предусмотрен CSV-экспорт.
 
 ---
 
@@ -89,11 +89,11 @@
 - Backend: Python 3.11, FastAPI, SQLAlchemy 2.0, asyncpg
 - БД: PostgreSQL 16 + Redis 7 + ChromaDB (Docker, multi-stage)
 - ML: Ensemble — Prophet + NeuralProphet + XGBoost (RMSE 3,85 п. п.)
-- AI: LangGraph + Mistral Large + 6 tools, MemorySaver
+- AI: LangGraph + Mistral Large + 12 tools, MemorySaver
 - Frontend: React 18, Vite, Recharts + ECharts
 
 **РЕЧЬ:**
-Backend — Python с FastAPI и асинхронным SQLAlchemy на драйвере asyncpg. Хранилище — PostgreSQL 16, Redis 7, векторный ChromaDB, всё в Docker через multi-stage сборку. Ансамбль из трёх ML-моделей — Prophet, NeuralProphet, XGBoost — со взвешиванием inverse-RMSE снизил среднеквадратичную ошибку до 3,85 процентных пунктов. AI-агент построен на LangGraph с шестью инструментами и долговременной памятью. Фронтенд — React 18 с библиотеками Recharts и ECharts.
+Backend — Python с FastAPI и асинхронным SQLAlchemy на драйвере asyncpg. Хранилище — PostgreSQL 16, Redis 7, векторный ChromaDB, всё в Docker через multi-stage сборку. Ансамбль из трёх ML-моделей — Prophet, NeuralProphet, XGBoost — со взвешиванием inverse-RMSE снизил среднеквадратичную ошибку до 3,85 процентных пунктов. AI-агент построен на LangGraph с двенадцатью инструментами и долговременной памятью. Фронтенд — React 18 с библиотеками Recharts и ECharts.
 
 ---
 
@@ -176,13 +176,13 @@ Backend — Python с FastAPI и асинхронным SQLAlchemy на драй
 
 2. Проблема рынка размещения — отельерам нужны RMS-метрики с учётом локальных событий Байкала; региональной администрации — агрегированная картина по 549 КСР; исследователям — оперативные данные вместо отчётов Росстата с задержкой 6–12 месяцев. Существующие RMS — TravelLine, Bnovo, Hotellab — без региональной адаптации.
 
-3. Решение — веб-платформа с тремя модулями: аналитика рынка с heatmap и RMS-метриками, прогноз спроса на ансамбле трёх ML-моделей (RMSE 3,85 п. п.), AI-аналитик на LangGraph с 6 инструментами. CSV-экспорт для исследователей.
+3. Решение — веб-платформа с тремя модулями: аналитика рынка с heatmap и RMS-метриками, прогноз спроса на ансамбле трёх ML-моделей (RMSE 3,85 п. п.), AI-аналитик на LangGraph с 12 инструментами. CSV-экспорт для исследователей.
 
 4. Целевая аудитория — три B2B-сегмента. Отельеры (549 КСР): Starter 3 500 ₽/мес, Pro 9 900 ₽/мес. Администрация: Region 30 000 ₽/мес. Исследователи: Research 5 000 ₽/мес. Trial 14 дней.
 
 5. Конкурентные преимущества — сравнение с TravelLine, Bnovo Pricer, Hotellab, Росстат. Наша ИАС закрывает пробел по Иркутской области с конкурентоспособной ценой для отельера.
 
-6. Технологии — Python 3.11, FastAPI, SQLAlchemy 2.0 + asyncpg, PostgreSQL 16, Redis 7, ChromaDB, multi-stage Docker, Ensemble (Prophet + NeuralProphet + XGBoost), LangGraph + Mistral Large + 6 tools, React 18 + Vite + Recharts + ECharts.
+6. Технологии — Python 3.11, FastAPI, SQLAlchemy 2.0 + asyncpg, PostgreSQL 16, Redis 7, ChromaDB, multi-stage Docker, Ensemble (Prophet + NeuralProphet + XGBoost), LangGraph + Mistral Large + 12 tools, React 18 + Vite + Recharts + ECharts.
 
 7. План B2B-рефокуса — 9 этапов за 36 дней (06.04 → 12.05.2026): данные, AI-агент, командный центр, RMS-метрики, модели, ТЭО, Docker, презентация, отчёт.
 

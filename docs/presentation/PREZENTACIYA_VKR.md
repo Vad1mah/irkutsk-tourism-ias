@@ -21,7 +21,7 @@
 **Решение:** B2B-платформа со следующими модулями:
 - RMS-аналитика — RevPAR/ADR/Occupancy, тепловая карта по дням недели и месяцам, динамика бронирований Pickup/Pace
 - Ensemble-прогноз — Prophet + NeuralProphet + XGBoost с RMSE 3,85 п. п.
-- AI-агент на LangGraph с 6 инструментами в режиме бизнес-аналитика
+- AI-агент на LangGraph с 12 инструментами в режиме бизнес-аналитика
 - CSV-экспорт для исследовательских задач
 
 ---
@@ -46,8 +46,13 @@
 │  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐      │
 │  │  LLM Service    │    │ Forecast Agent  │    │    Parsers      │      │
 │  │ (Mistral/GigaChat)│  │  (LangGraph)    │    │ 8+2+1 источника │      │
-│  │                 │    │                 │    │(14 мод. парсеров)│      │
+│  │                 │    │                 │    │(17 фай. парсеров)│      │
 │  └─────────────────┘    └─────────────────┘    └─────────────────┘      │
+│  ┌─────────────────┐    ┌─────────────────┐                             │
+│  │MethodologyService│   │ParserHealthService│                            │
+│  │ (corrected impact│   │ (Redis-based     │                            │
+│  │  расчёт)         │   │  monitoring)     │                            │
+│  └─────────────────┘    └─────────────────┘                             │
 │           │                      │                      │               │
 │           ▼                      ▼                      ▼               │
 │  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐      │
@@ -154,7 +159,7 @@
 
 ---
 
-## 4. ДАННЫЕ И ПАРСЕРЫ (8 источников событий + отели, погода — 14 модулей)
+## 4. ДАННЫЕ И ПАРСЕРЫ (8 источников событий + отели, погода — 17 файлов парсеров)
 
 ### 4.1 Исследование источников данных
 
@@ -219,7 +224,7 @@ top_p = 0.9
 model = "mistral-large-latest"
 ```
 
-### 5.3 Реализованные Tools (6 шт., B2B-промпт)
+### 5.3 Реализованные Tools (12 шт., B2B-промпт)
 
 | Tool | Применение | Источник данных |
 |------|-----------|-----------------|
@@ -229,6 +234,12 @@ model = "mistral-large-latest"
 | **forecast_occupancy** | Прогноз загрузки района (Ensemble) | ML Ensemble (3 модели) |
 | **get_statistics** | KPI рынка средств размещения | PostgreSQL |
 | **get_revenue_metrics** | RevPAR/ADR/Occupancy за период | hotel_statistics |
+| **get_top_events_by_impact** | Топ событий по абсолютному влиянию на загрузку | MethodologyService + PostgreSQL |
+| **get_booking_pace** | Динамика бронирований Pickup/Pace за период | PostgreSQL |
+| **compare_districts** | Сравнение показателей между районами | PostgreSQL |
+| **compare_forecast_models** | Сравнение точности ML-моделей (RMSE, MAE) | ensemble_service |
+| **get_occupancy_timeseries** | Временной ряд загрузки с gap-aware флагами | PostgreSQL |
+| **get_price_distribution** | Распределение цен по типам объектов | PostgreSQL |
 
 System-prompt агента переписан целиком: позиционирование «Ты — бизнес-аналитик ИАС для отельеров, региональной администрации и исследователей туристического рынка Иркутской области». Слова «турист», «отдыхающий», «куда поехать» из промптов и инструкций инструментов удалены.
 
@@ -441,7 +452,7 @@ Agent: search_events() + get_revenue_metrics()
 - Аналитика по районам без iframe: Treemap, RadarChart, HeatmapGrid (Recharts)
 - Карточки регионов и сравнение показателей
 - Фильтры по датам, ценам, районам
-- Источники: **11 внешних потоков данных** (8 источников событий + отели 101Hotels/Xotelo + погода Open-Meteo), реализованных **14 модулями** парсеров; на карте — агрегаты по районам и отелям
+- Источники: **11 внешних потоков данных** (8 источников событий + отели 101Hotels/Xotelo + погода Open-Meteo), реализованных **17 файлами** парсеров; на карте — агрегаты по районам и отелям
 
 ### 8.5 События — Календарь
 
@@ -682,7 +693,7 @@ Agent: search_events() + get_revenue_metrics()
 ### Q: Чем подтверждено качество?
 
 **A:** Двумя уровнями тестов:
-1. 104 модульных теста в 8 файлах (test_agent_tools, test_ensemble_service, test_forecast_helpers, test_llm_temperatures, test_metrics_validation, test_routers, test_schemas, test_security)
+1. 207 модульных тестов в 8 файлах (test_agent_tools, test_ensemble_service, test_forecast_helpers, test_llm_temperatures, test_metrics_validation, test_routers, test_schemas, test_security)
 2. 9 сквозных E2E-сценариев против запущенного backend
 Кроме того — стилевая проверка отчёта по 32 пунктам преподавателя.
 
@@ -700,15 +711,33 @@ Agent: search_events() + get_revenue_metrics()
 
 ---
 
+## B2B-REBUILD ИТОГИ (06.04–12.05.2026)
+
+### Что изменилось после защиты практики:
+
+- **5 фаз rebuild'а (~70 коммитов):** рефокус AI-агента → RMS-метрики → B2B-Frontend → UML/REQ → верификация
+- **Новые UML/REQ модели:** UC11 (Аналитика по районам) / UC12 (Export), 5 новых сущностей ER, FR3.8/FR3.9/FR4.7 + NFR7, бизнес-процесс БП5 (работа отельера с RMS-дашбордом)
+- **Frontend B2B-rebuild:**
+  - Яндекс Карты (Yandex Maps API) вместо iframe-заглушки
+  - Analytics переработана в 4-tab RMS-дашборд (Occupancy / Revenue / Events / Export)
+  - Gap-aware визуализации с серыми пунктирами для пропусков данных
+  - Методологические тултипы на всех KPI-метриках
+- **Новые сервисы:** MethodologyService (расчёт corrected impact), ParserHealthService (Redis-based мониторинг парсеров)
+- **AI-агент расширен до 12 tools** (добавлено 6 B2B-инструментов)
+- **Тестовое покрытие:** 207 тестов (было 104, +99)
+- **API:** 67 endpoints в 7 роутерах (было 63, +4)
+
+---
+
 ## РЕЗЮМЕ
 
 ### Что сделано:
 
 - ✅ **Полнофункциональная B2B-платформа** (React + FastAPI) для трёх сегментов: отельеры, региональная администрация, исследователи
-- ✅ **B2B-AI-агент** на LangGraph с 6 инструментами и защитой от галлюцинаций (`get_revenue_metrics` добавлен под RMS-задачи)
+- ✅ **B2B-AI-агент** на LangGraph с 12 инструментами и защитой от галлюцинаций (6 новых B2B-tools: `get_top_events_by_impact`, `get_booking_pace`, `compare_districts`, `compare_forecast_models`, `get_occupancy_timeseries`, `get_price_distribution`)
 - ✅ **Ensemble прогнозирование** (Prophet + NeuralProphet + XGBoost, RMSE 2,67 для Иркутского района)
 - ✅ **RMS-аналитика**: RevPAR, ADR, Occupancy, Pickup, Pace + расчёт impact событий
-- ✅ **11 внешних источников данных** (8 порталов событий + 101Hotels + Xotelo + Open-Meteo), реализованных 14 модулями парсеров; 1 366 объектов размещения, 37 663 записи статистики, 318 событий
+- ✅ **11 внешних источников данных** (8 порталов событий + 101Hotels + Xotelo + Open-Meteo), реализованных 17 файлами парсеров; 1 366 объектов размещения, 37 663 записи статистики, 318 событий
 - ✅ **CSV-экспорт** через `/api/analytics/export` для исследовательских задач
 - ✅ **Multi-stage Docker-сборка** с non-root контейнерами и DEPLOYMENT.md
 - ✅ **Визуализация** Recharts + ECharts (GeoMap на Map)
@@ -721,9 +750,9 @@ Agent: search_events() + get_revenue_metrics()
 | Объектов размещения | 1 366 |
 | Записей статистики | 37 663 |
 | Событий | 318 из 8 источников |
-| API endpoint | 63 в 7 роутерах |
-| Инструментов агента | 6 (включая `get_revenue_metrics`) |
-| Модульных тестов | 104 пройдено в 8 файлах |
+| API endpoint | 67 в 7 роутерах |
+| Инструментов агента | 12 (включая 6 новых B2B-tools) |
+| Модульных тестов | 207 пройдено в 8 файлах |
 | RMSE Ensemble (Иркутский) | 2,67 п. п. |
 | Галлюцинаций AI | <5 % |
 | Mistral токенов | 1 миллиард в месяц (бесплатный тариф) |
