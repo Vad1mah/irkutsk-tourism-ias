@@ -2,6 +2,40 @@
 
 > **Этот файл — последний снимок прогресса.** Обновлять в конце каждой сессии. Перед стартом — прочитать целиком и сверить с `NORTH_STAR.md` + `REFOCUS_PLAN.md`.
 
+## 2026-05-04 — Phase 2 (AI Agent) ЗАВЕРШЁН ✅
+
+**Branch:** `feat/b2b-rebuild-phase2` (3 commits после Phase 1).
+
+### Что сделано (9 задач)
+
+**A. 6 новых tools для агента:**
+- A1: `get_top_events_by_impact` — топ-N событий с corrected impact (calls /events-impact?method=seasonal_corrected).
+- A2: `get_booking_pace` — динамика бронирований (calls /booking-pace).
+- A3: `compare_districts` — side-by-side RMS-метрики (calls /compare-districts).
+- A4: `compare_forecast_models` — RMSE/MAE/R² по моделям (calls /compare-all).
+- A5: `get_occupancy_timeseries` — день-по-день occupancy (calls /occupancy-timeseries).
+- A6: `get_price_distribution` — p10/p25/p50/p75/p90 цен (calls /price-distribution).
+
+Всего ALL_TOOLS теперь содержит 12 tools (было 6).
+
+**B. Методология в системном промпте:**
+8 правил формата ответа: район, период, метод, база сравнения, не выдумывать, без личного comp set, прокси-диск-лаймер, gap данных.
+
+**C. Home.tsx evergreen prompts:**
+Quick-prompts больше не привязаны к конкретным датам/событиям — актуальны в любой день.
+
+### Тесты
+
+- 29 новых сценарных тестов на инструменты (mock httpx).
+- 22 существующих тестa агента — без регрессий.
+- Pytest: 199 passed, 3 failed (2 pre-existing asyncpg event-loop + 1 test_export_csv_occupancy), 3 skipped, 208 collected.
+
+### Что дальше — Phase 3 (Frontend rebuild)
+
+Backend и агент готовы. Фаза 3 — основной фронтенд rebuild по spec §3-9: Layout/Home/Analytics/Map/Forecast/Events/HotelDetail/About + Yandex Maps + локализация.
+
+---
+
 ## 2026-05-04 — Phase 1 (Backend) ЗАВЕРШЁН ✅
 
 **Branch:** `feat/b2b-rebuild-phase1` (~30 коммитов f192261...dfc1bb7)
