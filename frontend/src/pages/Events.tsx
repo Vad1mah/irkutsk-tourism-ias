@@ -70,6 +70,12 @@ function Events() {
     staleTime: 10 * 60 * 1000,
   })
 
+  const { data: correctedImpactData } = useQuery({
+    queryKey: ['events-impact-corrected'],
+    queryFn: () => api.getEventsImpactCorrected(),
+    staleTime: 10 * 60 * 1000,
+  })
+
   const impactMap = useMemo(() => {
     const map = new Map<string, number>()
     if (impactData) {
@@ -81,6 +87,18 @@ function Events() {
     }
     return map
   }, [impactData])
+
+  const correctedImpactMap = useMemo(() => {
+    const map = new Map<string, number>()
+    if (correctedImpactData) {
+      for (const item of correctedImpactData) {
+        if (item.delta_pct !== null) {
+          map.set(`${item.event.slice(0, 50)}|${item.date}`, item.delta_pct)
+        }
+      }
+    }
+    return map
+  }, [correctedImpactData])
 
   const sourceStats = useMemo(() => {
     const counts: Record<string, number> = {}
@@ -450,11 +468,12 @@ function Events() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredEvents.map(event => (
-              <EventCard 
-                key={event.event_id} 
-                event={event} 
+              <EventCard
+                key={event.event_id}
+                event={event}
                 onClick={() => setSelectedEvent(event)}
                 impact={impactMap.get(event.title.slice(0, 50))}
+                correctedDeltaPct={correctedImpactMap.get(`${event.title.slice(0, 50)}|${event.date_start}`)}
               />
             ))}
           </div>
@@ -614,14 +633,16 @@ function EventMiniCard({
 // EVENT CARD (for grid)
 // ============================================================================
 
-function EventCard({ 
-  event, 
+function EventCard({
+  event,
   onClick,
   impact,
-}: { 
+  correctedDeltaPct,
+}: {
   event: EventData
-  onClick: () => void 
+  onClick: () => void
   impact?: number
+  correctedDeltaPct?: number
 }) {
   const type = _getEventType(event) as EventType
   const { icon: Icon, label, color, bgColor } = EVENT_TYPES[type]
@@ -672,18 +693,28 @@ function EventCard({
         </div>
         
         {/* Impact + Hover hint */}
-        <div className="mt-3 pt-3 border-t border-[hsl(var(--border))] flex items-center justify-between">
-          {impact !== undefined ? (
-            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-              impact > 5 ? 'bg-[hsl(var(--destructive)/0.1)] text-[hsl(var(--destructive))]'
-                : impact > 0 ? 'bg-[hsl(var(--warning)/0.1)] text-[hsl(var(--warning))]'
-                  : 'bg-[hsl(var(--success)/0.1)] text-[hsl(var(--success))]'
-            }`}>
-              {impact > 0 ? '+' : ''}{impact.toFixed(0)}% к заполняемости отелей (оценка)
-            </span>
-          ) : (
-            <span />
-          )}
+        <div className="mt-3 pt-3 border-t border-[hsl(var(--border))] flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {impact !== undefined && (
+              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                impact > 5 ? 'bg-[hsl(var(--destructive)/0.1)] text-[hsl(var(--destructive))]'
+                  : impact > 0 ? 'bg-[hsl(var(--warning)/0.1)] text-[hsl(var(--warning))]'
+                    : 'bg-[hsl(var(--success)/0.1)] text-[hsl(var(--success))]'
+              }`}>
+                {impact > 0 ? '+' : ''}{impact.toFixed(0)}% к загрузке (оценка)
+              </span>
+            )}
+            {correctedDeltaPct !== undefined && (
+              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                correctedDeltaPct >= 0
+                  ? 'bg-[hsl(var(--success)/0.12)] text-[hsl(var(--success))]'
+                  : 'bg-[hsl(var(--destructive)/0.1)] text-[hsl(var(--destructive))]'
+              }`}>
+                {correctedDeltaPct >= 0 ? '↑' : '↓'} {Math.abs(correctedDeltaPct).toFixed(1)}%
+              </span>
+            )}
+            {impact === undefined && correctedDeltaPct === undefined && <span />}
+          </div>
           <span className="text-xs text-[hsl(var(--primary))] opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
             <Info size={12} />
             Подробнее
@@ -729,13 +760,25 @@ function EventModal({
       aria-modal="true"
       aria-label={event.title}
     >
-      <div 
-        className="bg-[hsl(var(--card))] rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-hidden"
+      <div
+        className="bg-[hsl(var(--card))] rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
+        {/* Image (if present) */}
+        {event.image_url && (
+          <div className="w-full h-48 overflow-hidden rounded-t-2xl">
+            <img
+              src={event.image_url}
+              alt={event.title}
+              className="w-full h-full object-cover"
+              onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+            />
+          </div>
+        )}
+
         {/* Header */}
-        <div 
-          className="p-6 text-white relative"
+        <div
+          className={`p-6 text-white relative ${!event.image_url ? 'rounded-t-2xl' : ''}`}
           style={{ backgroundColor: color }}
         >
           <button
@@ -744,7 +787,7 @@ function EventModal({
           >
             <X size={18} />
           </button>
-          
+
           <div className="flex items-center gap-3 mb-4">
             <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center">
               <Icon size={24} />
@@ -752,11 +795,16 @@ function EventModal({
             <span className="px-3 py-1 bg-white/20 rounded-full text-sm font-medium">
               {label}
             </span>
+            {event.age_restriction && (
+              <span className="px-2 py-0.5 bg-white/30 rounded text-xs font-bold">
+                {event.age_restriction}
+              </span>
+            )}
           </div>
-          
+
           <h2 className="text-xl font-bold">{event.title}</h2>
         </div>
-        
+
         {/* Content */}
         <div className="p-6 space-y-4">
           {/* Date & Time */}
@@ -764,12 +812,17 @@ function EventModal({
             <Calendar size={20} className="text-[hsl(var(--primary))]" />
             <div>
               <p className="font-medium">
-                {date.toLocaleDateString('ru-RU', { 
-                  weekday: 'long', 
-                  day: 'numeric', 
+                {date.toLocaleDateString('ru-RU', {
+                  weekday: 'long',
+                  day: 'numeric',
                   month: 'long',
-                  year: 'numeric'
+                  year: 'numeric',
                 })}
+                {event.time_start && (
+                  <span className="ml-2 text-sm font-normal text-[hsl(var(--muted-foreground))]">
+                    в {event.time_start.slice(0, 5)}
+                  </span>
+                )}
               </p>
               {event.date_end && (
                 <p className="text-sm text-[hsl(var(--muted-foreground))]">
@@ -778,31 +831,55 @@ function EventModal({
               )}
             </div>
           </div>
-          
-          {/* Location */}
-          {event.location && (
-            <div className="flex items-center gap-3 p-3 rounded-xl bg-[hsl(var(--secondary))]">
-              <MapPin size={20} className="text-[hsl(var(--primary))]" />
+
+          {/* Location + Address */}
+          {(event.location || event.address) && (
+            <div className="flex items-start gap-3 p-3 rounded-xl bg-[hsl(var(--secondary))]">
+              <MapPin size={20} className="text-[hsl(var(--primary))] flex-shrink-0 mt-0.5" />
               <div>
-                <p className="font-medium">{event.location}</p>
-                <p className="text-sm text-[hsl(var(--muted-foreground))]">Место проведения</p>
+                {event.location && <p className="font-medium">{event.location}</p>}
+                {event.address && (
+                  <p className="text-sm text-[hsl(var(--muted-foreground))] mt-0.5">{event.address}</p>
+                )}
+                {!event.address && <p className="text-sm text-[hsl(var(--muted-foreground))]">Место проведения</p>}
               </div>
             </div>
           )}
-          
+
+          {/* Price */}
+          {(event.price_min !== null || event.price_max !== null) && (
+            <div className="flex items-center gap-3 p-3 rounded-xl bg-[hsl(var(--secondary))]">
+              <Ticket size={20} className="text-[hsl(var(--primary))]" />
+              <div>
+                <p className="font-medium">
+                  {event.price_min !== null && event.price_max !== null && event.price_min !== event.price_max
+                    ? `${event.price_min.toLocaleString()} – ${event.price_max.toLocaleString()} ₽`
+                    : event.price_min !== null && event.price_min === 0
+                      ? 'Бесплатно'
+                      : event.price_min !== null
+                        ? `от ${event.price_min.toLocaleString()} ₽`
+                        : event.price_max !== null
+                          ? `до ${event.price_max.toLocaleString()} ₽`
+                          : ''}
+                </p>
+                <p className="text-sm text-[hsl(var(--muted-foreground))]">Стоимость билетов</p>
+              </div>
+            </div>
+          )}
+
           {/* Description */}
           {event.description && (
             <div className="p-3 rounded-xl bg-[hsl(var(--secondary))]">
               <p className="text-sm leading-relaxed">{event.description}</p>
             </div>
           )}
-          
+
           {/* Source */}
           <p className="text-xs text-[hsl(var(--muted-foreground))] flex items-center gap-1">
             <Info size={12} />
             Источник: {SOURCE_LABELS[event.source_id] || event.source_id}
           </p>
-          
+
           {/* Actions */}
           <div className="flex flex-wrap gap-3 pt-2">
             {event.url && (
