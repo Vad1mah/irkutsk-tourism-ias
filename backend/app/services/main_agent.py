@@ -15,6 +15,8 @@ import uuid
 from datetime import date
 from typing import Annotated, Any, Literal, TypedDict
 
+import httpx
+
 from langchain_core.messages import (
     AIMessage,
     BaseMessage,
@@ -363,6 +365,375 @@ ADR — прокси-оценка по минимальным публичным
         return "Не удалось рассчитать RMS-метрики. Попробуйте позже."
 
 
+# =============================================================================
+# HTTP HELPER (httpx calls to local backend REST API)
+# =============================================================================
+
+_BACKEND_URL = "http://localhost:8000"
+_HTTP_TIMEOUT = 10.0
+
+
+async def _agent_get(path: str, params: dict | None = None) -> tuple[int, dict | list | None]:
+    """GET-запрос к локальному бэкенду.
+
+    Returns:
+        tuple[int, dict | list | None]: (status_code, json_body | None).
+        Status 0 означает сетевую/таймаут ошибку.
+    """
+    try:
+        async with httpx.AsyncClient(base_url=_BACKEND_URL, timeout=_HTTP_TIMEOUT) as client:
+            response = await client.get(path, params=params)
+            if response.status_code == 200:
+                return response.status_code, response.json()
+            return response.status_code, None
+    except Exception:
+        return 0, None
+
+
+# =============================================================================
+# NEW B2B TOOLS (A1-A6)
+# =============================================================================
+
+@tool
+async def get_top_events_by_impact(
+    n: int = 5,
+    min_impact: float = 0.0,
+    district: str | None = None,
+) -> str:
+    """Топ событий по измеренному влиянию на загрузку средств размещения.
+
+    Используй когда B2B-пользователь запрашивает:
+    - Какие события исторически давали максимальный прирост загрузки
+    - Рейтинг событий по силе эффекта на спрос
+    - Факторы событийного влияния для планирования ценообразования
+
+    Args:
+        n: Количество топ-событий для вывода (по умолчанию 5)
+        min_impact: Минимальный порог влияния в % (абсолютное значение delta_pct)
+        district: Район Иркутской области для фильтрации (опционально)
+    """
+    logger.info(f"[Tool] get_top_events_by_impact: n={n}, min_impact={min_impact}, district={district}")
+
+    status, data = await _agent_get(
+        "/api/analytics/events-impact",
+        params={"method": "seasonal_corrected"},
+    )
+
+    if status == 0:
+        return "Сервис событийного влияния временно недоступен."
+    if status != 200 or data is None:
+        return f"Не удалось получить данные о влиянии событий (HTTP {status})."
+
+    events = data if isinstance(data, list) else data.get("events", data.get("data", []))
+    if not events:
+        return "Данные о влиянии событий пока не накоплены."
+
+    if district:
+        events = [e for e in events if e.get("district", "").lower() == district.lower()]
+        if not events:
+            return f"Нет данных о событийном влиянии для района «{district}»."
+
+    events = [e for e in events if abs(e.get("delta_pct", 0) or 0) >= min_impact]
+    events.sort(key=lambda e: abs(e.get("delta_pct", 0) or 0), reverse=True)
+    events = events[:n]
+
+    if not events:
+        return f"Нет событий с влиянием ≥{min_impact}%."
+
+    lines = [f"Топ-{len(events)} событий по влиянию на загрузку:"]
+    for i, e in enumerate(events, 1):
+        delta = e.get("delta_pct", 0) or 0
+        sign = "+" if delta >= 0 else ""
+        baseline = e.get("baseline_occupancy", e.get("baseline", 0)) or 0
+        confidence = e.get("confidence", e.get("confidence_level", "—"))
+        n_obs = e.get("n", e.get("observations", "—"))
+        event_name = e.get("event", e.get("event_name", e.get("name", "—")))
+        event_date = e.get("date", e.get("event_date", "—"))
+        dist = e.get("district", "—")
+        lines.append(
+            f"{i}. [{event_date}] {event_name} ({dist}): "
+            f"{sign}{delta:.1f}% (baseline {baseline:.1f}%, n={n_obs}, доверие: {confidence})"
+        )
+
+    return "\n".join(lines)
+
+
+@tool
+async def get_booking_pace(district: str = "Иркутский", days_ahead: int = 14) -> str:
+    """Темп и динамика бронирований на горизонт планирования.
+
+    Используй когда B2B-пользователь (отельер, администрация) спрашивает:
+    - Насколько активно идут бронирования по сравнению с обычным темпом
+    - Pickup-метрику: прирост бронирований по мере приближения к дате заезда
+    - Является ли текущий темп бронирований выше/ниже нормы
+
+    Args:
+        district: Район Иркутской области (Иркутский, Ольхонский, Слюдянский и др.)
+        days_ahead: Горизонт анализа в днях (по умолчанию 14)
+    """
+    logger.info(f"[Tool] get_booking_pace: district={district}, days_ahead={days_ahead}")
+
+    status, data = await _agent_get(
+        "/api/analytics/booking-pace",
+        params={"district": district, "days_ahead": days_ahead},
+    )
+
+    if status == 0:
+        return "Сервис темпа бронирований временно недоступен."
+    if status != 200 or data is None:
+        return f"Не удалось получить данные о темпе бронирований для «{district}» (HTTP {status})."
+
+    summary = data.get("summary", {})
+    points = data.get("points", data.get("data", []))
+    method = data.get("method", "—")
+
+    avg_pickup = summary.get("avg_pickup_pct", summary.get("avg_pickup", "—"))
+    trend = summary.get("trend", "—")
+    min_pickup = summary.get("min_pickup_pct", summary.get("min_pickup", "—"))
+    max_pickup = summary.get("max_pickup_pct", summary.get("max_pickup", "—"))
+
+    lines = [
+        f"Темп бронирований по району «{district}» (next {days_ahead} days):",
+        f"- Средний pickup: {avg_pickup}%",
+        f"- Тренд: {trend}",
+        f"- Min/Max: {min_pickup}% / {max_pickup}%",
+        f"- Метод: {method}",
+        f"- Точек данных: {len(points)}",
+    ]
+
+    return "\n".join(lines)
+
+
+@tool
+async def compare_districts(districts: list[str] | None = None, days: int = 30) -> str:
+    """Сравнительный анализ ключевых метрик по нескольким районам.
+
+    Используй когда B2B-пользователь (администрация, исследователь) запрашивает:
+    - Сравнение загрузки и доходных метрик по районам
+    - Рейтинг районов по Occupancy, ADR, RevPAR
+    - Анализ конкурентной позиции района на региональном уровне
+
+    Args:
+        districts: Список районов для сравнения (по умолчанию: Иркутский, Ольхонский, Слюдянский)
+        days: Период анализа в днях (по умолчанию 30)
+    """
+    if not districts:
+        districts = ["Иркутский", "Ольхонский", "Слюдянский"]
+
+    logger.info(f"[Tool] compare_districts: {districts}, days={days}")
+
+    status, data = await _agent_get(
+        "/api/analytics/compare-districts",
+        params={"districts": ",".join(districts), "days": days},
+    )
+
+    if status == 0:
+        return "Сервис сравнения районов временно недоступен."
+    if status != 200 or data is None:
+        return f"Не удалось получить данные для сравнения районов (HTTP {status})."
+
+    rows = data if isinstance(data, list) else data.get("districts", data.get("data", []))
+    if not rows:
+        return f"Нет данных для сравнения районов за {days} дней."
+
+    header = f"Сравнение районов за {days} дней:"
+    sep = f"| {'Район':<18} | {'Загрузка':>8} | {'прокси-ADR':>10} | {'прокси-RevPAR':>13} | {'Объектов':>8} |"
+    divider = f"|{'-'*20}|{'-'*10}|{'-'*12}|{'-'*15}|{'-'*10}|"
+
+    table_lines = [header, sep, divider]
+    for row in rows:
+        name = row.get("district", row.get("name", "—"))
+        occupancy = row.get("occupancy", row.get("avg_occupancy", "—"))
+        adr = row.get("adr_proxy", row.get("adr", row.get("avg_price", "—")))
+        revpar = row.get("revpar_proxy", row.get("revpar", "—"))
+        samples = row.get("samples", row.get("count", row.get("hotels_count", "—")))
+
+        occ_str = f"{occupancy:.1f}%" if isinstance(occupancy, (int, float)) else f"{occupancy}%"
+        adr_str = f"{adr:.0f} ₽" if isinstance(adr, (int, float)) else f"{adr} ₽"
+        revpar_str = f"{revpar:.0f} ₽" if isinstance(revpar, (int, float)) else f"{revpar} ₽"
+
+        table_lines.append(
+            f"| {name:<18} | {occ_str:>8} | {adr_str:>10} | {revpar_str:>13} | {samples!s:>8} |"
+        )
+
+    return "\n".join(table_lines)
+
+
+@tool
+async def compare_forecast_models(district: str = "Иркутский", days: int = 14) -> str:
+    """Сравнение точности ML-моделей прогнозирования загрузки.
+
+    Используй когда B2B-пользователь (исследователь, администрация) спрашивает:
+    - Какая модель прогноза наиболее точна для данного района
+    - Метрики качества моделей (RMSE, MAE, R²)
+    - Обоснование выбора модели для прогнозного отчёта
+
+    Args:
+        district: Район Иркутской области (Иркутский, Ольхонский, Слюдянский и др.)
+        days: Горизонт прогноза в днях (по умолчанию 14)
+    """
+    logger.info(f"[Tool] compare_forecast_models: district={district}, days={days}")
+
+    status, data = await _agent_get(
+        "/api/forecast/compare-all",
+        params={"district": district, "days": days},
+    )
+
+    if status == 0:
+        return "Сервис сравнения моделей временно недоступен."
+    if status != 200 or data is None:
+        return f"Не удалось получить данные сравнения моделей для «{district}» (HTTP {status})."
+
+    models_data = data.get("models", data.get("comparison", data if isinstance(data, dict) else {}))
+    best_model = data.get("best_model", data.get("recommended", "—"))
+
+    lines = [f"Точность прогноз-моделей для района «{district}» (горизонт {days} дней):"]
+
+    model_names = {
+        "prophet": "Prophet",
+        "neuralprophet": "NeuralProphet",
+        "neural_prophet": "NeuralProphet",
+        "xgboost": "XGBoost",
+        "ensemble": "Ensemble",
+    }
+
+    for key, label in model_names.items():
+        m = models_data.get(key, {}) if isinstance(models_data, dict) else {}
+        if not m:
+            continue
+        rmse = m.get("rmse", m.get("RMSE", "—"))
+        mae = m.get("mae", m.get("MAE", "—"))
+        r2 = m.get("r2", m.get("R2", m.get("r_squared", "—")))
+        rmse_str = f"{rmse:.2f}" if isinstance(rmse, (int, float)) else str(rmse)
+        mae_str = f"{mae:.2f}" if isinstance(mae, (int, float)) else str(mae)
+        r2_str = f"{r2:.3f}" if isinstance(r2, (int, float)) else str(r2)
+        lines.append(f"- {label}: RMSE {rmse_str}, MAE {mae_str}, R² {r2_str}")
+
+    if len(lines) == 1:
+        lines.append("Данные по моделям не найдены в ответе.")
+
+    lines.append(f"Лучшая модель: {best_model}")
+
+    return "\n".join(lines)
+
+
+@tool
+async def get_occupancy_timeseries(district: str = "Иркутский", days: int = 30) -> str:
+    """Временной ряд загрузки средств размещения по району.
+
+    Используй когда B2B-пользователь запрашивает:
+    - Динамику загрузки по дням за период
+    - Среднюю/мин/макс загрузку за последние N дней
+    - Исторический профиль загрузки для анализа сезонности
+
+    Args:
+        district: Район Иркутской области (Иркутский, Ольхонский, Слюдянский и др.)
+        days: Количество дней для анализа (по умолчанию 30)
+    """
+    logger.info(f"[Tool] get_occupancy_timeseries: district={district}, days={days}")
+
+    status, data = await _agent_get(
+        "/api/analytics/occupancy-timeseries",
+        params={"district": district, "days": days},
+    )
+
+    if status == 0:
+        return "Сервис временного ряда загрузки временно недоступен."
+    if status != 200 or data is None:
+        return f"Не удалось получить временной ряд загрузки для «{district}» (HTTP {status})."
+
+    points = data.get("data", data.get("points", data if isinstance(data, list) else []))
+    summary = data.get("summary", {})
+
+    if not points:
+        return f"Нет данных о загрузке по району «{district}» за {days} дней."
+
+    if summary:
+        avg = summary.get("avg", summary.get("mean", "—"))
+        min_val = summary.get("min", "—")
+        max_val = summary.get("max", "—")
+        samples = summary.get("samples", summary.get("count", len(points)))
+    else:
+        occupancies = [p.get("occupancy", p.get("avg_occupancy", 0)) or 0 for p in points]
+        avg = round(sum(occupancies) / len(occupancies), 1) if occupancies else "—"
+        min_val = round(min(occupancies), 1) if occupancies else "—"
+        max_val = round(max(occupancies), 1) if occupancies else "—"
+        samples = len(points)
+
+    avg_str = f"{avg:.1f}" if isinstance(avg, float) else str(avg)
+    min_str = f"{min_val:.1f}" if isinstance(min_val, float) else str(min_val)
+    max_str = f"{max_val:.1f}" if isinstance(max_val, float) else str(max_val)
+
+    last_7 = points[-7:] if len(points) >= 7 else points
+    last_7_strs = []
+    for p in last_7:
+        d = p.get("date", p.get("ds", "—"))
+        occ = p.get("occupancy", p.get("avg_occupancy", "—"))
+        occ_str = f"{occ:.1f}" if isinstance(occ, float) else str(occ)
+        last_7_strs.append(f"{d}: {occ_str}%")
+
+    lines = [
+        f"Загрузка района «{district}» за {days} дней:",
+        f"- Среднее: {avg_str}%",
+        f"- Min: {min_str}% / Max: {max_str}%",
+        f"- Точек данных: {samples}",
+        f"- Последние 7 дней: {', '.join(last_7_strs)}",
+    ]
+
+    return "\n".join(lines)
+
+
+@tool
+async def get_price_distribution(district: str = "Иркутский", days: int = 30) -> str:
+    """Распределение цен (перцентили) по минимальным тарифам средств размещения.
+
+    Используй когда B2B-пользователь (отельер, исследователь) запрашивает:
+    - Ценовое позиционирование в районе (бюджет/средний/премиум сегмент)
+    - Перцентильное распределение тарифов для бенчмаркинга
+    - Ценовые ориентиры для тарифного планирования
+
+    Args:
+        district: Район Иркутской области (Иркутский, Ольхонский, Слюдянский и др.)
+        days: Период анализа в днях (по умолчанию 30)
+    """
+    logger.info(f"[Tool] get_price_distribution: district={district}, days={days}")
+
+    status, data = await _agent_get(
+        "/api/analytics/price-distribution",
+        params={"district": district, "days": days},
+    )
+
+    if status == 0:
+        return "Сервис распределения цен временно недоступен."
+    if status != 200 or data is None:
+        return f"Не удалось получить данные о распределении цен для «{district}» (HTTP {status})."
+
+    dist_data = data.get("distribution", data if isinstance(data, dict) else {})
+    samples = data.get("samples", data.get("count", "—"))
+
+    def _fmt(v: Any) -> str:
+        if isinstance(v, (int, float)):
+            return f"{v:.0f}"
+        return str(v) if v is not None else "—"
+
+    p10 = _fmt(dist_data.get("p10", dist_data.get("percentile_10", "—")))
+    p25 = _fmt(dist_data.get("p25", dist_data.get("percentile_25", "—")))
+    p50 = _fmt(dist_data.get("p50", dist_data.get("median", dist_data.get("percentile_50", "—"))))
+    p75 = _fmt(dist_data.get("p75", dist_data.get("percentile_75", "—")))
+    p90 = _fmt(dist_data.get("p90", dist_data.get("percentile_90", "—")))
+
+    lines = [
+        f"Распределение мин. цен в районе «{district}» (samples={samples}):",
+        f"- p10 (бюджетный): {p10} ₽",
+        f"- p25 (нижний квартиль): {p25} ₽",
+        f"- p50 (медиана): {p50} ₽",
+        f"- p75: {p75} ₽",
+        f"- p90 (премиум): {p90} ₽",
+    ]
+
+    return "\n".join(lines)
+
+
 # Список всех tools
 ALL_TOOLS = [
     search_hotels,
@@ -371,6 +742,12 @@ ALL_TOOLS = [
     forecast_occupancy,
     get_statistics,
     get_revenue_metrics,
+    get_top_events_by_impact,
+    get_booking_pace,
+    compare_districts,
+    compare_forecast_models,
+    get_occupancy_timeseries,
+    get_price_distribution,
 ]
 TOOLS_BY_NAME = {tool.name: tool for tool in ALL_TOOLS}
 
