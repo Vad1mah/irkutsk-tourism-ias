@@ -580,6 +580,7 @@ class DBService:
                 "lon": h.get("lon"),
                 "rating": h.get("rating"),
                 "min_price": h.get("min_price"),
+                "image_url": h.get("image_url"),
             })
         if not rows:
             return 0
@@ -596,6 +597,7 @@ class DBService:
                         "lon": stmt.excluded.lon,
                         "rating": stmt.excluded.rating,
                         "min_price": stmt.excluded.min_price,
+                        "image_url": func.coalesce(stmt.excluded.image_url, Hotel.__table__.c.image_url),
                     },
                 )
                 await s.execute(stmt)

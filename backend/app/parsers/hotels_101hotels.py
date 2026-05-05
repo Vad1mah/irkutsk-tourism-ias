@@ -45,6 +45,23 @@ def _resolve_district(city_slug: str) -> str:
     return district if district else "Неизвестный"
 
 
+def _extract_image_url(raw: dict) -> str | None:
+    """Извлекает первое изображение из response 101hotels API.
+
+    Поддерживает формат photos: list[dict{url}] или list[str].
+    """
+    photos = raw.get("photos")
+    if not isinstance(photos, list) or not photos:
+        return None
+    first = photos[0]
+    if isinstance(first, dict):
+        url = first.get("url")
+        return url if isinstance(url, str) and url else None
+    if isinstance(first, str) and first:
+        return first
+    return None
+
+
 def _extract_hotel_data(hotel: dict, city_slug: str) -> dict:
     """Извлечь данные об отеле из API ответа."""
     coords = hotel.get("coords", [])
@@ -60,6 +77,7 @@ def _extract_hotel_data(hotel: dict, city_slug: str) -> dict:
         "lon": coords[0] if len(coords) > 0 else None,
         "rating": hotel.get("rating"),
         "min_price": hotel.get("min_price"),
+        "image_url": _extract_image_url(hotel),
     }
 
 
