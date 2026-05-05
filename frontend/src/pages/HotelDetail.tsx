@@ -326,13 +326,13 @@ function HotelDetail() {
                                 color: 'hsl(var(--foreground))',
                               }}
                               labelFormatter={(d) => `Дата: ${d}`}
-                              formatter={(v: number, _n: string, item: { dataKey?: string }) => {
+                              formatter={(v: number, name: string) => {
                                 const labels: Record<string, string> = {
                                   forecast: 'Прогноз',
                                   upper: 'Верхняя граница',
                                   lower: 'Нижняя граница',
                                 }
-                                return [`${v}%`, labels[item?.dataKey ?? ''] ?? item?.dataKey ?? '']
+                                return [`${v}%`, labels[name] ?? name]
                               }}
                             />
                             <Area type="monotone" dataKey="upper" stroke="none" fill="hsl(var(--primary)/0.12)" />

@@ -174,7 +174,7 @@ function Map() {
             <CardContent>
               <div className="space-y-2">
                 {[...districtsList]
-                  .filter(d => d.occupancy != null && d.hotelsCount >= 2)
+                  .filter(d => d.occupancy != null && (d.hotelsCount ?? 0) >= 2)
                   .sort((a, b) => (b.occupancy ?? 0) - (a.occupancy ?? 0))
                   .slice(0, 3)
                   .map((d, i) => (
@@ -206,8 +206,8 @@ function Map() {
             <CardContent>
               <div className="space-y-2">
                 {[...districtsList]
-                  .filter(d => d.hotelsCount > 0)
-                  .sort((a, b) => b.hotelsCount - a.hotelsCount)
+                  .filter(d => (d.hotelsCount ?? 0) > 0)
+                  .sort((a, b) => (b.hotelsCount ?? 0) - (a.hotelsCount ?? 0))
                   .slice(0, 3)
                   .map((d, i) => (
                     <div

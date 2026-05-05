@@ -3,14 +3,15 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { usePageTitle } from '../hooks/usePageTitle'
 import {
-  TrendingUp, DollarSign, Activity, Calendar, MapPin,
-  BarChart3, MessageSquare, ArrowRight, Building2, Sparkles,
+  TrendingUp, Banknote, Activity, Calendar, MapPin,
+  BarChart3, MessageSquare, ArrowRight, Sparkles, Database, Building2,
 } from 'lucide-react'
 import { api } from '../api/client'
 import { Card, Button, Badge, Dropdown } from '../components/ui'
+import { MethodologyTooltip } from '../components/MethodologyTooltip'
 import { ALL_DISTRICT_NAMES, DEFAULT_DISTRICT } from '../constants/districts'
 import {
-  AreaChart, Area, ResponsiveContainer, XAxis, YAxis, Tooltip,
+  AreaChart, Area, ResponsiveContainer, XAxis, YAxis, Tooltip, ReferenceLine, ComposedChart,
 } from 'recharts'
 
 const FORECAST_HORIZON = 14
@@ -62,9 +63,21 @@ function Home() {
   })
 
   const { data: eventsImpact } = useQuery({
-    queryKey: ['events-impact'],
-    queryFn: api.getEventsImpact,
+    queryKey: ['events-impact-corrected'],
+    queryFn: () => api.getEventsImpactCorrected(),
     staleTime: 5 * 60_000,
+  })
+
+  const { data: occupancyTimeseries } = useQuery({
+    queryKey: ['occupancy-timeseries', district, 14],
+    queryFn: () => api.getOccupancyTimeseries(district, 14),
+    staleTime: 5 * 60_000,
+  })
+
+  const { data: metadata } = useQuery({
+    queryKey: ['analytics-metadata'],
+    queryFn: api.getMetadata,
+    staleTime: 10 * 60_000,
   })
 
   const districtKpi = useMemo(() => {
@@ -90,10 +103,35 @@ function Home() {
   const upcomingImpact = useMemo(() => {
     if (!eventsImpact) return []
     return [...eventsImpact]
-      .filter(e => e.impact != null)
-      .sort((a, b) => Math.abs(b.impact || 0) - Math.abs(a.impact || 0))
+      .filter(e => e.delta_pct != null)
+      .sort((a, b) => Math.abs(b.delta_pct ?? 0) - Math.abs(a.delta_pct ?? 0))
       .slice(0, 5)
   }, [eventsImpact])
+
+  // Combined factual + forecast series for chart
+  const combinedSeries = useMemo(() => {
+    type CombinedPoint = {
+      date: string
+      factual: number | undefined
+      forecast: number | undefined
+      lower: number | undefined
+      upper: number | undefined
+    }
+    const today = new Date().toISOString().slice(0, 10)
+    const allDates = new Map<string, CombinedPoint>()
+    for (const p of occupancyTimeseries?.points ?? []) {
+      allDates.set(p.date, { date: p.date, factual: p.occupancy, forecast: undefined, lower: undefined, upper: undefined })
+    }
+    for (const p of forecastSeries) {
+      const existing = allDates.get(p.date)
+      if (existing) {
+        allDates.set(p.date, { ...existing, forecast: p.occupancy, lower: p.lower, upper: p.upper })
+      } else {
+        allDates.set(p.date, { date: p.date, factual: undefined, forecast: p.occupancy, lower: p.lower, upper: p.upper })
+      }
+    }
+    return { series: Array.from(allDates.values()).sort((a, b) => a.date.localeCompare(b.date)), today }
+  }, [occupancyTimeseries, forecastSeries])
 
   return (
     <div className="animate-fade-in space-y-8">
@@ -141,45 +179,59 @@ function Home() {
           accent="success"
         />
         <KPITile
-          icon={DollarSign}
+          icon={Banknote}
           label="ADR"
           value={districtKpi?.adr ? `${districtKpi.adr.toLocaleString('ru-RU')}₽` : '—'}
           sub="Средний тариф номера"
           accent="accent"
+          tooltip="Прокси-ADR — медианная мин. цена номера на снимке. Реальный ADR обычно на 15-30% выше."
         />
         <KPITile
-          icon={DollarSign}
+          icon={Banknote}
           label="RevPAR"
           value={districtKpi?.revpar ? `${districtKpi.revpar.toLocaleString('ru-RU')}₽` : '—'}
           sub="Выручка на доступный номер"
+          tooltip="Прокси-RevPAR = прокси-ADR × occupancy. Метрика для сравнения трендов, не для абсолютных ROI."
         />
       </div>
 
-      {/* Forecast mini-chart */}
+      {/* Forecast + Factual combined chart */}
       <Card variant="glass" padding="lg">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <div>
-            <h2 className="text-lg font-semibold">Прогноз загрузки на {FORECAST_HORIZON} дней</h2>
+            <h2 className="text-lg font-semibold">Факт (−14 дней) + Прогноз (+{FORECAST_HORIZON} дней)</h2>
             <p className="text-sm text-[hsl(var(--muted-foreground))]">
-              Ensemble: Prophet + NeuralProphet + XGBoost. С доверительным интервалом.
+              Ensemble: Prophet + NeuralProphet + XGBoost. Вертикальная линия — сегодня.
             </p>
           </div>
-          <Button variant="secondary" size="sm" onClick={() => navigate(`/forecast?district=${encodeURIComponent(district)}`)}>
-            <TrendingUp size={14} />
-            Подробный прогноз
-            <ArrowRight size={14} />
-          </Button>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 text-xs text-[hsl(var(--muted-foreground))]">
+              <span className="inline-block w-3 h-0.5 bg-[hsl(var(--success))] rounded" />
+              Факт
+              <span className="inline-block w-3 h-0.5 bg-[hsl(var(--primary))] rounded ml-2" />
+              Прогноз
+            </div>
+            <Button variant="secondary" size="sm" onClick={() => navigate(`/forecast?district=${encodeURIComponent(district)}`)}>
+              <TrendingUp size={14} />
+              Подробнее
+              <ArrowRight size={14} />
+            </Button>
+          </div>
         </div>
 
         {loadingForecast ? (
           <div className="h-56 skeleton rounded-xl" />
-        ) : forecastSeries.length > 0 ? (
+        ) : combinedSeries.series.length > 0 ? (
           <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={forecastSeries}>
+            <ComposedChart data={combinedSeries.series}>
               <defs>
                 <linearGradient id="forecastFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.4} />
+                  <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.35} />
                   <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0.05} />
+                </linearGradient>
+                <linearGradient id="factualFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="hsl(var(--success))" stopOpacity={0.3} />
+                  <stop offset="100%" stopColor="hsl(var(--success))" stopOpacity={0.05} />
                 </linearGradient>
               </defs>
               <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(v: string) => v.slice(5)} axisLine={false} />
@@ -192,19 +244,16 @@ function Home() {
                   fontSize: 12,
                 }}
                 labelFormatter={(label: string) => `Дата: ${label}`}
-                formatter={(v: number, _name: string, item: { dataKey?: string }) => {
-                  const labels: Record<string, string> = {
-                    occupancy: 'Прогноз',
-                    upper: 'Верхняя граница',
-                    lower: 'Нижняя граница',
-                  }
-                  return [`${v.toFixed(1)}%`, labels[item?.dataKey ?? ''] ?? item?.dataKey ?? '']
+                formatter={(v: number, _name: string) => {
+                  return [`${Number(v).toFixed(1)}%`, _name]
                 }}
               />
-              <Area type="monotone" dataKey="upper" name="Верхняя граница" stroke="none" fill="hsl(var(--primary)/0.1)" />
-              <Area type="monotone" dataKey="lower" name="Нижняя граница" stroke="none" fill="hsl(var(--background))" />
-              <Area type="monotone" dataKey="occupancy" name="Прогноз" stroke="hsl(var(--primary))" strokeWidth={2} fill="url(#forecastFill)" />
-            </AreaChart>
+              <ReferenceLine x={combinedSeries.today} stroke="hsl(var(--muted-foreground))" strokeDasharray="4 2" label={{ value: 'Сегодня', fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
+              <Area type="monotone" dataKey="upper" stroke="none" fill="hsl(var(--primary)/0.08)" connectNulls />
+              <Area type="monotone" dataKey="lower" stroke="none" fill="hsl(var(--background))" connectNulls />
+              <Area type="monotone" dataKey="factual" stroke="hsl(var(--success))" strokeWidth={2} fill="url(#factualFill)" connectNulls dot={false} />
+              <Area type="monotone" dataKey="forecast" stroke="hsl(var(--primary))" strokeWidth={2} fill="url(#forecastFill)" strokeDasharray="5 3" connectNulls dot={false} />
+            </ComposedChart>
           </ResponsiveContainer>
         ) : (
           <p className="text-sm text-[hsl(var(--muted-foreground))] py-8 text-center">
@@ -279,15 +328,20 @@ function Home() {
               {upcomingImpact.map((e, i) => (
                 <div key={i} className="flex items-center gap-3 p-2 rounded-lg bg-[hsl(var(--secondary))/0.4]">
                   <div className="w-9 h-9 rounded-lg bg-[hsl(var(--accent)/0.1)] flex items-center justify-center flex-shrink-0">
-                    <span className="text-[10px] text-[hsl(var(--accent))] font-bold">{e.date}</span>
+                    <span className="text-[10px] text-[hsl(var(--accent))] font-bold">{e.date.slice(5)}</span>
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{e.event}</p>
                     <p className="text-xs text-[hsl(var(--muted-foreground))]">{e.district}</p>
                   </div>
-                  <Badge variant={(e.impact || 0) > 0 ? 'success' : 'danger'} size="sm">
-                    {(e.impact || 0) > 0 ? '↑' : '↓'} {Math.abs(e.impact || 0).toFixed(1)}%
-                  </Badge>
+                  <div className="flex flex-col items-end gap-1">
+                    <Badge variant={(e.delta_pct ?? 0) > 0 ? 'success' : 'danger'} size="sm">
+                      {(e.delta_pct ?? 0) > 0 ? '+' : ''}{(e.delta_pct ?? 0).toFixed(1)}%
+                    </Badge>
+                    <span className={`text-[10px] font-medium ${e.confidence === 'high' ? 'text-[hsl(var(--success))]' : e.confidence === 'medium' ? 'text-[hsl(var(--accent))]' : 'text-[hsl(var(--muted-foreground))]'}`}>
+                      {e.confidence}
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>
@@ -325,6 +379,47 @@ function Home() {
         </div>
       </div>
 
+      {/* Metadata footer */}
+      {metadata && (
+        <Card variant="glass" padding="md">
+          <div className="flex items-center gap-2 mb-3">
+            <Database size={16} className="text-[hsl(var(--muted-foreground))]" />
+            <h2 className="text-sm font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wider">
+              Источники и методология
+            </h2>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div>
+              <p className="text-xs text-[hsl(var(--muted-foreground))]">Отелей в базе</p>
+              <p className="text-sm font-semibold tabular-nums">{metadata.hotels_count}</p>
+            </div>
+            <div>
+              <p className="text-xs text-[hsl(var(--muted-foreground))]">Событий</p>
+              <p className="text-sm font-semibold tabular-nums">{metadata.events_count}</p>
+            </div>
+            <div>
+              <p className="text-xs text-[hsl(var(--muted-foreground))]">Данные с / по</p>
+              <p className="text-sm font-semibold tabular-nums">
+                {metadata.data_range.from?.slice(0, 7) ?? '—'} / {metadata.data_range.to?.slice(0, 7) ?? '—'}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-[hsl(var(--muted-foreground))]">Последнее обновление</p>
+              <p className="text-sm font-semibold tabular-nums">
+                {metadata.last_refresh ? new Date(metadata.last_refresh).toLocaleDateString('ru-RU') : '—'}
+              </p>
+            </div>
+          </div>
+          {metadata.gap_periods.length > 0 && (
+            <div className="mt-2 pt-2 border-t border-[hsl(var(--border))]">
+              <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                Пробелы данных: {metadata.gap_periods.map(g => `${g.from?.slice(0, 7) ?? '?'}–${g.to?.slice(0, 7) ?? '?'} (${g.gap_days} дн.)`).join('; ')}
+              </p>
+            </div>
+          )}
+        </Card>
+      )}
+
       {/* Quick navigation tiles */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
@@ -348,91 +443,17 @@ function Home() {
           </button>
         ))}
       </div>
-
-      {/* Сегменты: что доступно отельеру / администрации / исследователю */}
-      <div>
-        <h2 className="text-lg font-semibold mb-3">Что доступно по сегментам</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <Card variant="glass" padding="md">
-            <div className="flex items-center gap-2 mb-2 text-[hsl(var(--primary))]">
-              <Building2 size={16} />
-              <h3 className="text-sm font-semibold uppercase tracking-wider">Отельерам</h3>
-            </div>
-            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-3">
-              Прогноз загрузки своего объекта, RMS-метрики, факторы спроса.
-            </p>
-            <div className="flex flex-col gap-1.5">
-              <button onClick={() => navigate('/map')} className="text-xs text-left text-[hsl(var(--primary))] hover:underline">
-                → Найти свой объект на карте
-              </button>
-              <button onClick={() => navigate(`/forecast?district=${encodeURIComponent(district)}`)} className="text-xs text-left text-[hsl(var(--primary))] hover:underline">
-                → Прогноз 7–30 дней по району
-              </button>
-              <button onClick={() => navigate(`/analytics?district=${encodeURIComponent(district)}`)} className="text-xs text-left text-[hsl(var(--primary))] hover:underline">
-                → RevPAR / ADR в моём районе
-              </button>
-            </div>
-          </Card>
-
-          <Card variant="glass" padding="md">
-            <div className="flex items-center gap-2 mb-2 text-[hsl(var(--accent))]">
-              <BarChart3 size={16} />
-              <h3 className="text-sm font-semibold uppercase tracking-wider">Администрации</h3>
-            </div>
-            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-3">
-              Сводка по 15 районам, сезонность, событийная активность.
-            </p>
-            <div className="flex flex-col gap-1.5">
-              <button onClick={() => navigate('/map')} className="text-xs text-left text-[hsl(var(--accent))] hover:underline">
-                → Сравнение районов
-              </button>
-              <button onClick={() => navigate('/analytics')} className="text-xs text-left text-[hsl(var(--accent))] hover:underline">
-                → Сезонная heatmap
-              </button>
-              <button onClick={() => navigate('/events')} className="text-xs text-left text-[hsl(var(--accent))] hover:underline">
-                → Календарь событий
-              </button>
-            </div>
-          </Card>
-
-          <Card variant="glass" padding="md">
-            <div className="flex items-center gap-2 mb-2 text-[hsl(var(--success))]">
-              <Sparkles size={16} />
-              <h3 className="text-sm font-semibold uppercase tracking-wider">Исследователям</h3>
-            </div>
-            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-3">
-              CSV-экспорт, методология, метрики моделей и feature importance.
-            </p>
-            <div className="flex flex-col gap-1.5">
-              <a
-                href="/api/analytics/export?type=occupancy"
-                className="text-xs text-left text-[hsl(var(--success))] hover:underline"
-              >
-                → Скачать CSV: загрузка отелей
-              </a>
-              <a
-                href="/api/analytics/export?type=events"
-                className="text-xs text-left text-[hsl(var(--success))] hover:underline"
-              >
-                → Скачать CSV: события
-              </a>
-              <button onClick={() => navigate(`/forecast?district=${encodeURIComponent(district)}`)} className="text-xs text-left text-[hsl(var(--success))] hover:underline">
-                → Сравнение моделей: RMSE / MAE / R²
-              </button>
-            </div>
-          </Card>
-        </div>
-      </div>
     </div>
   )
 }
 
-function KPITile({ icon: Icon, label, value, sub, accent }: {
+function KPITile({ icon: Icon, label, value, sub, accent, tooltip }: {
   icon: React.ElementType
   label: string
   value: string
   sub: string
   accent?: 'primary' | 'accent' | 'success'
+  tooltip?: string
 }) {
   const accentClass =
     accent === 'success' ? 'bg-[hsl(var(--success)/0.1)] text-[hsl(var(--success))]' :
@@ -447,7 +468,10 @@ function KPITile({ icon: Icon, label, value, sub, accent }: {
         </div>
         <div className="min-w-0">
           <p className="text-2xl font-bold tabular-nums truncate">{value}</p>
-          <p className="text-xs text-[hsl(var(--muted-foreground))] font-medium">{label}</p>
+          <div className="flex items-center gap-1">
+            <p className="text-xs text-[hsl(var(--muted-foreground))] font-medium">{label}</p>
+            {tooltip && <MethodologyTooltip text={tooltip} />}
+          </div>
           <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">{sub}</p>
         </div>
       </div>
