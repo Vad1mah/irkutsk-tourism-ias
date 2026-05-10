@@ -52,10 +52,13 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     env_file:
-      - ./backend/.env
+      - path: ./backend/.env
+        required: false
     environment:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-tourism}:${POSTGRES_PASSWORD:-tourism_pass}@postgres:5432/${POSTGRES_DB:-tourism}
       - REDIS_HOST=redis
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis_pass}
+      - LLM_PROVIDER=${LLM_PROVIDER:-mistral}
     depends_on:
       postgres:
         condition: service_healthy
@@ -78,8 +81,6 @@ services:
       options:
         max-size: "50m"
         max-file: "3"
-    profiles:
-      - full
 
   frontend:
     build: ./frontend
@@ -100,8 +101,6 @@ services:
       options:
         max-size: "50m"
         max-file: "3"
-    profiles:
-      - full
 
 volumes:
   pg_data:
