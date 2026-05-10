@@ -44,6 +44,36 @@ _VENUE_KEYWORDS = re.compile(
     re.IGNORECASE,
 )
 
+# Адреса в формате "г. Иркутск, ул. Карла Маркса, 1" / "Иркутск, Карла Маркса 5"
+_ADDRESS_RE = re.compile(
+    r'(?:г\.\s*)?(Иркутск|Ангарск|Шелехов|Усть-Илимск|Братск)[,\s]+'
+    r'(?:ул\.|улица|пр-?т\.?|проспект|пер\.|переулок|б-р|бульвар)\s*'
+    r'[А-ЯЁа-яё][А-ЯЁа-яё\s\.\-]{2,40}'
+    r'(?:,?\s*д?\.?\s*\d{1,4}[А-Яа-я]?(?:/\d{1,3})?)?',
+    re.IGNORECASE,
+)
+
+
+def _extract_address_from_markdown(text: str) -> str | None:
+    """Best-effort извлечение адреса из markdown-блока.
+
+    Args:
+        text: Markdown context (несколько строк рядом с событием).
+
+    Returns:
+        Строка адреса или None.
+    """
+    if not text:
+        return None
+    m = _ADDRESS_RE.search(text)
+    if m:
+        addr = m.group(0).strip().rstrip(",.")
+        # Чистим избыточные пробелы
+        addr = re.sub(r"\s+", " ", addr)
+        if 8 < len(addr) < 120:
+            return addr
+    return None
+
 
 def _split_title_location(raw: str) -> tuple[str, str]:
     """Попытаться разделить 'Название Площадка' на title и location."""
@@ -160,6 +190,12 @@ class CultureRFParser(BaseParser):
                 price_str = match.group(3).strip()  # "0"
                 title_place = match.group(4).strip()  # "Название Место"
                 url = match.group(5).strip()  # URL
+
+                # Контекст вокруг match для извлечения адреса
+                ctx_start = max(0, match.start() - 200)
+                ctx_end = min(len(markdown), match.end() + 400)
+                context_block = markdown[ctx_start:ctx_end]
+                address = _extract_address_from_markdown(context_block)
                 
                 # Парсим дату
                 date_match = re.search(r'(\d{1,2})\s+([а-яё]+)', date_str)
@@ -206,7 +242,7 @@ class CultureRFParser(BaseParser):
                     time_start=event_time,
                     event_type=detect_event_type(title),
                     location=location,
-                    address=None,  # заполняется через _extract_address_from_jsonld при наличии JSON-LD
+                    address=address,
                     price=price,
                     price_min=price_min if price_min and price_min > 0 else None,
                     source="culture_rf",

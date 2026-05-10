@@ -17,11 +17,8 @@ async def test_persona_hotelier_workflow(client):
     assert health.status_code == 200
 
     # 2. Запрашивает RMS-метрики своего района
-    try:
-        rms = await client.get("/api/analytics/revenue-summary")
-        assert rms.status_code == 200
-    except RuntimeError:
-        pytest.skip("DB event loop mismatch in revenue-summary — skip in CI")
+    rms = await client.get("/api/analytics/revenue-summary")
+    assert rms.status_code == 200
 
     # 3. Прогноз на 14 дней
     forecast = await client.get(
@@ -29,13 +26,18 @@ async def test_persona_hotelier_workflow(client):
         params={"district": "Иркутский", "days_ahead": 14},
     )
     assert forecast.status_code == 200
+    fc = forecast.json()
+    assert "ensemble" in fc and isinstance(fc["ensemble"], list), "Контракт прогноза изменился"
+    assert fc["ensemble"], "Прогноз пуст"
+    assert "occupancy" in fc["ensemble"][0], "В точке прогноза нет поля occupancy"
 
-    # 4. События в горизонте
+    # 4. События в горизонте — corrected impact
     events_impact = await client.get(
         "/api/analytics/events-impact",
         params={"method": "seasonal_corrected"},
     )
     assert events_impact.status_code == 200
+    assert isinstance(events_impact.json(), list)
 
     # 5. Темп бронирований (proxy-pickup)
     booking = await client.get(
@@ -43,6 +45,8 @@ async def test_persona_hotelier_workflow(client):
         params={"district": "Иркутский", "days_ahead": 14},
     )
     assert booking.status_code == 200
+    bp = booking.json()
+    assert "summary" in bp and "methodology" in bp, "Контракт booking-pace изменился"
 
     # 6. Сегментный benchmark — берём первый отель из списка
     hotels = await client.get("/api/hotels", params={"limit": 1})
@@ -69,6 +73,9 @@ async def test_persona_administration_workflow(client):
         params={"districts": "Иркутский,Ольхонский,Слюдянский", "days": 30},
     )
     assert cmp.status_code == 200
+    cmp_data = cmp.json()
+    assert "districts" in cmp_data and len(cmp_data["districts"]) == 3, \
+        "compare-districts должен вернуть ровно 3 запрошенных района"
 
     # 3. Heatmap сезонности
     heat = await client.get(

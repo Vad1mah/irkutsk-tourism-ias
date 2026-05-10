@@ -14,7 +14,7 @@ master
                            └─ feat/b2b-rebuild-phase6 (~5 commits — polish)
 ```
 
-Все ветки чистые, тесты зелёные (207 backend pytest passed; frontend `tsc --noEmit` clean + `npm run build` ✓), документация и презентация синхронизированы.
+Все ветки чистые, тесты зелёные (208 backend pytest passed; frontend `tsc --noEmit` clean + `npm run build` ✓), документация и презентация синхронизированы.
 
 ## 3 варианта merge
 
@@ -56,12 +56,12 @@ Phase 4: UML Models (2 tasks)
 - 2 new components, BP5, sequence for UC11
 
 Phase 5: Verification (3 tasks)
-- 207 tests passing
+- 208 tests passing
 - UML re-audit (after-rebuild snapshot)
 - OTCHET synced + PHASE_REBUILD_SUMMARY
 
 Phase 6: Polish (4 tasks)
-- Presentation synced (12 tools, 207 tests, 67 endpoints)
+- Presentation synced (12 tools, 208 tests, 62 endpoints)
 - 3 .drawio diagrams (UC v2, DOMAIN v2, UC11 sequence)
 - Persona walkthrough tests (hotelier/admin/researcher)
 - This merge guide
@@ -71,7 +71,15 @@ Summary: docs/PHASE_REBUILD_SUMMARY.md
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 
-# Удалить ветки после merge
+# === ОБЯЗАТЕЛЬНАЯ ВЕРИФИКАЦИЯ ПЕРЕД УДАЛЕНИЕМ ВЕТОК ===
+# 1. pytest должен быть зелёным
+cd backend && ./venv/Scripts/python.exe -m pytest -q --disable-warnings && cd ..
+# 2. frontend tsc + build должны пройти
+cd frontend && npx tsc --noEmit && npm run build && cd ..
+# 3. git log master --oneline | head -3 — убедиться, что merge-commit на месте
+git log master --oneline | head -3
+
+# Только после зелёных трёх шагов выше:
 git branch -D feat/b2b-rebuild-phase1 feat/b2b-rebuild-phase2 feat/b2b-rebuild-phase3 feat/b2b-rebuild-phase4 feat/b2b-rebuild-phase5 feat/b2b-rebuild-phase6
 ```
 
@@ -90,9 +98,15 @@ git merge --no-ff feat/b2b-rebuild-phase1 -m "merge: Phase 1 — Backend (schema
 git merge --no-ff feat/b2b-rebuild-phase2 -m "merge: Phase 2 — AI Agent (12 tools, methodology, evergreen prompts)"
 git merge --no-ff feat/b2b-rebuild-phase3 -m "merge: Phase 3 — Frontend rebuild (Yandex Maps, 4-tab Analytics, gap-aware UI)"
 git merge --no-ff feat/b2b-rebuild-phase4 -m "merge: Phase 4 — UML Models (UC11/UC12, 5 entities, FR3.8/3.9, services, BP5)"
-git merge --no-ff feat/b2b-rebuild-phase5 -m "merge: Phase 5 — Verification (207 tests, OTCHET sync, summary)"
+git merge --no-ff feat/b2b-rebuild-phase5 -m "merge: Phase 5 — Verification (208 tests, OTCHET sync, summary)"
 git merge --no-ff feat/b2b-rebuild-phase6 -m "merge: Phase 6 — Polish (presentation sync, drawio gen, persona tests, merge guide)"
 
+# === ОБЯЗАТЕЛЬНАЯ ВЕРИФИКАЦИЯ ПЕРЕД УДАЛЕНИЕМ ВЕТОК ===
+cd backend && ./venv/Scripts/python.exe -m pytest -q --disable-warnings && cd ..
+cd frontend && npx tsc --noEmit && npm run build && cd ..
+git log master --oneline | head -8  # 6 merge-commits + 2 предыдущих
+
+# Только после зелёных проверок:
 git branch -D feat/b2b-rebuild-phase1 feat/b2b-rebuild-phase2 feat/b2b-rebuild-phase3 feat/b2b-rebuild-phase4 feat/b2b-rebuild-phase5 feat/b2b-rebuild-phase6
 ```
 

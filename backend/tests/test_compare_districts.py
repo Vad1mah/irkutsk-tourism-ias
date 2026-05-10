@@ -22,6 +22,15 @@ async def test_compare_districts_validates_params(client):
         "/api/analytics/compare-districts",
         params={"districts": "", "days": 30},
     )
-    assert response.status_code in (200, 422)  # empty list → 200 with empty districts OR 422
-    if response.status_code == 200:
-        assert response.json()["districts"] == []
+    # Пустой список районов теперь явно валидируется как 400 Bad Request
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_compare_districts_rejects_unknown_district(client):
+    response = await client.get(
+        "/api/analytics/compare-districts",
+        params={"districts": "Иркутский,Зимбабвийский", "days": 30},
+    )
+    assert response.status_code == 400
+    assert "Зимбабвийский" in response.json()["detail"]

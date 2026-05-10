@@ -118,7 +118,7 @@ const analyticalNavItems: NavItemConfig[] = [
     to: '/forecast',
     icon: TrendingUp,
     label: 'Прогноз спроса',
-    description: 'Ensemble + факторы',
+    description: 'Среднее по 3 моделям + факторы',
     badge: 'ML',
   },
   {

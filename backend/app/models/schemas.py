@@ -61,6 +61,7 @@ class Event(BaseModel):
     image_url: str | None = Field(None, description="URL изображения")
     address: str | None = Field(None, description="Уличный адрес места проведения")
     age_restriction: str | None = Field(None, max_length=10, description="Возрастное ограничение, напр. 16+")
+    also_at: list[str] = Field(default_factory=list, description="Доп. источники, где найдено то же событие (cross-source merge)")
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -290,18 +291,23 @@ class AnalyticsMetadataResponse(BaseModel):
 
 
 class BookingPacePoint(BaseModel):
-    """Одна точка proxy-pickup: будущая дата + дельта загрузки."""
+    """Одна точка proxy-pickup: будущая дата + прокси-дельта загрузки.
+
+    `proxy_pickup_pct` — дельта occupancy между двумя snapshot'ами; в текущей реализации
+    из-за отсутствия per-snapshot timestamp всегда близка к 0.0 (см. methodology в ответе).
+    Имя содержит «proxy», чтобы не путать с настоящим Pickup из RMS-систем.
+    """
     date: str  # ISO
     occupancy_today: float | None = None
     occupancy_lookback: float | None = None
-    pickup_pct: float | None = None
+    proxy_pickup_pct: float | None = None
 
 
 class BookingPaceSummary(BaseModel):
-    """Сводка по pickup за период."""
-    avg_pickup_pct: float | None = None
-    max_pickup_pct: float | None = None
-    min_pickup_pct: float | None = None
+    """Сводка по proxy-pickup за период."""
+    avg_proxy_pickup_pct: float | None = None
+    max_proxy_pickup_pct: float | None = None
+    min_proxy_pickup_pct: float | None = None
     trend: str  # "ускорение" | "замедление" | "стабильно"
 
 
@@ -317,9 +323,15 @@ class BookingPaceResponse(BaseModel):
 
 
 class OccupancyPoint(BaseModel):
-    """Точка временного ряда загрузки."""
+    """Точка временного ряда загрузки.
+
+    total_rooms / total_capacity — суммарный номерной фонд и максимальная
+    вместимость по району на эту дату (опциональные, могут отсутствовать
+    в исторических снимках до расширения схемы)."""
     date: str
     occupancy: float
+    total_rooms: int | None = None
+    total_capacity: int | None = None
 
 
 class OccupancyTimeseriesSummary(BaseModel):

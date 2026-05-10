@@ -23,9 +23,12 @@ async def test_events_impact_supports_method_param(client: AsyncClient):
     assert response2.status_code == 200
     data = response2.json()
     if isinstance(data, list) and data:
-        # After D2 real implementation — rows carry method="seasonal_corrected"
-        assert all(r.get("method") == "seasonal_corrected" for r in data), (
-            f"Expected all rows to have method='seasonal_corrected', got: {[r.get('method') for r in data[:3]]}"
+        # After D2 real implementation — rows carry method="seasonal_corrected" или
+        # "naive_fallback" (когда у события недостаточно baseline-сэмплов)
+        valid_methods = {"seasonal_corrected", "naive_fallback"}
+        observed = {r.get("method") for r in data}
+        assert observed <= valid_methods, (
+            f"Expected method in {valid_methods}, got: {observed}"
         )
 
 

@@ -15,13 +15,13 @@
 | B2B-кабинет | Логическая агрегация прав и контекста B2B-пользователя (отельер / администратор / исследователь). Виртуальная сущность для будущего разделения доступа | UC1, UC2, UC9, UC10 |
 | Запрос | Текстовый или параметрический запрос пользователя к системе | UC1, UC3, UC9 |
 | Ответ | Структурированный ответ системы (JSON / CSV / визуализация) | UC1–UC5, UC10 |
-| AI-агент (LangGraph) | MainAgent + ForecastAgent на базе LangGraph (StateGraph, Command pattern, MemorySaver). 5 tools: search_hotels, search_events, get_weather, forecast_occupancy, get_statistics + 6-й get_revenue_metrics | UC1, UC3 |
+| AI-агент (LangGraph) | MainAgent + ForecastAgent на базе LangGraph (StateGraph, Command pattern, MemorySaver). 12 tools: 6 базовых (search_hotels, search_events, get_weather, forecast_occupancy, get_statistics, get_revenue_metrics) + 6 RMS-расширений (get_top_events_by_impact, get_booking_pace, compare_districts, compare_forecast_models, get_occupancy_timeseries, get_price_distribution). LLM-fallback chain Groq → DeepSeek → Mistral в `main_agent.call_model` | UC1, UC3 |
 | Прогноз (Ensemble) | Ансамблевое предсказание загрузки: Prophet + NeuralProphet + XGBoost → weighted average. Async через executor.run_sync | UC1, UC4, UC10 |
 | Модель прогнозирования | Prophet / NeuralProphet / XGBoost — индивидуальная модель Ensemble | UC1, UC4 |
 | Метрики модели | RMSE, MAE, R² — оценка качества модели на тестовых данных | UC4 |
 | Feature Engineering | 38 признаков (календарь, праздники, лаги, скользящие средние, погодные, событийные, тренд, цены) | UC1 |
 | Погодный прогноз | Данные Open-Meteo API: температура, осадки, ветер | UC1, UC8 |
-| Средство размещения | Гостиница, санаторий, гостевой дом, хостел (~370 + 179 в регионе) | UC2, UC5, UC8 |
+| Средство размещения | Гостиница, санаторий, гостевой дом, хостел и др. (~370 КСР по реестру Иркутской области + 179 санаториев; 1 428 объектов в БД на 7 мая 2026 года; 18 типов размещения) | UC2, UC5, UC8 |
 | Тип размещения | Классификация средств размещения (отель / санаторий / хостел / гостевой дом) | UC2, UC5 |
 | Район | Территориальная принадлежность объекта (15 районов Иркутской области) | UC2, UC5 |
 | Номерной фонд | Комнаты и номера средства размещения | UC2 |
@@ -36,7 +36,7 @@
 | Лог системы | Журнал работы (Python logging + HealthMonitor) | UC7 |
 | Health-check | Проверка состояния сервиса (PostgreSQL, Redis, ChromaDB, ML, LLM) | UC7 |
 | Планировщик (APScheduler) | Автоматический запуск задач по расписанию (события 6ч, отели 2ч, погода 3ч, Telegram 1ч) | UC8 |
-| Векторный индекс (ChromaDB) | Эмбеддинги документов для RAG-поиска (GigaChat Embeddings, 629+ документов) | UC1, UC3 |
+| Векторный индекс (ChromaDB) | Эмбеддинги документов для RAG-поиска (GigaChat Embeddings, ~1 075 документов) | UC1, UC3 |
 | Кэш (Redis) | Кэширование прогнозов и API-ответов (TTL 30 мин) | UC1, UC10 |
 | BookingSnapshot | Снимок occupancy на момент времени для будущей даты заезда. Поля: `snapshot_taken_at` (datetime), `target_date` (date), `district` (string), `occupancy_pct` (float). Используется для proxy-pickup (FR3.9) | UC10 |
 | EventImpactRecord | Рассчитанная impact-запись для события. Поля: `event_id` (FK Event), `district` (string), `baseline_occupancy_mean` (float), `observed_occupancy` (float), `delta_pct` (float), `ci_lower` / `ci_upper` (float), `n_samples` (int), `confidence` (enum: high/medium/low), `method` (string: 'seasonal_corrected' \| 'naive'), `computed_at` (datetime) | UC11 |

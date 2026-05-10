@@ -14,10 +14,20 @@
 
 import asyncio
 import logging
+import sys
 from datetime import datetime
+from pathlib import Path
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
+
+# scripts/ — не пакет (нет __init__.py), но в нём лежит reclassify_events
+# с async main(). Делаем директорию backend/ доступной для импорта пакета scripts.
+_BACKEND_DIR = Path(__file__).resolve().parent.parent
+if str(_BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(_BACKEND_DIR))
+from scripts.reclassify_events import main as reclassify_main  # noqa: E402
 
 # Настройка логгера
 logging.basicConfig(
@@ -158,6 +168,23 @@ class DataCollectorScheduler:
             self.stats["errors"] = self.stats["errors"][-50:]
             return 0
 
+    async def _reclassify_events(self):
+        """Cron-обёртка: переклассифицирует события с event_type='event' через Mistral."""
+        try:
+            logger.info("Cron: запуск реклассификации событий")
+            await reclassify_main(limit=None, dry_run=False, concurrency=5)
+            logger.info("Cron: реклассификация завершена")
+        except Exception as e:
+            logger.error(f"Cron reclassify_events failed: {e}")
+            self.stats["errors"].append(
+                {
+                    "task": "reclassify_events",
+                    "error": str(e),
+                    "time": datetime.now().isoformat(),
+                }
+            )
+            self.stats["errors"] = self.stats["errors"][-50:]
+
     def setup_jobs(self):
         """Настроить расписание задач."""
         from app.constants import (
@@ -197,6 +224,15 @@ class DataCollectorScheduler:
             id="collect_telegram",
             name="Сбор Telegram",
             replace_existing=True,
+        )
+
+        self.scheduler.add_job(
+            self._reclassify_events,
+            CronTrigger(hour='*/6', minute=15),  # 0:15, 6:15, 12:15, 18:15
+            id="reclassify_events",
+            name="Реклассификация событий event_type='event' через Mistral",
+            replace_existing=True,
+            max_instances=1,
         )
 
         logger.info("Расписание задач настроено")

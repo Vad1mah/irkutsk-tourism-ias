@@ -6,6 +6,7 @@ from typing import Any
 from app.config import settings
 from app.constants import LOCATIONS
 from app.services.chroma_service import chroma_service
+from app.services.methodology_service import METHODOLOGY_PROMPT_RULES
 
 logger = logging.getLogger(__name__)
 
@@ -88,14 +89,7 @@ def _build_system_prompt() -> str:
 - Если запрос вне темы (личные путешествия, туристические маршруты для частных лиц) — вежливо переформулируй на B2B-плоскость или откажи.
 
 ### Обязательный формат ответа
-1. Всегда указывай район или географический скоп ответа.
-2. Всегда указывай период данных, на которые опирается ответ.
-3. Всегда указывай метод/методологию метрики (например, "seasonal_corrected" для impact событий).
-4. Всегда указывай базу для сравнения (с прошлой неделей, с регионом, с baseline).
-5. При нехватке данных — явно говори, чего не хватает, не выдумывай.
-6. Не сравнивай отель с конкретными конкурентами — у нас нет данных; используй сегментный benchmark.
-7. RevPAR и ADR — это прокси (рассчитываются из min_price), а не реальные значения; помечай это.
-8. Период gap данных июль-сентябрь 2025 известен; не интерполируй молча — явно отмечай разрыв."""
+{METHODOLOGY_PROMPT_RULES}"""
 
 
 _DANGEROUS_PATTERNS = [

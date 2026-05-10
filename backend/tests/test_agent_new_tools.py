@@ -49,12 +49,12 @@ EVENTS_IMPACT_PAYLOAD = [
 
 BOOKING_PACE_PAYLOAD = {
     "summary": {
-        "avg_pickup_pct": 12.5,
+        "avg_proxy_pickup_pct": 12.5,
         "trend": "growing",
-        "min_pickup_pct": 3.0,
-        "max_pickup_pct": 28.0,
+        "min_proxy_pickup_pct": 3.0,
+        "max_proxy_pickup_pct": 28.0,
     },
-    "points": [{"date": "2026-05-04", "pickup_pct": 12.5}] * 14,
+    "points": [{"date": "2026-05-04", "proxy_pickup_pct": 12.5}] * 14,
     "method": "rolling_7d",
 }
 
@@ -76,12 +76,15 @@ COMPARE_DISTRICTS_PAYLOAD = [
 ]
 
 COMPARE_MODELS_PAYLOAD = {
-    "models": {
+    "district": "Иркутский",
+    "history_points": 365,
+    "test_days": 14,
+    "metrics": {
         "prophet": {"rmse": 8.5, "mae": 6.1, "r2": 0.72},
         "neuralprophet": {"rmse": 7.8, "mae": 5.9, "r2": 0.76},
         "xgboost": {"rmse": 9.2, "mae": 7.0, "r2": 0.68},
     },
-    "best_model": "NeuralProphet",
+    "feature_importance": {},
 }
 
 OCCUPANCY_TIMESERIES_PAYLOAD = {

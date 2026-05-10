@@ -9,6 +9,7 @@ LangGraph Agent для туристической аналитики Байка�
 
 Документация: docs/research/LANGGRAPH_AGENT.md
 """
+import asyncio
 import json
 import logging
 import uuid
@@ -39,6 +40,7 @@ from app.constants import (
     MONTH_NAMES_RU,
 )
 from app.services.chroma_service import chroma_service
+from app.services.methodology_service import METHODOLOGY_PROMPT_RULES
 from app.services.weather_service import weather_service
 
 logger = logging.getLogger(__name__)
@@ -487,10 +489,10 @@ async def get_booking_pace(district: str = "Иркутский", days_ahead: int
     points = data.get("points", data.get("data", []))
     method = data.get("method", "—")
 
-    avg_pickup = summary.get("avg_pickup_pct", summary.get("avg_pickup", "—"))
+    avg_pickup = summary.get("avg_proxy_pickup_pct", summary.get("avg_pickup_pct", summary.get("avg_pickup", "—")))
     trend = summary.get("trend", "—")
-    min_pickup = summary.get("min_pickup_pct", summary.get("min_pickup", "—"))
-    max_pickup = summary.get("max_pickup_pct", summary.get("max_pickup", "—"))
+    min_pickup = summary.get("min_proxy_pickup_pct", summary.get("min_pickup_pct", summary.get("min_pickup", "—")))
+    max_pickup = summary.get("max_proxy_pickup_pct", summary.get("max_pickup_pct", summary.get("max_pickup", "—")))
 
     lines = [
         f"Темп бронирований по району «{district}» (next {days_ahead} days):",
@@ -576,7 +578,7 @@ async def compare_forecast_models(district: str = "Иркутский", days: in
 
     status, data = await _agent_get(
         "/api/forecast/compare-all",
-        params={"district": district, "days": days},
+        params={"district": district, "test_days": days},
     )
 
     if status == 0:
@@ -584,10 +586,11 @@ async def compare_forecast_models(district: str = "Иркутский", days: in
     if status != 200 or data is None:
         return f"Не удалось получить данные сравнения моделей для «{district}» (HTTP {status})."
 
-    models_data = data.get("models", data.get("comparison", data if isinstance(data, dict) else {}))
-    best_model = data.get("best_model", data.get("recommended", "—"))
-
-    lines = [f"Точность прогноз-моделей для района «{district}» (горизонт {days} дней):"]
+    metrics = data.get("metrics") if isinstance(data, dict) else None
+    if not isinstance(metrics, dict) or not metrics:
+        return f"Метрики моделей для «{district}» не рассчитаны (возможно, истории недостаточно)."
+    if "error" in metrics:
+        return f"Не удалось сравнить модели для «{district}»: {metrics['error']}."
 
     model_names = {
         "prophet": "Prophet",
@@ -597,23 +600,29 @@ async def compare_forecast_models(district: str = "Иркутский", days: in
         "ensemble": "Ensemble",
     }
 
+    rows: list[tuple[str, str, dict]] = []
     for key, label in model_names.items():
-        m = models_data.get(key, {}) if isinstance(models_data, dict) else {}
-        if not m:
-            continue
-        rmse = m.get("rmse", m.get("RMSE", "—"))
-        mae = m.get("mae", m.get("MAE", "—"))
-        r2 = m.get("r2", m.get("R2", m.get("r_squared", "—")))
-        rmse_str = f"{rmse:.2f}" if isinstance(rmse, (int, float)) else str(rmse)
-        mae_str = f"{mae:.2f}" if isinstance(mae, (int, float)) else str(mae)
-        r2_str = f"{r2:.3f}" if isinstance(r2, (int, float)) else str(r2)
+        m = metrics.get(key)
+        if isinstance(m, dict) and isinstance(m.get("rmse"), (int, float)):
+            rows.append((key, label, m))
+
+    if not rows:
+        return f"Метрики моделей для «{district}» пусты — недостаточно данных для сравнения."
+
+    rows.sort(key=lambda kv: kv[2]["rmse"])
+    best_label = rows[0][1]
+
+    lines = [f"Точность прогноз-моделей для района «{district}» (тестовое окно {days} дней):"]
+    for _, label, m in rows:
+        rmse = m.get("rmse")
+        mae = m.get("mae", m.get("MAE"))
+        r2 = m.get("r2", m.get("R2", m.get("r_squared")))
+        rmse_str = f"{rmse:.2f}" if isinstance(rmse, (int, float)) else "—"
+        mae_str = f"{mae:.2f}" if isinstance(mae, (int, float)) else "—"
+        r2_str = f"{r2:.3f}" if isinstance(r2, (int, float)) else "—"
         lines.append(f"- {label}: RMSE {rmse_str}, MAE {mae_str}, R² {r2_str}")
 
-    if len(lines) == 1:
-        lines.append("Данные по моделям не найдены в ответе.")
-
-    lines.append(f"Лучшая модель: {best_model}")
-
+    lines.append(f"Лучшая модель по RMSE: {best_label}")
     return "\n".join(lines)
 
 
@@ -756,62 +765,63 @@ TOOLS_BY_NAME = {tool.name: tool for tool in ALL_TOOLS}
 # LLM INITIALIZATION
 # =============================================================================
 
-_llm_with_tools = None
+_PROVIDER_LLM_CACHE: dict[str, Any] = {}
 
 
-def get_llm_with_tools():
-    """Получить LLM с привязанными tools."""
-    global _llm_with_tools
-    if _llm_with_tools is not None:
-        return _llm_with_tools
+def _build_llm_for_provider(provider: str):
+    """Построить LLM с tools для указанного провайдера. Кэшируется per-process."""
+    provider = provider.lower()
+    if provider in _PROVIDER_LLM_CACHE:
+        return _PROVIDER_LLM_CACHE[provider]
 
-    provider = settings.llm_provider.lower()
-    
     if provider == "mistral":
         try:
-            # Пробуем langchain-mistralai (нативная интеграция)
             from langchain_mistralai import ChatMistralAI
-            
-            # Параметры по Mistral Best Practices для Function Calling:
-            # - temperature=0.1 (рекомендовано для tools)
-            # - top_p=0.9 (рекомендовано)
-            # Документация: https://docs.mistral.ai/capabilities/function_calling
             llm = ChatMistralAI(
                 model=settings.mistral_model,
                 api_key=settings.mistral_api_key,
-                temperature=0.1,  # Низкая для стабильного tool selection
+                temperature=0.1,
                 max_tokens=settings.mistral_max_tokens,
                 top_p=0.9,
             )
-            logger.info(f"[Agent] Using ChatMistralAI: {settings.mistral_model}, temp=0.1, top_p=0.9")
-            _llm_with_tools = llm.bind_tools(ALL_TOOLS)
-            return _llm_with_tools
-            
+            logger.info(f"[Agent] Built ChatMistralAI: {settings.mistral_model}")
         except ImportError:
-            # Fallback на ChatOpenAI с настройками для Mistral
             from langchain_openai import ChatOpenAI
-            
             llm = ChatOpenAI(
                 model=settings.mistral_model,
                 api_key=settings.mistral_api_key,
                 base_url=settings.mistral_base_url,
-                temperature=0.1,  # Низкая для стабильного tool selection
+                temperature=0.1,
             )
-            logger.info(f"[Agent] Using ChatOpenAI for Mistral: {settings.mistral_model}")
-            _llm_with_tools = llm.bind_tools(ALL_TOOLS)
-            return _llm_with_tools
-    
+            logger.info(f"[Agent] Built ChatOpenAI(Mistral): {settings.mistral_model}")
+
+    elif provider == "groq":
+        from langchain_groq import ChatGroq
+        llm = ChatGroq(
+            model=settings.groq_model,
+            api_key=settings.groq_api_key,
+            temperature=settings.groq_temperature,
+            max_tokens=settings.groq_max_tokens,
+        )
+        logger.info(f"[Agent] Built ChatGroq: {settings.groq_model}")
+
+    elif provider == "deepseek":
+        from langchain_openai import ChatOpenAI
+        llm = ChatOpenAI(
+            model=settings.deepseek_model,
+            api_key=settings.deepseek_api_key,
+            base_url=settings.deepseek_base_url + "/v1",
+            temperature=0.1,
+            max_tokens=settings.deepseek_max_tokens,
+        )
+        logger.info(f"[Agent] Built ChatOpenAI(DeepSeek): {settings.deepseek_model}")
+
     elif provider == "gigachat":
         from langchain_gigachat import GigaChat
-        
         credentials = settings.gigachat_llm_credentials or settings.gigachat_credentials
         if not credentials:
-            raise ValueError(
-                "GigaChat credentials не заданы. Установите "
-                "GIGACHAT_LLM_CREDENTIALS или GIGACHAT_CREDENTIALS в .env"
-            )
+            raise ValueError("GigaChat credentials не заданы")
         scope = settings.gigachat_llm_scope or settings.gigachat_scope
-        
         llm = GigaChat(
             credentials=credentials,
             scope=scope,
@@ -819,26 +829,63 @@ def get_llm_with_tools():
             verify_ssl_certs=settings.gigachat_verify_ssl,
             temperature=settings.gigachat_temperature,
         )
-        _llm_with_tools = llm.bind_tools(ALL_TOOLS)
-        return _llm_with_tools
-    
-    elif provider == "groq":
-        from langchain_groq import ChatGroq
-
-        llm = ChatGroq(
-            model=settings.groq_model,
-            api_key=settings.groq_api_key,
-            temperature=settings.groq_temperature,
-            max_tokens=settings.groq_max_tokens,
-        )
-        logger.info(
-            f"[Agent] Using ChatGroq: {settings.groq_model}, temp={settings.groq_temperature}"
-        )
-        _llm_with_tools = llm.bind_tools(ALL_TOOLS)
-        return _llm_with_tools
+        logger.info(f"[Agent] Built GigaChat: {settings.gigachat_model}")
 
     else:
         raise ValueError(f"Provider {provider} not supported for tools")
+
+    bound = llm.bind_tools(ALL_TOOLS)
+    _PROVIDER_LLM_CACHE[provider] = bound
+    return bound
+
+
+# Цепочка провайдеров для автоматического fallback при 429/недоступности.
+# Первый — текущий из settings; затем — резервные с разными лимитами.
+def _resolve_provider_chain() -> list[str]:
+    primary = settings.llm_provider.lower()
+    chain = [primary]
+    for fallback in ("groq", "deepseek", "mistral"):
+        if fallback != primary and fallback not in chain:
+            chain.append(fallback)
+    return chain
+
+
+def get_llm_with_tools():
+    """Совместимость со старым API — возвращает primary LLM."""
+    return _build_llm_for_provider(settings.llm_provider)
+
+
+def _is_rate_limit_error(err: Exception) -> bool:
+    s = str(err)
+    if "429" in s:
+        return True
+    low = s.lower()
+    return "rate limit" in low or "rate_limit" in low or "too many requests" in low
+
+
+def _is_provider_unavailable_error(err: Exception) -> bool:
+    """True если ошибка означает «попробуй другого провайдера» (не logic-баг кода).
+
+    Покрывает: 429 (rate limit), 402 (insufficient balance), 401/403 (auth/forbidden),
+    5xx (server error), таймауты, connection errors. НЕ срабатывает на 400 / валидационные
+    ошибки — они скорее всего повторятся у любого провайдера.
+    """
+    if _is_rate_limit_error(err):
+        return True
+    s = str(err)
+    low = s.lower()
+    if any(code in s for code in ("402", "401", "403", "500", "502", "503", "504")):
+        return True
+    return any(marker in low for marker in (
+        "insufficient balance",
+        "insufficient_quota",
+        "quota exceeded",
+        "service unavailable",
+        "internal server error",
+        "timeout", "timed out",
+        "connection error", "connection refused",
+        "service is overloaded",
+    ))
 
 
 # =============================================================================
@@ -879,36 +926,40 @@ def _build_system_prompt() -> str:
 - "RevPAR / ADR / занятость по району за период" → get_revenue_metrics(district="Иркутский")
 
 ФОРМАТ ОТВЕТА (обязателен):
-1. Всегда указывай район или географический скоп ответа.
-2. Всегда указывай период данных, на которые опирается ответ.
-3. Всегда указывай метод/методологию метрики (например, "seasonal_corrected" для impact событий).
-4. Всегда указывай базу для сравнения (с прошлой неделей, с регионом, с baseline).
-5. При нехватке данных — явно говори, чего не хватает, не выдумывай.
-6. Не сравнивай отель с конкретными конкурентами — у нас нет данных; используй сегментный benchmark.
-7. RevPAR и ADR — это прокси (рассчитываются из min_price), а не реальные значения; помечай это.
-8. Период gap данных июль-сентябрь 2025 известен; не интерполируй молча — явно отмечай разрыв."""
+{METHODOLOGY_PROMPT_RULES}"""
 
 
 def _dedup_tool_call_ids(messages: list) -> list:
-    """Перегенерировать все tool_call_id уникальными значениями (Mistral fix)."""
-    id_map: dict[str, str] = {}
-    counter = [0]
+    """Перегенерировать все tool_call_id безусловно уникальными.
 
-    def _new_id(old_id: str) -> str:
-        if old_id not in id_map:
-            counter[0] += 1
-            id_map[old_id] = f"call_{uuid.uuid4().hex[:12]}"
-        return id_map[old_id]
+    Mistral иногда возвращает в одном AIMessage **два** tool_call с одинаковым id
+    (баг parallel-tool-calling). Старая реализация использовала original_id как ключ
+    маппинга, поэтому два дубля → один и тот же новый id → ничего не чинило.
+
+    Текущая реализация: index-based. Каждый tool_call получает свежий uuid;
+    ToolMessage'и матчатся по порядку появления (Mistral парсит их в порядке
+    AIMessage.tool_calls → ToolMessage[i] отвечает на tool_calls[i]).
+    """
+    pending_ids: list[str] = []
+    pending_idx = 0
 
     result = []
     for msg in messages:
         if isinstance(msg, AIMessage) and getattr(msg, "tool_calls", None):
-            new_tc = [{**tc, "id": _new_id(tc["id"])} for tc in msg.tool_calls]
+            new_tc = []
+            new_for_kwargs: list[str] = []
+            for tc in msg.tool_calls:
+                new_id = f"call_{uuid.uuid4().hex[:12]}"
+                new_tc.append({**tc, "id": new_id})
+                pending_ids.append(new_id)
+                new_for_kwargs.append(new_id)
+
             new_kwargs = {}
             for k, v in (msg.additional_kwargs or {}).items():
-                if k == "tool_calls":
+                if k == "tool_calls" and isinstance(v, list):
                     new_kwargs[k] = [
-                        {**rc, "id": _new_id(rc.get("id", ""))} for rc in v
+                        {**rc, "id": new_for_kwargs[i] if i < len(new_for_kwargs) else f"call_{uuid.uuid4().hex[:12]}"}
+                        for i, rc in enumerate(v)
                     ]
                 else:
                     new_kwargs[k] = v
@@ -918,7 +969,11 @@ def _dedup_tool_call_ids(messages: list) -> list:
                 additional_kwargs=new_kwargs,
             ))
         elif isinstance(msg, ToolMessage):
-            new_tcid = id_map.get(msg.tool_call_id, msg.tool_call_id)
+            if pending_idx < len(pending_ids):
+                new_tcid = pending_ids[pending_idx]
+                pending_idx += 1
+            else:
+                new_tcid = msg.tool_call_id
             result.append(ToolMessage(content=msg.content, tool_call_id=new_tcid))
         else:
             result.append(msg)
@@ -926,42 +981,81 @@ def _dedup_tool_call_ids(messages: list) -> list:
 
 
 async def call_model(state: AgentState) -> Command[Literal["tools", "__end__"]]:
-    """Node: Вызов LLM. Маршрутизация через Command."""
+    """Node: Вызов LLM с автоматическим fallback chain.
+
+    При 429 от текущего провайдера автоматически переключается на следующий
+    из chain (mistral → groq → deepseek). Это защищает от исчерпания free-tier
+    лимитов одного провайдера. При duplicate tool_call_id (Mistral баг) —
+    retry без tool history с backoff.
+    """
     messages = state["messages"]
-    
+
     if not messages or not isinstance(messages[0], SystemMessage):
         messages = [SystemMessage(content=_build_system_prompt())] + list(messages)
-    
+
     messages = _dedup_tool_call_ids(messages)
-    llm_with_tools = get_llm_with_tools()
-    
-    try:
-        response = await llm_with_tools.ainvoke(messages)
-        logger.info(f"[LLM] Response: {response.content[:100] if response.content else 'tool_call'}...")
-        
-        has_tools = hasattr(response, "tool_calls") and response.tool_calls
-        if has_tools and state.get("tool_calls_count", 0) < AGENT_MAX_TOOL_CALLS:
-            return Command(update={"messages": [response]}, goto="tools")
-        
-        return Command(update={"messages": [response]}, goto="__end__")
-    except Exception as e:
-        err_str = str(e)
-        if "Duplicate tool call id" in err_str:
-            logger.warning("[LLM] Mistral duplicate ID — retrying without tool history")
-            clean = [m for m in messages if not isinstance(m, (ToolMessage, )) 
-                     and not (isinstance(m, AIMessage) and getattr(m, "tool_calls", None))]
-            tool_results = [m for m in messages if isinstance(m, ToolMessage)]
-            if tool_results:
-                summary = "; ".join(r.content[:200] for r in tool_results)
-                clean.append(HumanMessage(content=f"[Результаты инструментов]: {summary}"))
-            try:
-                response = await llm_with_tools.ainvoke(clean)
-                return Command(update={"messages": [response]}, goto="__end__")
-            except Exception as e2:
-                logger.error(f"[LLM] Retry also failed: {e2}")
-        logger.error(f"[LLM] Error: {e}")
-        error_msg = AIMessage(content="Извините, произошла ошибка при обработке запроса. Попробуйте позже.")
-        return Command(update={"messages": [error_msg]}, goto="__end__")
+    chain = _resolve_provider_chain()
+
+    last_err: Exception | None = None
+    for idx, provider in enumerate(chain):
+        try:
+            llm_with_tools = _build_llm_for_provider(provider)
+        except Exception as build_err:
+            logger.warning(f"[LLM] Provider {provider} unavailable: {build_err}")
+            last_err = build_err
+            continue
+
+        try:
+            response = await llm_with_tools.ainvoke(messages)
+            if idx > 0:
+                logger.warning(f"[LLM] Fallback succeeded on provider: {provider}")
+            content_preview = response.content[:100] if response.content else "tool_call"
+            logger.info(f"[LLM:{provider}] Response: {content_preview}...")
+
+            has_tools = hasattr(response, "tool_calls") and response.tool_calls
+            if has_tools and state.get("tool_calls_count", 0) < AGENT_MAX_TOOL_CALLS:
+                return Command(update={"messages": [response]}, goto="tools")
+            return Command(update={"messages": [response]}, goto="__end__")
+
+        except Exception as e:
+            err_str = str(e)
+            last_err = e
+
+            if "Duplicate tool call id" in err_str:
+                logger.warning(f"[LLM:{provider}] duplicate ID — retry without tool history")
+                clean = [m for m in messages if not isinstance(m, (ToolMessage,))
+                         and not (isinstance(m, AIMessage) and getattr(m, "tool_calls", None))]
+                tool_results = [m for m in messages if isinstance(m, ToolMessage)]
+                if tool_results:
+                    summary = "; ".join(str(r.content)[:200] for r in tool_results)
+                    clean.append(HumanMessage(content=f"[Результаты инструментов]: {summary}"))
+                await asyncio.sleep(2.0)
+                try:
+                    response = await llm_with_tools.ainvoke(clean)
+                    return Command(update={"messages": [response]}, goto="__end__")
+                except Exception as e2:
+                    last_err = e2
+                    if _is_provider_unavailable_error(e2) and idx < len(chain) - 1:
+                        logger.warning(f"[LLM:{provider}] retry hit {str(e2)[:60]}, falling back to {chain[idx+1]}")
+                        continue
+                    logger.error(f"[LLM:{provider}] retry failed: {e2}")
+                    break
+
+            if _is_provider_unavailable_error(e) and idx < len(chain) - 1:
+                next_provider = chain[idx + 1]
+                reason = "429" if _is_rate_limit_error(e) else "unavailable"
+                logger.warning(f"[LLM:{provider}] {reason} ({err_str[:80]}), falling back to {next_provider}")
+                continue
+
+            logger.error(f"[LLM:{provider}] Error: {e}")
+            break
+
+    if last_err and _is_rate_limit_error(last_err):
+        logger.error(f"[LLM] All providers rate-limited. Chain: {chain}")
+        user_text = "Все AI-провайдеры сейчас перегружены. Попробуйте через минуту."
+    else:
+        user_text = "Извините, произошла ошибка при обработке запроса. Попробуйте позже."
+    return Command(update={"messages": [AIMessage(content=user_text)]}, goto="__end__")
 
 
 async def call_tools(state: AgentState) -> Command[Literal["model"]]:

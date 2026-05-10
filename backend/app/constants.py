@@ -186,7 +186,8 @@ AVG_MONTHLY_TEMP_IRKUTSK: dict[int, float] = {
 # Пороги загрузки и прогнозирования
 # ---------------------------------------------------------------------------
 
-MIN_SAMPLES_PER_MONTH: int = 5  # для расчёта корреляции и определения gap-периодов
+MIN_SAMPLES_PER_MONTH: int = 1  # пилот на 14 мес: 1 запись/месяц = валидный сэмпл (UI помечает badge'ом «огранич. выборка»)
+MIN_SAMPLES_FOR_HIGH_CONFIDENCE: int = 3  # 3+ записи в месяце — высокая достоверность сезонного анализа
 
 BASELINE_CONFIDENCE_HIGH: int = 5   # >= N samples → confidence "high"
 BASELINE_CONFIDENCE_MEDIUM: int = 3  # >= N samples → confidence "medium" (else "low")

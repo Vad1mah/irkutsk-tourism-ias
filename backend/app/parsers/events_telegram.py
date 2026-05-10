@@ -193,13 +193,13 @@ class TelegramEventParser:
         if not self._client:
             logger.warning("Telegram клиент не инициализирован")
             return []
-        
+
         messages = []
         min_date = datetime.now() - timedelta(days=days_back)
-        
+
         try:
             channel = await self._client.get_entity(channel_username)
-            
+
             async for message in self._client.iter_messages(
                 channel,
                 limit=limit,
@@ -207,14 +207,30 @@ class TelegramEventParser:
             ):
                 if message.date.replace(tzinfo=None) < min_date:
                     break
-                
+
                 if message.text:
+                    # Best-effort извлечение url изображения. У Telethon нет
+                    # прямого file_url; в production-режиме можно подключить
+                    # download_media. Здесь — только web-preview /
+                    # external link, если он есть в media.
+                    image_url: str | None = None
+                    media = getattr(message, "media", None)
+                    if media is not None:
+                        web_preview = getattr(media, "webpage", None)
+                        if web_preview is not None:
+                            url_attr = getattr(web_preview, "photo", None) or getattr(
+                                web_preview, "url", None
+                            )
+                            if isinstance(url_attr, str):
+                                image_url = url_attr
+
                     messages.append({
                         "id": message.id,
                         "text": message.text,
                         "date": message.date,
                         "views": getattr(message, 'views', 0),
                         "url": f"https://t.me/{channel_username}/{message.id}",
+                        "image_url": image_url,
                     })
             
             logger.info(f"Получено {len(messages)} сообщений из @{channel_username}")
@@ -354,10 +370,23 @@ class TelegramEventParser:
         
         # Описание
         description = text[:500]
-        
+
+        # Возрастное ограничение из текста
+        age_restriction: str | None = None
+        m_age = re.search(r"\b(\d{1,2})\s*\+", text)
+        if m_age:
+            try:
+                age = int(m_age.group(1))
+                if 0 < age <= 21:
+                    age_restriction = f"{age}+"
+            except ValueError:
+                pass
+
+        image_url = msg.get("image_url")
+
         # Генерируем ID
         event_id = f"tg_{source}_{hashlib.md5(f'{title}{event_date}'.encode()).hexdigest()[:10]}"
-        
+
         try:
             return ParsedEvent(
                 id=event_id,
@@ -369,8 +398,10 @@ class TelegramEventParser:
                 location=location,
                 price=price,
                 price_min=price_min,
+                age_restriction=age_restriction,
                 source=f"telegram_{source}",
                 url=msg.get("url"),
+                image_url=image_url,
             )
         except Exception as e:
             logger.debug(f"Ошибка создания события: {e}")
@@ -452,12 +483,24 @@ class TelegramWebParser:
                         )
                     except (ValueError, AttributeError, TypeError):
                         pass
-                
+
+                # image_url из background-image превью или photo wrap
+                image_url: str | None = None
+                photo_wrap = msg_div.find('a', class_='tgme_widget_message_photo_wrap')
+                if photo_wrap and photo_wrap.get('style'):
+                    m_bg = re.search(
+                        r"background-image:\s*url\(['\"]?(https?://[^)'\"]+)",
+                        photo_wrap['style'],
+                    )
+                    if m_bg:
+                        image_url = m_bg.group(1)
+
                 messages.append({
                     "id": msg_id,
                     "text": text,
                     "date": msg_date,
                     "url": f"https://t.me/{channel}/{msg_id}",
+                    "image_url": image_url,
                 })
                 
             except Exception as e:
@@ -520,25 +563,39 @@ async def fetch_events_telegram(
             use_telethon = False
     
     if not use_telethon:
-        # Fallback на web preview
         web_parser = TelegramWebParser()
         telethon_parser = TelegramEventParser()
-        
+
         for channel in channels:
-            messages = await web_parser.fetch_channel_preview(channel.username)
+            try:
+                messages = await web_parser.fetch_channel_preview(channel.username)
+            except Exception as exc:
+                logger.warning(f"[telegram] @{channel.username}: web preview failed: {exc}")
+                messages = []
+
+            if not messages:
+                logger.info(f"[telegram] @{channel.username}: 0 сообщений в web preview")
+                await asyncio.sleep(0.5)
+                continue
+
             events = await telethon_parser.extract_events_from_messages(
-                messages,
-                channel.username
+                messages, channel.username
             )
-            
+
+            new_for_channel = 0
             for event in events:
                 if event.id not in seen_ids:
                     all_events.append(event)
                     seen_ids.add(event.id)
-            
+                    new_for_channel += 1
+
+            logger.info(
+                f"[telegram] @{channel.username}: messages={len(messages)} "
+                f"events_extracted={len(events)} new={new_for_channel}"
+            )
             await asyncio.sleep(0.5)
-    
-    logger.info(f"Всего получено {len(all_events)} событий из Telegram")
+
+    logger.info(f"Всего получено {len(all_events)} событий из Telegram (каналов: {len(channels)})")
     return all_events
 
 

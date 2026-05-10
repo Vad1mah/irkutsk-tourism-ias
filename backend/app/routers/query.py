@@ -1,6 +1,7 @@
 """Роутер для AI-агента с поддержкой tools и SSE streaming."""
 import asyncio
 import json
+import time
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, Depends
@@ -142,21 +143,32 @@ async def stream_query(request: QueryRequest, chroma: ChromaServiceDep):
 
     from app.services.main_agent import main_agent
 
+    HEARTBEAT_INTERVAL_S = 15.0
+    HARD_TIMEOUT_S = 180.0
+
     async def event_generator():
         agen = main_agent.stream(
             message=request.text.strip(),
             session_id=request.session_id,
         )
+        last_event_at = time.monotonic()
         try:
             while True:
                 try:
-                    event = await asyncio.wait_for(agen.__anext__(), timeout=120)
+                    event = await asyncio.wait_for(
+                        agen.__anext__(), timeout=HEARTBEAT_INTERVAL_S
+                    )
                 except StopAsyncIteration:
                     break
+                except asyncio.TimeoutError:
+                    if time.monotonic() - last_event_at > HARD_TIMEOUT_S:
+                        logger.warning("SSE stream hard timeout %.0fs", HARD_TIMEOUT_S)
+                        yield f"data: {json.dumps({'type': 'error', 'content': 'AI не отвечает дольше 3 минут. Попробуйте ещё раз.'}, ensure_ascii=False)}\n\n"
+                        return
+                    yield ": keepalive\n\n"
+                    continue
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
-        except asyncio.TimeoutError:
-            logger.warning("SSE stream timeout (120s)")
-            yield f"data: {json.dumps({'type': 'error', 'content': 'Превышено время ожидания ответа'}, ensure_ascii=False)}\n\n"
+                last_event_at = time.monotonic()
         except Exception as e:
             logger.error(f"Stream error: {e}", exc_info=True)
             yield f"data: {json.dumps({'type': 'error', 'content': 'Внутренняя ошибка обработки запроса'}, ensure_ascii=False)}\n\n"

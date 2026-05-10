@@ -10,7 +10,11 @@ from app.routers.query import _STREAM_COUNTER_KEY
 
 @pytest_asyncio.fixture
 async def redis_client():
-    """Прямое подключение к Redis в function-scope loop — не трогает глобальный cache_service."""
+    """Прямое подключение к Redis — тест проверяет атомарность INCR/EXPIRE.
+
+    Если Redis недоступен (нет инстанса / auth ошибка) — тест skip'ается:
+    специфическое поведение Redis INCR замокать нельзя.
+    """
     client = aioredis.Redis(
         host=settings.redis_host,
         port=settings.redis_port,
@@ -18,7 +22,12 @@ async def redis_client():
         password=settings.redis_password,
         decode_responses=True,
     )
-    await client.ping()
+    try:
+        await client.ping()
+    except Exception as exc:
+        await client.aclose()
+        pytest.skip(f"Redis недоступен: {exc}")
+        return
     await client.delete(_STREAM_COUNTER_KEY)
     yield client
     await client.delete(_STREAM_COUNTER_KEY)

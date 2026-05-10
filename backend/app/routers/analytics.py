@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 from collections import defaultdict
 import logging
 
-from app.constants import VALID_DISTRICTS, CITY_TO_DISTRICT, DEFAULT_DISTRICT, DISTRICT_CENTERS, SEASON_MONTHS, MIN_SAMPLES_PER_MONTH
+from app.constants import VALID_DISTRICTS, CITY_TO_DISTRICT, DEFAULT_DISTRICT, DISTRICT_CENTERS, SEASON_MONTHS, MIN_SAMPLES_PER_MONTH, MIN_SAMPLES_FOR_HIGH_CONFIDENCE
 from app.services.methodology_service import methodology_service
 from app.dependencies import (
     DataServiceDep, WeatherServiceDep, EnsembleServiceDep, CacheServiceDep,
@@ -205,6 +205,12 @@ async def get_correlation_data(
 
         has_data = samples > 0
         is_gap = samples < MIN_SAMPLES_PER_MONTH
+        if samples >= MIN_SAMPLES_FOR_HIGH_CONFIDENCE:
+            confidence = "high"
+        elif samples >= 1:
+            confidence = "limited"
+        else:
+            confidence = "none"
 
         months_data.append({
             "month": _get_month_name(month),
@@ -215,6 +221,7 @@ async def get_correlation_data(
             "hasData": has_data,
             "samples": samples,
             "is_gap": is_gap,
+            "confidence": confidence,
         })
 
         # Если нет данных или gap — добавляем в missing_periods
@@ -277,12 +284,25 @@ async def get_correlation_data(
 
 
 @router.get("/districts")
-async def get_districts_data(data: DataServiceDep, cache: CacheServiceDep) -> list[dict[str, Any]]:
+async def get_districts_data(
+    data: DataServiceDep,
+    cache: CacheServiceDep,
+    date_from: date | None = Query(default=None, description="Начало периода усреднения (YYYY-MM-DD)"),
+    date_to: date | None = Query(default=None, description="Конец периода усреднения (YYYY-MM-DD)"),
+) -> list[dict[str, Any]]:
     """
     Получить статистику по районам из БД.
     Фильтруем только туристически значимые районы Байкала.
+
+    Если переданы date_from и date_to — Occupancy и avg_price считаются как
+    среднее по снимкам в этом окне; rooms_num/free_rooms — как среднее
+    значение per-day. Без параметров — поведение по умолчанию: последний срез.
     """
-    cache_key = "analytics:districts"
+    period_key = (
+        f"{date_from.isoformat()}:{date_to.isoformat()}"
+        if date_from and date_to else "latest"
+    )
+    cache_key = f"analytics:districts:{period_key}"
     cached = await cache.get(cache_key)
     if cached:
         return cached
@@ -290,8 +310,13 @@ async def get_districts_data(data: DataServiceDep, cache: CacheServiceDep) -> li
     if not data.is_connected:
         raise HTTPException(503, "БД не подключена")
 
-    # Сначала пробуем полную статистику
-    districts = await data.get_districts_statistics()
+    if date_from and date_to:
+        if date_from > date_to:
+            raise HTTPException(400, "date_from должна быть меньше или равна date_to")
+        districts = await data.get_districts_statistics_in_period(date_from, date_to)
+    else:
+        # Текущий срез — последний доступный снимок (поведение по умолчанию)
+        districts = await data.get_districts_statistics()
 
     # Если нет статистики — берём хотя бы количество отелей
     if not districts:
@@ -558,14 +583,15 @@ async def _events_impact_seasonal_corrected(
 
     # Карта occupancy по районам (резолвим район через _resolve_district)
     districts = {_resolve_district(e) for e in events if e.get("date_start")}
-    history_per_district: dict[str, list[tuple[_date, float]]] = {}
-    for d in districts:
-        rows = await data.get_occupancy_by_district(d)
-        history_per_district[d] = [
-            (r["date"], r["avg_occupancy"])
-            for r in rows
-            if r.get("avg_occupancy") is not None
-        ]
+    districts_list = list(districts)
+    fetched_rows = await asyncio.gather(
+        *(data.get_occupancy_by_district(d) for d in districts_list),
+        return_exceptions=False,
+    )
+    history_per_district: dict[str, list[tuple[_date, float]]] = {
+        d: [(r["date"], r["avg_occupancy"]) for r in rows if r.get("avg_occupancy") is not None]
+        for d, rows in zip(districts_list, fetched_rows)
+    }
 
     # Множество дат-событий для исключения из baseline (с поддержкой многодневных событий)
     event_dates_per_district: dict[str, set[_date]] = {}
@@ -1265,21 +1291,40 @@ async def analytics_hotels_map(
     data: DataServiceDep,
     cache: CacheServiceDep,
     district: str | None = Query(default=None, description="Район; без параметра — все отели с координатами"),
+    snapshot_date: date | None = Query(
+        default=None,
+        alias="date",
+        description="Дата среза (YYYY-MM-DD). Без параметра — последний доступный снимок.",
+    ),
 ) -> dict[str, Any]:
-    """Данные для карты: отели с координатами + загрузка по районам."""
+    """Данные для карты: отели с координатами + загрузка по районам.
+
+    При указанном `date` rooms_num/free_rooms/occupancy берутся на эту дату
+    (или ближайшую предшествующую). При отсутствии параметра — текущий
+    последний срез (поведение по умолчанию)."""
     if not data.is_connected:
         raise HTTPException(503, "Database unavailable")
-    cache_key = f"hotels_map:{district or 'all'}"
+    cache_key = f"hotels_map:{district or 'all'}:{snapshot_date.isoformat() if snapshot_date else 'latest'}"
     cached = await cache.get(cache_key)
     if cached:
         return cached
 
     try:
-        (hotels_list, _), districts_stats, hotel_stats = await asyncio.gather(
-            data.get_hotels(limit=2000),
-            data.get_districts_statistics(),
-            data.get_latest_hotel_stats(),
-        )
+        if snapshot_date is not None:
+            (hotels_list, _), districts_stats, hotel_stats = await asyncio.gather(
+                data.get_hotels(limit=2000),
+                data.get_districts_statistics_in_period(snapshot_date, snapshot_date),
+                # strict=True — без fallback'а на ближайший предшествующий день,
+                # чтобы KPI/карта честно показывали отсутствие данных за выбранную
+                # дату вместо подмены результатами с другого дня.
+                data.get_hotel_stats_on_date(snapshot_date, strict=True),
+            )
+        else:
+            (hotels_list, _), districts_stats, hotel_stats = await asyncio.gather(
+                data.get_hotels(limit=2000),
+                data.get_districts_statistics(),
+                data.get_latest_hotel_stats(),
+            )
     except Exception:
         logger.exception("hotels-map: data fetch failed")
         raise HTTPException(503, "Не удалось получить данные")
@@ -1296,8 +1341,18 @@ async def analytics_hotels_map(
             continue
         if district and h.district != district:
             continue
+        hs = hotel_stats.get(h.id)
+        # Запрошен конкретный snapshot_date — пропускаем отели без статистики
+        # на эту дату. Иначе KPI считает все 1428 отелей даже за «пустой» день.
+        if snapshot_date is not None:
+            if not hs:
+                continue
+            # Пустая запись (parser сходил, но не достал данные): rooms=0, free=0.
+            # Это не «отель с нулём свободных», а отсутствие данных — пропускаем.
+            if not (hs.get("rooms_num") or 0) and not (hs.get("free_rooms") or 0):
+                continue
+        hs = hs or {}
         d_occ = (occ_by_district.get(h.district) or {}).get("avg_occupancy", 0) or 0
-        hs = hotel_stats.get(h.id, {})
 
         hotels.append({
             "id": h.id, "name": h.name, "city": h.city or "",
@@ -1558,14 +1613,17 @@ async def booking_pace(
 ) -> BookingPaceResponse:
     """Proxy-pickup для будущих дат: разница загрузки между двумя временны́ми срезами.
 
-    Методология: pickup_pct = occupancy(future_date, today) - occupancy(future_date, today - lookback_days).
+    Методология: proxy_pickup_pct = occupancy(future_date, today) - occupancy(future_date, today - lookback_days).
     При положительной дельте загрузка «набирается» — сигнал для пересмотра тарифов.
 
     Ограничение текущей реализации: hotel_statistics не хранит timestamp snapshot'а,
     поэтому два среза для одной future_date недостижимы.  Endpoint возвращает
-    pickup_pct=0.0 там, где данные есть, и None там, где данных нет.
+    proxy_pickup_pct=0.0 там, где данные есть, и None там, где данных нет.
     Поле methodology содержит явное описание ограничения.
+    Имя `proxy_pickup_pct` подчёркивает, что это прокси, а не настоящий Pickup из RMS.
     """
+    if district not in VALID_DISTRICTS:
+        raise HTTPException(status_code=400, detail=f"Неизвестный район: {district}")
     cache_key = f"analytics:booking-pace:{district}:{days_ahead}:{lookback_days}"
     cached = await cache.get(cache_key)
     if cached:
@@ -1576,7 +1634,7 @@ async def booking_pace(
         days_ahead=days_ahead,
         lookback_days=lookback_days,
     )
-    pickups = [p["pickup_pct"] for p in points_raw if p.get("pickup_pct") is not None]
+    pickups = [p["proxy_pickup_pct"] for p in points_raw if p.get("proxy_pickup_pct") is not None]
 
     if not pickups:
         trend = "стабильно"
@@ -1592,9 +1650,9 @@ async def booking_pace(
         trend = "стабильно"
 
     summary = BookingPaceSummary(
-        avg_pickup_pct=round(sum(pickups) / len(pickups), 2) if pickups else None,
-        max_pickup_pct=max(pickups) if pickups else None,
-        min_pickup_pct=min(pickups) if pickups else None,
+        avg_proxy_pickup_pct=round(sum(pickups) / len(pickups), 2) if pickups else None,
+        max_proxy_pickup_pct=max(pickups) if pickups else None,
+        min_proxy_pickup_pct=min(pickups) if pickups else None,
         trend=trend,
     )
     response = BookingPaceResponse(
@@ -1603,11 +1661,12 @@ async def booking_pace(
         lookback_days=lookback_days,
         method="daily_proxy_pickup",
         methodology=(
-            "pickup_pct = occupancy(future_date, today) - occupancy(future_date, today - lookback_days). "
+            "proxy_pickup_pct = occupancy(future_date, today) - occupancy(future_date, today - lookback_days). "
             "Ограничение: hotel_statistics не хранит timestamp snapshot'а, поэтому два временны́х среза "
             "для одной future_date недостижимы в текущей схеме БД. "
-            "pickup_pct=0.0 означает наличие данных при отсутствии временно́й дельты; "
-            "pickup_pct=null — данных за эту дату нет совсем."
+            "proxy_pickup_pct=0.0 означает наличие данных при отсутствии временно́й дельты; "
+            "proxy_pickup_pct=null — данных за эту дату нет совсем. "
+            "Префикс «proxy_» подчёркивает: это не настоящий Pickup из RMS-системы."
         ),
         points=[BookingPacePoint(**p) for p in points_raw],
         summary=summary,
@@ -1881,6 +1940,8 @@ async def occupancy_timeseries(
     Returns:
         Список точек day-by-day + сводка min/max/avg/samples.
     """
+    if district not in VALID_DISTRICTS:
+        raise HTTPException(status_code=400, detail=f"Неизвестный район: {district}")
     cache_key = f"analytics:occupancy-timeseries:{district}:{days}"
     cached = await cache.get(cache_key)
     if cached:
@@ -1894,6 +1955,8 @@ async def occupancy_timeseries(
             {
                 "date": r["date"].isoformat() if hasattr(r["date"], "isoformat") else str(r["date"]),
                 "occupancy": round(r["avg_occupancy"], 2),
+                "total_rooms": r.get("total_rooms"),
+                "total_capacity": r.get("total_capacity"),
             }
             for r in rows
             if r.get("avg_occupancy") is not None
@@ -1925,6 +1988,8 @@ async def price_distribution(
     days: int = Query(30, ge=1, le=365),
 ) -> PriceDistributionResponse:
     """Перцентили min_price (p10/p25/p50/p75/p90) по району за N дней."""
+    if district not in VALID_DISTRICTS:
+        raise HTTPException(status_code=400, detail=f"Неизвестный район: {district}")
     cache_key = f"analytics:price-distribution:{district}:{days}"
     cached = await cache.get(cache_key)
     if cached:
@@ -1937,7 +2002,6 @@ async def price_distribution(
             p10=None, p25=None, p50=None, p75=None, p90=None,
         )
     else:
-        import statistics
         sorted_p = sorted(prices)
         n = len(sorted_p)
 
@@ -1951,7 +2015,7 @@ async def price_distribution(
             samples=n,
             p10=_pct(10),
             p25=_pct(25),
-            p50=int(statistics.median(prices)),
+            p50=_pct(50),
             p75=_pct(75),
             p90=_pct(90),
         )
@@ -1972,34 +2036,71 @@ async def compare_districts(
     adr_proxy — медиана min_price (прокси-ADR); revpar_proxy = adr_proxy × occupancy / 100.
     """
     names = [d.strip() for d in districts.split(",") if d.strip()]
+    if not names:
+        raise HTTPException(status_code=400, detail="Параметр districts пуст")
+    unknown = [n for n in names if n not in VALID_DISTRICTS]
+    if unknown:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Неизвестные районы: {', '.join(unknown)}. Доступны: {', '.join(VALID_DISTRICTS)}",
+        )
+
     cache_key = f"analytics:compare-districts:{','.join(sorted(names))}:{days}"
     cached = await cache.get(cache_key)
     if cached:
         return CompareDistrictsResponse(**cached)
 
     cutoff = _date.today() - timedelta(days=days)
-    items: list[DistrictComparisonItem] = []
-    for name in names:
-        rows = await data.get_occupancy_by_district(name, date_from=cutoff)
+
+    async def _fetch_one(name: str) -> DistrictComparisonItem:
+        rows, prices = await asyncio.gather(
+            data.get_occupancy_by_district(name, date_from=cutoff),
+            data.collect_min_prices(district=name, days=days),
+        )
         recent = [r for r in rows if r.get("avg_occupancy") is not None]
         if not recent:
-            items.append(DistrictComparisonItem(district=name, samples=0))
-            continue
+            return DistrictComparisonItem(district=name, samples=0)
         avg_occ = sum(r["avg_occupancy"] for r in recent) / len(recent)
-        prices = await data.collect_min_prices(district=name, days=days)
         adr_proxy = int(sorted(prices)[len(prices) // 2]) if prices else None
         revpar_proxy = round((adr_proxy or 0) * (avg_occ / 100), 2) if adr_proxy else None
-        items.append(DistrictComparisonItem(
+        return DistrictComparisonItem(
             district=name,
             occupancy=round(avg_occ, 2),
             adr_proxy=adr_proxy,
             revpar_proxy=revpar_proxy,
             samples=len(recent),
-        ))
+        )
+
+    items = list(await asyncio.gather(*(_fetch_one(n) for n in names)))
 
     response = CompareDistrictsResponse(days=days, districts=items)
     await cache.set(cache_key, response.model_dump(), ttl=300)
     return response
+
+
+@router.get("/district-segments")
+async def district_segments(
+    data: DataServiceDep,
+    cache: CacheServiceDep,
+    district: str = Query(..., description="Имя района (Иркутский, Ольхонский, и т.д.)"),
+) -> dict:
+    """Drill-down сегментов внутри района: разбивка по типу размещения и size_bucket.
+
+    Используется в RMS-таблице на странице /analytics при раскрытии строки района.
+    Отдаёт количество объектов, среднюю загрузку, медианную мин-цену и proxy-RevPAR
+    для каждого сегмента (mini/mid/large × hotel/apartment/hostel/...).
+    """
+    if district not in VALID_DISTRICTS:
+        raise HTTPException(400, f"Неизвестный район: {district}")
+
+    cache_key = f"analytics:district-segments:{district}"
+    cached = await cache.get(cache_key)
+    if cached:
+        return cached
+
+    breakdown = await data.district_segment_breakdown(district)
+    await cache.set(cache_key, breakdown, ttl=300)
+    return breakdown
 
 
 @router.get("/segments", response_model=SegmentsResponse)

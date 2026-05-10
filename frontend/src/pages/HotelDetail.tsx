@@ -10,6 +10,7 @@ import { ErrorState } from '../components/ErrorState'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { api } from '../api/client'
 import type { HotelSegmentBenchmarkResponse } from '../api/client'
+import { RECHARTS_TOOLTIP_PROPS } from '../utils/chartTheme'
 
 function _fmtDelta(delta: number | null, unit: string): string {
   if (delta == null) return '—'
@@ -113,7 +114,7 @@ function HotelDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [forecastDays, setForecastDays] = useState<7 | 14 | 30>(14)
-  usePageTitle('Отель')
+  usePageTitle('Объект размещения')
 
   const forecastMutation = useMutation({
     mutationFn: () => api.hotelForecast(id!, forecastDays),
@@ -246,12 +247,7 @@ function HotelDetail() {
                   <XAxis dataKey="date" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
                   <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `${v}%`} />
                   <Tooltip
-                    contentStyle={{
-                      backgroundColor: 'hsl(var(--card))',
-                      border: '1px solid hsl(var(--border))',
-                      borderRadius: '8px',
-                      color: 'hsl(var(--foreground))',
-                    }}
+                    {...RECHARTS_TOOLTIP_PROPS}
                     formatter={(v: number) => [`${v}%`, 'Заполняемость']}
                   />
                   <Area type="monotone" dataKey="occupancy" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.15} strokeWidth={2} connectNulls />
@@ -272,12 +268,7 @@ function HotelDetail() {
                     <XAxis dataKey="date" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `${(v / 1000).toFixed(0)}k₽`} />
                     <Tooltip
-                      contentStyle={{
-                        backgroundColor: 'hsl(var(--card))',
-                        border: '1px solid hsl(var(--border))',
-                        borderRadius: '8px',
-                        color: 'hsl(var(--foreground))',
-                      }}
+                      {...RECHARTS_TOOLTIP_PROPS}
                       formatter={(v: number) => [`${v.toLocaleString()}₽`, 'Мин. цена']}
                     />
                     <Area type="monotone" dataKey="price" stroke="hsl(var(--accent))" fill="hsl(var(--accent))" fillOpacity={0.15} strokeWidth={2} connectNulls />
@@ -426,12 +417,7 @@ function HotelDetail() {
                             <XAxis dataKey="date" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
                             <YAxis domain={[0, 100]} tick={{ fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `${v}%`} />
                             <Tooltip
-                              contentStyle={{
-                                backgroundColor: 'hsl(var(--card))',
-                                border: '1px solid hsl(var(--border))',
-                                borderRadius: '8px',
-                                color: 'hsl(var(--foreground))',
-                              }}
+                              {...RECHARTS_TOOLTIP_PROPS}
                               labelFormatter={(d) => `Дата: ${d}`}
                               formatter={(v: number, name: string) => {
                                 const labels: Record<string, string> = {

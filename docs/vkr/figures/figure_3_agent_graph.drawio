@@ -1,74 +1,99 @@
-<mxfile host="app.diagrams.net" agent="draw.io">
+<mxfile host="app.diagrams.net" agent="Claude Code">
   <diagram name="Граф агента" id="agent">
-    <mxGraphModel dx="1188" dy="653" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+    <mxGraphModel dx="1700" dy="1000" grid="1" gridSize="20" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="900" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="start" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;fontFamily=Verdana;fontStyle=1;" value="Запрос&#xa;пользователя" vertex="1">
-          <mxGeometry height="70" width="140" x="90" y="160" as="geometry" />
+        <mxCell id="title" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontFamily=Verdana;fontSize=18;fontStyle=1;fillColor=none;strokeColor=none;" value="Граф состояний интеллектуального агента (LangGraph)" vertex="1">
+          <mxGeometry height="40" width="1380" x="60" y="20" as="geometry" />
         </mxCell>
-        <mxCell id="rag" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=14;fontFamily=Verdana;" value="Поиск контекста&#xa;(RAG)&#xa;ChromaDB → top-5" vertex="1">
-          <mxGeometry height="60" width="150" x="280" y="340" as="geometry" />
+        <mxCell id="start" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;fontFamily=Verdana;fontStyle=1;align=center;verticalAlign=middle;" value="Запрос&#xa;пользователя" vertex="1">
+          <mxGeometry height="80" width="160" x="60" y="180" as="geometry" />
         </mxCell>
-        <mxCell id="model" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;fontFamily=Verdana;fontStyle=0;" value="Узел «Модель»&lt;br&gt;(LLM: Mistral Large)&lt;br&gt;Системная инструкция +&lt;br&gt;контекст RAG +&lt;br&gt;история диалога" vertex="1">
-          <mxGeometry height="110" width="170" x="270" y="200" as="geometry" />
+        <mxCell id="memory" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=12;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;fontFamily=Verdana;align=center;verticalAlign=middle;" value="MemorySaver&#xa;(хранение контекста&#xa;по идентификатору&#xa;сессии)" vertex="1">
+          <mxGeometry height="120" width="160" x="60" y="320" as="geometry" />
         </mxCell>
-        <mxCell id="decision" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14;fontFamily=Verdana;" value="Ответ содержит&#xa;вызов инструмента?" vertex="1">
-          <mxGeometry height="102.5" width="210" x="470" y="160" as="geometry" />
+        <mxCell id="rag" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;fontFamily=Verdana;align=center;verticalAlign=middle;" value="Поиск контекста (RAG)&#xa;ChromaDB → top-5" vertex="1">
+          <mxGeometry height="80" width="180" x="280" y="60" as="geometry" />
         </mxCell>
-        <mxCell id="tools" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=14;fontFamily=Verdana;fontStyle=1;" value="Узел «Инструменты»" vertex="1">
-          <mxGeometry height="35" width="180" x="720" y="100" as="geometry" />
+        <mxCell id="model" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontFamily=Verdana;align=center;verticalAlign=middle;" value="Узел «Модель»&#xa;LLM: Groq Llama-3.3-70b&#xa;(резерв: DeepSeek, Mistral)&#xa;Системная инструкция +&#xa;контекст RAG +&#xa;история диалога" vertex="1">
+          <mxGeometry height="160" width="240" x="280" y="180" as="geometry" />
         </mxCell>
-        <mxCell id="tool1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=14;fontFamily=Verdana;" value="search_hotels&#xa;(поиск отелей в ChromaDB)" vertex="1">
-          <mxGeometry height="50" width="180" x="720" y="150" as="geometry" />
+        <mxCell id="decision" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=13;fontFamily=Verdana;align=center;verticalAlign=middle;" value="Ответ содержит&#xa;вызов&#xa;инструмента?" vertex="1">
+          <mxGeometry height="140" width="220" x="580" y="190" as="geometry" />
         </mxCell>
-        <mxCell id="tool2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=14;fontFamily=Verdana;" value="search_events&#xa;(поиск мероприятий)" vertex="1">
-          <mxGeometry height="50" width="180" x="720" y="210" as="geometry" />
+        <mxCell id="endnode" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;fontFamily=Verdana;fontStyle=1;align=center;verticalAlign=middle;" value="Ответ пользователю&#xa;(потоковая передача,&#xa;SSE)" vertex="1">
+          <mxGeometry height="100" width="220" x="580" y="380" as="geometry" />
         </mxCell>
-        <mxCell id="tool3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=14;fontFamily=Verdana;" value="get_weather&#xa;(погода из Open-Meteo)" vertex="1">
-          <mxGeometry height="50" width="180" x="720" y="270" as="geometry" />
+        <mxCell id="tools_label" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=14;fontFamily=Verdana;fontStyle=1;align=center;verticalAlign=middle;" value="Узел «Инструменты» — 12 шт.: 6 базовых + 6 расширения" vertex="1">
+          <mxGeometry height="50" width="640" x="840" y="180" as="geometry" />
         </mxCell>
-        <mxCell id="tool4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=14;fontFamily=Verdana;" value="forecast_occupancy&#xa;(ансамблевый прогноз)" vertex="1">
-          <mxGeometry height="40" width="180" x="720" y="330" as="geometry" />
+        <mxCell id="tool1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=11;fontFamily=Verdana;align=center;verticalAlign=middle;" value="search_hotels&#xa;(поиск отелей в ChromaDB)" vertex="1">
+          <mxGeometry height="50" width="200" x="840" y="250" as="geometry" />
         </mxCell>
-        <mxCell id="tool5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=14;fontFamily=Verdana;" value="get_statistics&#xa;(KPI из PostgreSQL)" vertex="1">
-          <mxGeometry height="45" width="180" x="720" y="380" as="geometry" />
+        <mxCell id="tool2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=11;fontFamily=Verdana;align=center;verticalAlign=middle;" value="search_events&#xa;(поиск мероприятий)" vertex="1">
+          <mxGeometry height="50" width="200" x="840" y="310" as="geometry" />
         </mxCell>
-        <mxCell id="endnode" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;fontFamily=Verdana;fontStyle=1;" value="Ответ&#xa;пользователю&#xa;(потоковая передача, SSE)" vertex="1">
-          <mxGeometry height="90" width="170" x="490" y="310" as="geometry" />
+        <mxCell id="tool3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=11;fontFamily=Verdana;align=center;verticalAlign=middle;" value="get_weather&#xa;(погода из Open-Meteo)" vertex="1">
+          <mxGeometry height="50" width="200" x="840" y="370" as="geometry" />
         </mxCell>
-        <mxCell id="memory" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=10;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=14;fontFamily=Verdana;" value="MemorySaver&#xa;(хранение контекста&#xa;по идентификатору&#xa;сессии)" vertex="1">
-          <mxGeometry height="110" width="160" x="80" y="275" as="geometry" />
+        <mxCell id="tool4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=11;fontFamily=Verdana;align=center;verticalAlign=middle;" value="forecast_occupancy&#xa;(ансамблевый прогноз)" vertex="1">
+          <mxGeometry height="50" width="200" x="840" y="430" as="geometry" />
         </mxCell>
-        <mxCell id="a1" edge="1" parent="1" source="start" style="edgeStyle=orthogonalEdgeStyle;rounded=0;fontFamily=Verdana;fontSize=14;" target="model">
+        <mxCell id="tool5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=11;fontFamily=Verdana;align=center;verticalAlign=middle;" value="get_statistics&#xa;(KPI из PostgreSQL)" vertex="1">
+          <mxGeometry height="50" width="200" x="840" y="490" as="geometry" />
+        </mxCell>
+        <mxCell id="tool6" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=11;fontFamily=Verdana;align=center;verticalAlign=middle;" value="get_revenue_metrics&#xa;(RevPAR, ADR, Occupancy)" vertex="1">
+          <mxGeometry height="50" width="200" x="840" y="550" as="geometry" />
+        </mxCell>
+        <mxCell id="tool7" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;fontFamily=Verdana;align=center;verticalAlign=middle;" value="get_top_events_by_impact&#xa;(события с corrected impact)" vertex="1">
+          <mxGeometry height="50" width="200" x="1280" y="250" as="geometry" />
+        </mxCell>
+        <mxCell id="tool8" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;fontFamily=Verdana;align=center;verticalAlign=middle;" value="get_booking_pace&#xa;(темп набора брони)" vertex="1">
+          <mxGeometry height="50" width="200" x="1280" y="310" as="geometry" />
+        </mxCell>
+        <mxCell id="tool9" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;fontFamily=Verdana;align=center;verticalAlign=middle;" value="compare_districts&#xa;(сравнение районов)" vertex="1">
+          <mxGeometry height="50" width="200" x="1280" y="370" as="geometry" />
+        </mxCell>
+        <mxCell id="tool10" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;fontFamily=Verdana;align=center;verticalAlign=middle;" value="compare_forecast_models&#xa;(RMSE, MAE, R²)" vertex="1">
+          <mxGeometry height="50" width="200" x="1280" y="430" as="geometry" />
+        </mxCell>
+        <mxCell id="tool11" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;fontFamily=Verdana;align=center;verticalAlign=middle;" value="get_occupancy_timeseries&#xa;(временной ряд по дням)" vertex="1">
+          <mxGeometry height="50" width="200" x="1280" y="490" as="geometry" />
+        </mxCell>
+        <mxCell id="tool12" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;fontFamily=Verdana;align=center;verticalAlign=middle;" value="get_price_distribution&#xa;(перцентили p10–p90)" vertex="1">
+          <mxGeometry height="50" width="200" x="1280" y="550" as="geometry" />
+        </mxCell>
+        <mxCell id="forecast_agent" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontFamily=Verdana;fontStyle=2;align=center;verticalAlign=middle;" value="ForecastAgent&#xa;специализированный агент:&#xa;объяснение прогноза&#xa;на естественном языке" vertex="1">
+          <mxGeometry height="100" width="240" x="280" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="a1" edge="1" parent="1" source="start" target="model" style="endArrow=classic;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;entryX=0;entryY=0.5;strokeWidth=2;fontFamily=Verdana;fontSize=12;">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="a_rag" edge="1" parent="1" source="rag" style="edgeStyle=orthogonalEdgeStyle;rounded=0;dashed=1;fontFamily=Verdana;fontSize=14;" target="model">
+        <mxCell id="a_rag" edge="1" parent="1" source="rag" target="model" style="endArrow=classic;edgeStyle=orthogonalEdgeStyle;dashed=1;exitX=0.5;exitY=1;entryX=0.3;entryY=0;strokeWidth=2;fontFamily=Verdana;fontSize=12;">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="a2" edge="1" parent="1" source="model" style="edgeStyle=orthogonalEdgeStyle;rounded=0;fontFamily=Verdana;fontSize=14;" target="decision">
+        <mxCell id="a_mem" edge="1" parent="1" source="memory" target="model" style="endArrow=classic;edgeStyle=orthogonalEdgeStyle;dashed=1;exitX=1;exitY=0.5;entryX=0;entryY=0.7;strokeWidth=2;fontFamily=Verdana;fontSize=12;">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="a3" edge="1" parent="1" source="decision" style="edgeStyle=orthogonalEdgeStyle;rounded=0;fontFamily=Verdana;fontSize=14;fontStyle=1;" target="tools" value="Да">
+        <mxCell id="a2" edge="1" parent="1" source="model" target="decision" style="endArrow=classic;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;entryX=0;entryY=0.5;strokeWidth=2;fontFamily=Verdana;fontSize=12;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a3" edge="1" parent="1" source="decision" target="tools_label" value="Да" style="endArrow=classic;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;entryX=0;entryY=0.5;strokeWidth=2;fontFamily=Verdana;fontSize=13;fontStyle=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a4" edge="1" parent="1" source="decision" target="endnode" value="Нет" style="endArrow=classic;edgeStyle=orthogonalEdgeStyle;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeWidth=2;fontFamily=Verdana;fontSize=13;fontStyle=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a5" edge="1" parent="1" source="tools_label" target="model" value="Результат инструмента" style="endArrow=classic;edgeStyle=orthogonalEdgeStyle;exitX=0.5;exitY=0;entryX=0.5;entryY=0;strokeWidth=2;fontFamily=Verdana;fontSize=12;">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="660" y="255" />
-              <mxPoint x="660" y="117" />
+              <mxPoint x="1160" y="100" />
+              <mxPoint x="400" y="100" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="a4" edge="1" parent="1" source="decision" style="edgeStyle=orthogonalEdgeStyle;rounded=0;fontFamily=Verdana;fontSize=14;fontStyle=1;" target="endnode" value="Нет">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="a5" edge="1" parent="1" source="tools" style="edgeStyle=orthogonalEdgeStyle;rounded=0;fontFamily=Verdana;fontSize=14;" target="model" value="Результат&#xa;инструмента">
-          <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="810" y="70" />
-              <mxPoint x="355" y="70" />
-            </Array>
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="a_mem" edge="1" parent="1" source="memory" style="dashed=1;fontFamily=Verdana;fontSize=14;" target="model">
+        <mxCell id="a_fc" edge="1" parent="1" source="model" target="forecast_agent" style="endArrow=classic;edgeStyle=orthogonalEdgeStyle;dashed=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeWidth=2;fontFamily=Verdana;fontSize=12;">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
       </root>

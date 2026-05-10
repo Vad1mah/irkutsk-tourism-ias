@@ -1,203 +1,98 @@
-<mxfile host="app.diagrams.net" modified="2026-05-04T00:00:00.000Z" agent="b2b-rebuild" version="22.0.0">
+<mxfile host="app.diagrams.net" agent="Claude Code">
   <diagram id="domain-b2b-v2" name="Domain Model B2B v2">
-    <mxGraphModel dx="1600" dy="1100" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="2200" math="0" shadow="0">
+    <mxGraphModel dx="1600" dy="1200" grid="1" gridSize="20" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1620" pageHeight="1100" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-
-        <!-- ===== 5 NEW ENTITIES (highlighted) ===== -->
-
-        <!-- BookingSnapshot -->
-        <mxCell id="BookingSnapshot" value="BookingSnapshot&#xa;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#xa;snapshot_taken_at: datetime&#xa;target_date: date&#xa;district: string&#xa;occupancy_pct: float" style="text;html=1;strokeColor=#FF8000;fillColor=#FFE6CC;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="40" y="40" width="250" height="110" as="geometry"/>
+        <mxCell id="title" value="Диаграмма предметной области (Domain Model) B2B-системы" style="text;html=1;align=center;verticalAlign=middle;fontFamily=Verdana;fontSize=18;fontStyle=1;fillColor=none;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="60" y="20" width="1500" height="40" as="geometry"/>
         </mxCell>
-
-        <!-- EventImpactRecord -->
-        <mxCell id="EventImpactRecord" value="EventImpactRecord&#xa;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#xa;event_id: FK(Event)&#xa;district: string&#xa;baseline_occupancy_mean: float&#xa;observed_occupancy: float&#xa;delta_pct: float&#xa;ci_lower: float&#xa;ci_upper: float&#xa;n_samples: int&#xa;confidence: enum(high/medium/low)&#xa;method: string&#xa;computed_at: datetime" style="text;html=1;strokeColor=#FF8000;fillColor=#FFE6CC;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="310" y="40" width="270" height="210" as="geometry"/>
+        <mxCell id="zone_actors" value="Актёры" style="text;html=1;align=left;verticalAlign=middle;fontFamily=Verdana;fontSize=11;fontStyle=2;fillColor=none;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="40" y="80" width="100" height="20" as="geometry"/>
         </mxCell>
-
-        <!-- SegmentBenchmark -->
-        <mxCell id="SegmentBenchmark" value="SegmentBenchmark&#xa;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#xa;district: string&#xa;size_bucket: enum(mini/mid/large)&#xa;n_in_segment: int&#xa;avg_occupancy: float&#xa;avg_min_price: int&#xa;computed_at: datetime" style="text;html=1;strokeColor=#FF8000;fillColor=#FFE6CC;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="600" y="40" width="260" height="130" as="geometry"/>
+        <mxCell id="Hotelier" value="Отельер" style="text;html=1;strokeColor=#6C8EBF;fillColor=#DAE8FC;align=center;verticalAlign=middle;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="110" width="180" height="50" as="geometry"/>
         </mxCell>
-
-        <!-- ParserHealthRecord -->
-        <mxCell id="ParserHealthRecord" value="ParserHealthRecord&#xa;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#xa;parser_id: string&#xa;status: enum(ok/warn/fail)&#xa;items_collected: int&#xa;error: string (nullable)&#xa;last_run: datetime" style="text;html=1;strokeColor=#FF8000;fillColor=#FFE6CC;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="880" y="40" width="250" height="120" as="geometry"/>
+        <mxCell id="RegionAdmin" value="Администратор региона" style="text;html=1;strokeColor=#6C8EBF;fillColor=#DAE8FC;align=center;verticalAlign=middle;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="240" y="110" width="200" height="50" as="geometry"/>
         </mxCell>
-
-        <!-- MethodologyRecord -->
-        <mxCell id="MethodologyRecord" value="MethodologyRecord&#xa;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#xa;metric_name: string&#xa;formula_text: string&#xa;version: string&#xa;valid_from: datetime&#xa;source_endpoint: string" style="text;html=1;strokeColor=#FF8000;fillColor=#FFE6CC;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="1150" y="40" width="260" height="120" as="geometry"/>
+        <mxCell id="Researcher" value="Исследователь" style="text;html=1;strokeColor=#6C8EBF;fillColor=#DAE8FC;align=center;verticalAlign=middle;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="460" y="110" width="180" height="50" as="geometry"/>
         </mxCell>
-
-        <!-- ===== EXISTING ENTITIES ===== -->
-
-        <!-- B2B Users -->
-        <mxCell id="Hotelier" value="&#1054;&#1090;&#1077;&#1083;&#1100;&#1077;&#1088;" style="text;html=1;strokeColor=#6C8EBF;fillColor=#DAE8FC;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="40" y="200" width="150" height="50" as="geometry"/>
+        <mxCell id="TechAdmin" value="Технический администратор" style="text;html=1;strokeColor=#6C8EBF;fillColor=#DAE8FC;align=center;verticalAlign=middle;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1400" y="110" width="200" height="50" as="geometry"/>
         </mxCell>
-        <mxCell id="RegionAdmin" value="&#1040;&#1076;&#1084;&#1080;&#1085;&#1080;&#1089;&#1090;&#1088;&#1072;&#1090;&#1086;&#1088; &#1088;&#1077;&#1075;&#1080;&#1086;&#1085;&#1072;" style="text;html=1;strokeColor=#6C8EBF;fillColor=#DAE8FC;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="200" y="200" width="160" height="50" as="geometry"/>
+        <mxCell id="B2BCabinet" value="B2B-кабинет" style="text;html=1;strokeColor=#6C8EBF;fillColor=#DAE8FC;align=center;verticalAlign=middle;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="240" y="200" width="220" height="50" as="geometry"/>
         </mxCell>
-        <mxCell id="Researcher" value="&#1048;&#1089;&#1089;&#1083;&#1077;&#1076;&#1086;&#1074;&#1072;&#1090;&#1077;&#1083;&#1100;" style="text;html=1;strokeColor=#6C8EBF;fillColor=#DAE8FC;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="370" y="200" width="150" height="50" as="geometry"/>
+        <mxCell id="Request" value="Запрос&#xa;————————&#xa;текст: string&#xa;контекст: dict" style="text;html=1;strokeColor=#82B366;fillColor=#D5E8D4;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="300" width="180" height="90" as="geometry"/>
         </mxCell>
-        <mxCell id="TechAdmin" value="&#1058;&#1077;&#1093;&#1085;&#1080;&#1095;&#1077;&#1089;&#1082;&#1080;&#1081; &#1072;&#1076;&#1084;&#1080;&#1085;&#1080;&#1089;&#1090;&#1088;&#1072;&#1090;&#1086;&#1088;" style="text;html=1;strokeColor=#6C8EBF;fillColor=#DAE8FC;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="530" y="200" width="180" height="50" as="geometry"/>
+        <mxCell id="AIAgent" value="Интеллектуальный агент&#xa;————————&#xa;обрабатывает запросы,&#xa;вызывает инструменты,&#xa;формирует ответы" style="text;html=1;strokeColor=#9673A6;fillColor=#E1D5E7;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="240" y="300" width="220" height="100" as="geometry"/>
         </mxCell>
-
-        <!-- B2BCabinet -->
-        <mxCell id="B2BCabinet" value="B2B-&#1082;&#1072;&#1073;&#1080;&#1085;&#1077;&#1090;" style="text;html=1;strokeColor=#6C8EBF;fillColor=#DAE8FC;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="310" y="280" width="200" height="50" as="geometry"/>
+        <mxCell id="Response" value="Ответ&#xa;————————&#xa;текст: string&#xa;визуализации: list" style="text;html=1;strokeColor=#82B366;fillColor=#D5E8D4;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="480" y="300" width="180" height="90" as="geometry"/>
         </mxCell>
-
-        <!-- Request / Response -->
-        <mxCell id="Request" value="&#1047;&#1072;&#1087;&#1088;&#1086;&#1089;" style="text;html=1;strokeColor=#82B366;fillColor=#D5E8D4;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="40" y="360" width="150" height="50" as="geometry"/>
+        <mxCell id="zone_hotel" value="Зона размещения" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#999999;dashed=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;fontFamily=Verdana;fontSize=10;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="20" y="450" width="780" height="380" as="geometry"/>
         </mxCell>
-        <mxCell id="Response" value="&#1054;&#1090;&#1074;&#1077;&#1090;" style="text;html=1;strokeColor=#82B366;fillColor=#D5E8D4;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="210" y="360" width="150" height="50" as="geometry"/>
+        <mxCell id="Hotel" value="Средство размещения&#xa;————————&#xa;название: string&#xa;район: string&#xa;тип: enum&#xa;число номеров: int&#xa;минимальная цена: int" style="text;html=1;strokeColor=#D6B656;fillColor=#FFE6CC;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="490" width="220" height="140" as="geometry"/>
         </mxCell>
-
-        <!-- AI Agent -->
-        <mxCell id="AIAgent" value="AI-&#1072;&#1075;&#1077;&#1085;&#1090; (LangGraph)&#xa;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#xa;5 tools: search_hotels,&#xa;search_events, get_weather,&#xa;forecast_occupancy, get_statistics" style="text;html=1;strokeColor=#9673A6;fillColor=#E1D5E7;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="380" y="360" width="250" height="100" as="geometry"/>
+        <mxCell id="District" value="Район&#xa;————————&#xa;название: string&#xa;код: string" style="text;html=1;strokeColor=#D6B656;fillColor=#FFE6CC;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="660" width="220" height="100" as="geometry"/>
         </mxCell>
-
-        <!-- Hotel -->
-        <mxCell id="Hotel" value="&#1057;&#1088;&#1077;&#1076;&#1089;&#1090;&#1074;&#1086; &#1088;&#1072;&#1079;&#1084;&#1077;&#1097;&#1077;&#1085;&#1080;&#1103;&#xa;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#xa;name: string&#xa;district: string&#xa;type: enum&#xa;rooms_num: int&#xa;min_price: int" style="text;html=1;strokeColor=#D6B656;fillColor=#FFE6CC;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="40" y="490" width="230" height="120" as="geometry"/>
+        <mxCell id="HotelStatistic" value="Статистика загрузки&#xa;————————&#xa;дата: date&#xa;всего номеров: int&#xa;свободных: int&#xa;процент доступности: float&#xa;минимальная цена: int" style="text;html=1;strokeColor=#D6B656;fillColor=#FFE6CC;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="290" y="490" width="220" height="140" as="geometry"/>
         </mxCell>
-
-        <!-- District -->
-        <mxCell id="District" value="&#1056;&#1072;&#1081;&#1086;&#1085;&#xa;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#xa;name: string&#xa;code: string" style="text;html=1;strokeColor=#D6B656;fillColor=#FFE6CC;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="290" y="490" width="200" height="80" as="geometry"/>
+        <mxCell id="RMSMetric" value="RMS-метрика&#xa;————————&#xa;RevPAR: float&#xa;ADR: float&#xa;Occupancy: float&#xa;Pickup: float&#xa;Pace: float" style="text;html=1;strokeColor=#D6B656;fillColor=#FFE6CC;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="540" y="490" width="220" height="140" as="geometry"/>
         </mxCell>
-
-        <!-- HotelStatistic -->
-        <mxCell id="HotelStatistic" value="HotelStatistic&#xa;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#xa;date: date&#xa;rooms_num: int&#xa;free_rooms_amount: int&#xa;available_rooms_percent: float&#xa;min_price: int" style="text;html=1;strokeColor=#D6B656;fillColor=#FFE6CC;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="510" y="490" width="240" height="120" as="geometry"/>
+        <mxCell id="SegmentBenchmark" value="Сегментный бенчмарк&#xa;————————&#xa;размерная категория: enum&#xa;средняя загрузка: float&#xa;средняя цена: int" style="text;html=1;strokeColor=#FF8000;fillColor=#FFE6CC;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="290" y="660" width="220" height="120" as="geometry"/>
         </mxCell>
-
-        <!-- Event -->
-        <mxCell id="Event" value="&#1057;&#1086;&#1073;&#1099;&#1090;&#1080;&#1077;&#xa;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#xa;title: string&#xa;date_start: date&#xa;date_end: date&#xa;event_type: string&#xa;district: string&#xa;source: string" style="text;html=1;strokeColor=#B85450;fillColor=#F8CECC;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="40" y="650" width="230" height="130" as="geometry"/>
+        <mxCell id="zone_event" value="Зона событий и прогноза" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#999999;dashed=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;fontFamily=Verdana;fontSize=10;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="820" y="450" width="780" height="380" as="geometry"/>
         </mxCell>
-
-        <!-- RMSMetric -->
-        <mxCell id="RMSMetric" value="RMS-&#1084;&#1077;&#1090;&#1088;&#1080;&#1082;&#1072;&#xa;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#xa;revpar: float&#xa;adr: float&#xa;occupancy_pct: float&#xa;pickup: float&#xa;pace: float" style="text;html=1;strokeColor=#D6B656;fillColor=#FFE6CC;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="290" y="650" width="220" height="120" as="geometry"/>
+        <mxCell id="Event" value="Событие&#xa;————————&#xa;название: string&#xa;дата начала: date&#xa;дата окончания: date&#xa;тип: string&#xa;район: string&#xa;источник: string" style="text;html=1;strokeColor=#B85450;fillColor=#F8CECC;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="840" y="490" width="220" height="160" as="geometry"/>
         </mxCell>
-
-        <!-- Forecast Ensemble -->
-        <mxCell id="ForecastEnsemble" value="&#1055;&#1088;&#1086;&#1075;&#1085;&#1086;&#1079; (Ensemble)&#xa;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#xa;district: string&#xa;days_ahead: int&#xa;values: list[float]&#xa;ci_lower: list[float]&#xa;ci_upper: list[float]&#xa;weights: dict" style="text;html=1;strokeColor=#9673A6;fillColor=#E1D5E7;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="530" y="650" width="230" height="130" as="geometry"/>
+        <mxCell id="WeatherForecast" value="Погодный прогноз&#xa;————————&#xa;дата: date&#xa;макс. температура: float&#xa;мин. температура: float&#xa;осадки: float" style="text;html=1;strokeColor=#82B366;fillColor=#D5E8D4;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1090" y="490" width="220" height="140" as="geometry"/>
         </mxCell>
-
-        <!-- ForecastModel -->
-        <mxCell id="ForecastModel" value="&#1052;&#1086;&#1076;&#1077;&#1083;&#1100; &#1087;&#1088;&#1086;&#1075;&#1085;&#1086;&#1079;&#1080;&#1088;&#1086;&#1074;&#1072;&#1085;&#1080;&#1103;&#xa;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#xa;name: string (Prophet/NeuralProphet/XGBoost)&#xa;rmse: float&#xa;mae: float&#xa;r2: float" style="text;html=1;strokeColor=#9673A6;fillColor=#E1D5E7;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="780" y="490" width="280" height="100" as="geometry"/>
+        <mxCell id="ForecastEnsemble" value="Прогноз (ансамбль)&#xa;————————&#xa;район: string&#xa;горизонт: int&#xa;значения: list&#xa;нижняя граница CI: list&#xa;верхняя граница CI: list" style="text;html=1;strokeColor=#9673A6;fillColor=#E1D5E7;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1340" y="490" width="240" height="160" as="geometry"/>
         </mxCell>
-
-        <!-- WeatherForecast -->
-        <mxCell id="WeatherForecast" value="&#1055;&#1086;&#1075;&#1086;&#1076;&#1085;&#1099;&#1081; &#1087;&#1088;&#1086;&#1075;&#1085;&#1086;&#1079;&#xa;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#xa;date: date&#xa;temperature_max: float&#xa;temperature_min: float&#xa;precipitation: float" style="text;html=1;strokeColor=#82B366;fillColor=#D5E8D4;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="780" y="610" width="230" height="100" as="geometry"/>
+        <mxCell id="EventImpactRecord" value="Влияние события&#xa;————————&#xa;скорректированная&#xa;базовая линия: float&#xa;отклонение: float&#xa;дов. интервал: tuple" style="text;html=1;strokeColor=#FF8000;fillColor=#FFE6CC;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="840" y="680" width="220" height="130" as="geometry"/>
         </mxCell>
-
-        <!-- DataSource -->
-        <mxCell id="DataSource" value="&#1048;&#1089;&#1090;&#1086;&#1095;&#1085;&#1080;&#1082; &#1076;&#1072;&#1085;&#1085;&#1099;&#1093;&#xa;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#xa;name: string&#xa;url: string&#xa;type: string&#xa;schedule: string" style="text;html=1;strokeColor=#B85450;fillColor=#F8CECC;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="780" y="730" width="230" height="100" as="geometry"/>
+        <mxCell id="ForecastModel" value="Модель прогнозирования&#xa;————————&#xa;название: string&#xa;средн. квадр. ошибка: float&#xa;средн. абс. ошибка: float&#xa;коэф. детерминации: float" style="text;html=1;strokeColor=#9673A6;fillColor=#E1D5E7;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1340" y="680" width="240" height="130" as="geometry"/>
         </mxCell>
-
-        <!-- ChromaDB -->
-        <mxCell id="ChromaDB" value="&#1042;&#1077;&#1082;&#1090;&#1086;&#1088;&#1085;&#1099;&#1081; &#1080;&#1085;&#1076;&#1077;&#1082;&#1089; (ChromaDB)&#xa;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#xa;collection: string&#xa;embedding_model: string&#xa;n_documents: int" style="text;html=1;strokeColor=#9673A6;fillColor=#E1D5E7;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="1040" y="490" width="250" height="90" as="geometry"/>
+        <mxCell id="DataSource" value="Источник данных&#xa;————————&#xa;название: string&#xa;адрес: string&#xa;тип: string&#xa;расписание: string" style="text;html=1;strokeColor=#B85450;fillColor=#F8CECC;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1090" y="680" width="220" height="130" as="geometry"/>
         </mxCell>
-
-        <!-- Redis Cache -->
-        <mxCell id="RedisCache" value="&#1050;&#1101;&#1096; (Redis)&#xa;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#xa;key: string&#xa;ttl: int (seconds)&#xa;value: JSON" style="text;html=1;strokeColor=#9673A6;fillColor=#E1D5E7;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="1040" y="600" width="230" height="90" as="geometry"/>
+        <mxCell id="r1" style="endArrow=none;edgeStyle=orthogonalEdgeStyle;exitX=0.5;exitY=1;entryX=0.2;entryY=0;" edge="1" source="Hotelier" target="B2BCabinet" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="r2" style="endArrow=none;edgeStyle=orthogonalEdgeStyle;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" source="RegionAdmin" target="B2BCabinet" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="r3" style="endArrow=none;edgeStyle=orthogonalEdgeStyle;exitX=0.5;exitY=1;entryX=0.8;entryY=0;" edge="1" source="Researcher" target="B2BCabinet" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="r_ta_ds" style="endArrow=none;edgeStyle=orthogonalEdgeStyle;dashed=1;exitX=0.5;exitY=1;entryX=1;entryY=0;" edge="1" source="TechAdmin" target="DataSource" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="r4" style="endArrow=open;edgeStyle=orthogonalEdgeStyle;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" source="B2BCabinet" target="AIAgent" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="r5" style="endArrow=open;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" source="Request" target="AIAgent" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="r6" style="endArrow=open;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" source="AIAgent" target="Response" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="r_ag_fc" style="endArrow=open;edgeStyle=orthogonalEdgeStyle;dashed=1;exitX=1;exitY=0.5;entryX=0;entryY=0.2;" edge="1" source="Response" target="ForecastEnsemble" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="r_h_d" style="endArrow=none;edgeStyle=orthogonalEdgeStyle;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" source="Hotel" target="District" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="r_h_hs" style="endArrow=none;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" source="Hotel" target="HotelStatistic" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="r_hs_rms" style="endArrow=open;edgeStyle=orthogonalEdgeStyle;dashed=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" source="HotelStatistic" target="RMSMetric" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="r_hs_sb" style="endArrow=open;edgeStyle=orthogonalEdgeStyle;dashed=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" source="HotelStatistic" target="SegmentBenchmark" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="r_ev_ei" style="endArrow=open;edgeStyle=orthogonalEdgeStyle;dashed=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" source="Event" target="EventImpactRecord" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="r_fc_fm" style="endArrow=open;edgeStyle=orthogonalEdgeStyle;dashed=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" source="ForecastEnsemble" target="ForecastModel" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="r_fc_w" style="endArrow=open;edgeStyle=orthogonalEdgeStyle;dashed=1;exitX=0;exitY=0.5;entryX=1;entryY=0.5;" edge="1" source="ForecastEnsemble" target="WeatherForecast" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="r_ds_h" style="endArrow=open;edgeStyle=orthogonalEdgeStyle;dashed=1;exitX=0;exitY=0.5;entryX=1;entryY=0.5;" edge="1" source="DataSource" target="HotelStatistic" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="r_ds_e" style="endArrow=open;edgeStyle=orthogonalEdgeStyle;dashed=1;exitX=0.5;exitY=0;entryX=0.5;entryY=1;" edge="1" source="DataSource" target="Event" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="legend" value="Сплошные линии — структурные ассоциации (агрегация, композиция). Пунктирные стрелки — служебные/вычислительные зависимости (расчёт метрик, импорт данных, агрегация). Жёлтая зона — справочники и метрики средств размещения. Розовая зона — события, погода и прогноз. Технические компоненты системы (БД, кэш, планировщик, ML-инфраструктура) рассматриваются на диаграмме компонентов и развёртывания." style="text;html=1;align=left;verticalAlign=middle;fontFamily=Verdana;fontSize=11;fillColor=none;strokeColor=none;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="40" y="900" width="1540" height="100" as="geometry"/>
         </mxCell>
-
-        <!-- APScheduler -->
-        <mxCell id="APScheduler" value="&#1055;&#1083;&#1072;&#1085;&#1080;&#1088;&#1086;&#1074;&#1097;&#1080;&#1082; (APScheduler)&#xa;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#xa;events: 6h&#xa;hotels: 2h&#xa;weather: 3h&#xa;telegram: 1h" style="text;html=1;strokeColor=#B85450;fillColor=#F8CECC;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="1040" y="710" width="240" height="100" as="geometry"/>
-        </mxCell>
-
-        <!-- ExportData -->
-        <mxCell id="ExportData" value="&#1069;&#1082;&#1089;&#1087;&#1086;&#1088;&#1090; &#1076;&#1072;&#1085;&#1085;&#1099;&#1093;&#xa;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#xa;type: enum(occupancy/events/hotels)&#xa;district: string&#xa;date_from: date&#xa;date_to: date" style="text;html=1;strokeColor=#82B366;fillColor=#D5E8D4;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="290" y="810" width="250" height="100" as="geometry"/>
-        </mxCell>
-
-        <!-- HeatmapLoad -->
-        <mxCell id="HeatmapLoad" value="Heatmap &#1079;&#1072;&#1075;&#1088;&#1091;&#1079;&#1082;&#1080;&#xa;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#xa;district: string&#xa;matrix: float[7][12]" style="text;html=1;strokeColor=#D6B656;fillColor=#FFE6CC;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="560" y="810" width="220" height="90" as="geometry"/>
-        </mxCell>
-
-        <!-- FeatureEngineering -->
-        <mxCell id="FeatureEng" value="Feature Engineering&#xa;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#xa;38 &#1087;&#1088;&#1080;&#1079;&#1085;&#1072;&#1082;&#1086;&#1074;&#xa;(&#1082;&#1072;&#1083;&#1077;&#1085;&#1076;&#1072;&#1088;&#1100;, &#1087;&#1086;&#1075;&#1086;&#1076;&#1072;, &#1089;&#1086;&#1073;&#1099;&#1090;&#1080;&#1103;, &#1083;&#1072;&#1075;&#1080;)" style="text;html=1;strokeColor=#9673A6;fillColor=#E1D5E7;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="800" y="840" width="230" height="90" as="geometry"/>
-        </mxCell>
-
-        <!-- SystemLog -->
-        <mxCell id="SystemLog" value="&#1051;&#1086;&#1075; &#1089;&#1080;&#1089;&#1090;&#1077;&#1084;&#1099;&#xa;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#xa;level: string&#xa;timestamp: datetime&#xa;message: string" style="text;html=1;strokeColor=#B85450;fillColor=#F8CECC;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontStyle=1;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="1050" y="840" width="220" height="90" as="geometry"/>
-        </mxCell>
-
-        <!-- ===== EDGES ===== -->
-        <!-- Users → B2BCabinet -->
-        <mxCell id="r1" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="Hotelier" target="B2BCabinet" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="r2" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="RegionAdmin" target="B2BCabinet" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="r3" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="Researcher" target="B2BCabinet" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <!-- B2BCabinet → Request -->
-        <mxCell id="r4" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="B2BCabinet" target="Request" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <!-- AI Agent processes Request -->
-        <mxCell id="r5" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="AIAgent" target="Request" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <!-- AI Agent → Response -->
-        <mxCell id="r6" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="AIAgent" target="Response" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <!-- AI Agent → Forecast -->
-        <mxCell id="r7" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="AIAgent" target="ForecastEnsemble" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <!-- Hotel in District -->
-        <mxCell id="r8" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="Hotel" target="District" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <!-- Hotel → HotelStatistic -->
-        <mxCell id="r9" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="Hotel" target="HotelStatistic" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <!-- HotelStatistic → RMSMetric -->
-        <mxCell id="r10" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="HotelStatistic" target="RMSMetric" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <!-- HotelStatistic → HeatmapLoad -->
-        <mxCell id="r11" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="HotelStatistic" target="HeatmapLoad" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <!-- ForecastEnsemble uses ForecastModel -->
-        <mxCell id="r12" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="ForecastEnsemble" target="ForecastModel" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <!-- ForecastEnsemble uses FeatureEng -->
-        <mxCell id="r13" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="ForecastEnsemble" target="FeatureEng" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <!-- ForecastEnsemble considers WeatherForecast -->
-        <mxCell id="r14" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="ForecastEnsemble" target="WeatherForecast" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <!-- DataSource → Hotel -->
-        <mxCell id="r15" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="DataSource" target="Hotel" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <!-- DataSource → Event -->
-        <mxCell id="r16" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="DataSource" target="Event" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <!-- APScheduler → DataSource -->
-        <mxCell id="r17" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="APScheduler" target="DataSource" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <!-- TechAdmin → DataSource -->
-        <mxCell id="r18" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="TechAdmin" target="DataSource" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <!-- TechAdmin → SystemLog -->
-        <mxCell id="r19" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="TechAdmin" target="SystemLog" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <!-- Researcher → ExportData -->
-        <mxCell id="r20" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="Researcher" target="ExportData" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <!-- ChromaDB → AIAgent -->
-        <mxCell id="r21" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="ChromaDB" target="AIAgent" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <!-- RedisCache stores ForecastEnsemble -->
-        <mxCell id="r22" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="RedisCache" target="ForecastEnsemble" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <!-- New entities relations -->
-        <mxCell id="r23" value="proxy" style="edgeStyle=orthogonalEdgeStyle;dashed=1;" edge="1" source="BookingSnapshot" target="HotelStatistic" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="r24" value="event_id" style="edgeStyle=orthogonalEdgeStyle;dashed=1;" edge="1" source="EventImpactRecord" target="Event" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="r25" value="&#1095;&#1077;&#1088;&#1077;&#1079;" style="edgeStyle=orthogonalEdgeStyle;dashed=1;" edge="1" source="EventImpactRecord" target="MethodologyRecord" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="r26" value="&#1072;&#1075;&#1088;&#1077;&#1075;&#1080;&#1088;&#1091;&#1077;&#1090;" style="edgeStyle=orthogonalEdgeStyle;dashed=1;" edge="1" source="SegmentBenchmark" target="HotelStatistic" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="r27" value="&#1092;&#1080;&#1083;&#1100;&#1090;&#1088;" style="edgeStyle=orthogonalEdgeStyle;dashed=1;" edge="1" source="SegmentBenchmark" target="District" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="r28" value="&#1086;&#1087;&#1080;&#1089;&#1099;&#1074;&#1072;&#1077;&#1090;" style="edgeStyle=orthogonalEdgeStyle;dashed=1;" edge="1" source="ParserHealthRecord" target="DataSource" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="r29" value="&#1093;&#1088;&#1072;&#1085;&#1080;&#1090;" style="edgeStyle=orthogonalEdgeStyle;dashed=1;" edge="1" source="RedisCache" target="ParserHealthRecord" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
-
       </root>
     </mxGraphModel>
   </diagram>

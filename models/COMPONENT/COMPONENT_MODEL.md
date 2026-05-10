@@ -19,7 +19,7 @@
 | Компонент | Назначение | Адресат (B2B) |
 |-----------|------------|---------------|
 | Командный центр (Home) | Сводка KPI, прогноз 14 дней, ближайшие события с impact, RevPAR/ADR/Pickup | Все 3 сегмента |
-| Региональная карта (Map) | ECharts GeoMap с кластеризацией средств размещения | Администратор региона |
+| Региональная карта (Map) | Yandex Maps (`@pbe/react-yandex-maps`) с маркерами средств размещения и двухступенчатым взаимодействием | Администратор региона |
 | Аналитика рынка (Analytics) | Heatmap, Pickup/Pace, RevPAR, события с impact, экспорт CSV | Отельер, Администратор региона |
 | Прогноз спроса (Forecast) | Ensemble прогноз с CI-bands, сравнение моделей | Отельер, Администратор региона, Исследователь |
 | События и спрос (Events) | Календарь и таблица событий с impact | Все 3 сегмента |
@@ -27,9 +27,9 @@
 | AI-помощник (Chat) | SSE-стриминг ответов LangGraph агента (B2B system prompt) | Отельер, Администратор региона |
 | О системе (About) | Описание архитектуры и B2B-функционала | Все 3 сегмента |
 
-**Стек фронтенда:** React 18, TypeScript 5.9, Tailwind CSS 4, Vite 7, Recharts (графики), ECharts (GeoMap + scatter).
+**Стек фронтенда:** React 18, TypeScript 5.9, Tailwind CSS 4, Vite 7, Recharts (графики, тепловые карты, ComposedChart), Yandex Maps через `@pbe/react-yandex-maps` (региональная карта объектов с маркерами и двухступенчатым взаимодействием).
 
-### 2. API-слой (FastAPI, 7 роутеров, 59+ endpoints)
+### 2. API-слой (FastAPI, 8 групп маршрутов, 65 endpoints)
 
 #### 2.1. B2B-эндпоинты (основные для целевых сегментов)
 
@@ -91,7 +91,7 @@
 | `feature_engineering` | 38 признаков: calendar, holidays, lags, rolling, weather, events, trend, prices | xgboost_service |
 | `main_agent` | LangGraph MainAgent + 12 tools + MemorySaver (B2B system prompt, 8 методологических правил) | query.py |
 | `forecast_agent` | LangGraph ForecastAgent (объяснимые прогнозы) | main_agent |
-| `llm_service` | 6 LLM провайдеров (Mistral основной + GigaChat / Groq / DeepSeek / OpenRouter / Gemini) | main_agent, forecast_agent |
+| `llm_service` | 6 LLM провайдеров (Groq Llama-3.3-70b primary для tool-calling в `main_agent`; Mistral Large primary для не-tool вызовов в `llm_service`; DeepSeek/Mistral/GigaChat/OpenRouter/Gemini в fallback chain) | main_agent, forecast_agent |
 | `data_service` | Доменный фасад БД: get_occupancy_by_district, get_hotels, get_events, get_revenue_summary | роутеры, agent tools |
 | `db_service` | Низкоуровневый: пул соединений, create_all, lifespan | main.py, data_service |
 | `chroma_service` | RAG-поиск через ChromaDB (GigaChat Embeddings) | main_agent |
@@ -222,6 +222,22 @@ PostgreSQL → StreamingResponse(text/csv)
 Browser (download)
 ```
 
+## Удалённые компоненты при рефокусе на B2B (для дельта-отчёта)
+
+Часть endpoint'ов исключена из B2B-сборки в фазе рефокуса (06.04.2026 — 12.05.2026), поскольку они либо дублировали функциональность ансамбля, либо обслуживали туристические сценарии, не применимые в B2B-контексте.
+
+| Удалённый endpoint | Причина исключения | Заменён на |
+|---|---|---|
+| `POST /api/forecast/neural` | Прямой вызов NeuralProphet — теперь часть Ensemble | `GET /api/forecast/ensemble` |
+| `POST /api/forecast/xgboost` | Прямой вызов XGBoost — теперь часть Ensemble | `GET /api/forecast/ensemble` |
+| `GET /api/forecast/compare` | Дубль `compare-all` со старой схемой ответа | `GET /api/forecast/compare-all` (новая схема) |
+| `GET /api/forecast/holidays` | Календарь праздников использовался только в туристическом UC | Прокси через `feature_engineering` (внутри Ensemble) |
+| `POST /api/events/init` | Bootstrap событий «руками» — устарел после автоматического scheduler | `parser/events/all` (cron) |
+| `DELETE /api/events/demo` | Сброс демо-событий — нерелевантен в продакшен-сборке | — |
+| `POST /api/events/load-historical` | Одноразовый импорт исторических событий — выполнен в фазе 0 | — |
+
+Также в фазе рефокуса добавлено **11 новых B2B-endpoint'ов**: `/api/analytics/{revenue-summary, events-impact?method=, booking-pace, occupancy-timeseries, price-distribution, compare-districts, segments, metadata}`, `/api/forecast/{district}/validation`, `/api/hotels/{id}/segment-benchmark`, `/api/parser/health`. Чистая дельта: −7 + 11 = **+4 endpoint'а при сохранении проектного бюджета**.
+
 ## Связь с другими моделями
 
 | Модель | Связь |
@@ -239,8 +255,8 @@ Browser (download)
 - **Cache:** Redis 7 (с аутентификацией)
 - **Vector DB:** ChromaDB
 - **ML:** Prophet, NeuralProphet, XGBoost, LightGBM, Ensemble (weighted average)
-- **LLM:** Mistral Large (основной), GigaChat / Groq / DeepSeek / OpenRouter / Gemini (fallback)
-- **AI Agents:** LangGraph (MainAgent + ForecastAgent, 12 tools, MemorySaver, Command pattern)
+- **LLM:** Groq Llama-3.3-70b-versatile (основной для tool-calling); Mistral Large, DeepSeek, GigaChat, OpenRouter, Gemini (fallback chain в `main_agent.call_model`)
+- **AI Agents:** LangGraph (MainAgent + ForecastAgent, 12 tools, MemorySaver, Command pattern, fallback chain Groq → DeepSeek → Mistral, SSE heartbeat 15s)
 - **Frontend:** React 18, TypeScript 5.9, Tailwind CSS 4, Vite 7
-- **Визуализация:** Recharts (графики, KPI), ECharts (GeoMap, scatter, heatmap)
+- **Визуализация:** Recharts (графики, KPI, тепловая карта), Yandex Maps через `@pbe/react-yandex-maps` (региональная карта объектов)
 - **Инфраструктура:** Docker Compose, APScheduler, ThreadPoolExecutor, Redis sliding window rate limit

@@ -6,13 +6,15 @@ import { api, type Event as EventData } from '../api/client'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip as ReTooltip, ResponsiveContainer,
 } from 'recharts'
-import { 
-  Calendar, Music, Theater, Palette, Trophy, Briefcase, 
+import {
+  Calendar, Music, Theater, Palette, Trophy, Briefcase,
   Film, Baby, PartyPopper, MapPin, ExternalLink, ChevronLeft, ChevronRight,
-  X, Clock, Info, Ticket, Search, Database, TrendingUp, Sparkles,
+  X, Clock, Info, Ticket, Search, Database, TrendingUp, Sparkles, BookOpen,
 } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardContent, Badge, Button, Dropdown } from '../components/ui'
 import { ErrorState } from '../components/ErrorState'
+import { MethodologyTooltip } from '../components/MethodologyTooltip'
+import { RECHARTS_TOOLTIP_PROPS, BAR_CURSOR_TRANSPARENT } from '../utils/chartTheme'
 import { usePageTitle } from '../hooks/usePageTitle'
 
 // ============================================================================
@@ -29,10 +31,18 @@ const EVENT_TYPES = {
   cinema: { icon: Film, label: 'Кино', color: '#14b8a6', bgColor: '#14b8a620' },
   kids: { icon: Baby, label: 'Детям', color: '#ec4899', bgColor: '#ec489920' },
   holiday: { icon: PartyPopper, label: 'Праздники', color: '#eab308', bgColor: '#eab30820' },
+  tour: { icon: MapPin, label: 'Экскурсии и туры', color: '#10b981', bgColor: '#10b98120' },
+  lecture: { icon: BookOpen, label: 'Лекции и встречи', color: '#6366f1', bgColor: '#6366f120' },
   other: { icon: Calendar, label: 'Другое', color: '#6b7280', bgColor: '#6b728020' },
 } as const
 
 type EventType = keyof typeof EVENT_TYPES
+
+function getEventTypeKey(event: { event_type?: string | null }): EventType {
+  const t = event.event_type
+  if (t && t in EVENT_TYPES) return t as EventType
+  return 'other'
+}
 
 const SOURCE_LABELS: Record<string, string> = {
   irk: 'Афиша Иркутска',
@@ -125,7 +135,7 @@ function Events() {
     return events.filter(event => {
       const eventDate = new Date(event.date_start)
       const inMonth = eventDate >= monthStart && eventDate <= monthEnd
-      const matchesType = !selectedType || _getEventType(event) === selectedType
+      const matchesType = !selectedType || getEventTypeKey(event) === selectedType
       const matchesSource = !selectedSource || event.source_id === selectedSource
       const matchesSearch = !query || event.title.toLowerCase().includes(query)
         || event.location?.toLowerCase().includes(query)
@@ -145,24 +155,30 @@ function Events() {
     return grouped
   }, [filteredEvents])
 
-  // Подсчёт по типам
+  // Подсчёт по типам — учитывает текущий месяц, выбранный источник и поиск,
+  // но НЕ фильтр по типу: иначе все категории схлопнулись бы в одну.
   const typeCounts = useMemo(() => {
     const counts: Record<string, number> = {}
-    
-    // Считаем для текущего месяца (с учётом фильтра типа)
+
     const monthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1)
     const monthEnd = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0)
-    
+    const query = searchQuery.toLowerCase().trim()
+
     events.filter(event => {
       const eventDate = new Date(event.date_start)
-      return eventDate >= monthStart && eventDate <= monthEnd
+      const inMonth = eventDate >= monthStart && eventDate <= monthEnd
+      const matchesSource = !selectedSource || event.source_id === selectedSource
+      const matchesSearch = !query || event.title.toLowerCase().includes(query)
+        || event.location?.toLowerCase().includes(query)
+        || event.description?.toLowerCase().includes(query)
+      return inMonth && matchesSource && matchesSearch
     }).forEach(event => {
-      const type = _getEventType(event)
+      const type = getEventTypeKey(event)
       counts[type] = (counts[type] || 0) + 1
     })
-    
+
     return counts
-  }, [events, currentMonth])
+  }, [events, currentMonth, selectedSource, searchQuery])
 
   // Получаем дни месяца для календаря
   const calendarDays = useMemo(() => {
@@ -351,13 +367,9 @@ function Events() {
                 <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 10 }} />
                 <YAxis dataKey="source" type="category" width={120} tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
                 <ReTooltip
+                  {...RECHARTS_TOOLTIP_PROPS}
+                  cursor={BAR_CURSOR_TRANSPARENT}
                   formatter={(v: number) => [`${v} событий`, 'Количество']}
-                  contentStyle={{
-                    backgroundColor: 'hsl(var(--card))',
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: '8px',
-                    color: 'hsl(var(--foreground))',
-                  }}
                 />
                 <Bar dataKey="count" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
               </BarChart>
@@ -511,7 +523,7 @@ function CalendarDay({
   // Группируем события по типу для отображения точек
   const eventTypes = useMemo(() => {
     const types = new Set<EventType>()
-    day.events.forEach(e => types.add(_getEventType(e) as EventType))
+    day.events.forEach(e => types.add(getEventTypeKey(e)))
     return Array.from(types).slice(0, 4) // Максимум 4 точки
   }, [day.events])
 
@@ -594,7 +606,7 @@ function EventMiniCard({
   event: EventData
   onClick: () => void 
 }) {
-  const type = _getEventType(event) as EventType
+  const type = getEventTypeKey(event)
   const { icon: Icon, label, color, bgColor } = EVENT_TYPES[type]
   
   return (
@@ -644,7 +656,7 @@ function EventCard({
   impact?: number
   correctedDeltaPct?: number
 }) {
-  const type = _getEventType(event) as EventType
+  const type = getEventTypeKey(event)
   const { icon: Icon, label, color, bgColor } = EVENT_TYPES[type]
   const date = new Date(event.date_start)
   
@@ -696,21 +708,23 @@ function EventCard({
         <div className="mt-3 pt-3 border-t border-[hsl(var(--border))] flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-1.5 flex-wrap">
             {impact !== undefined && (
-              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full inline-flex items-center gap-1 ${
                 impact > 5 ? 'bg-[hsl(var(--destructive)/0.1)] text-[hsl(var(--destructive))]'
                   : impact > 0 ? 'bg-[hsl(var(--warning)/0.1)] text-[hsl(var(--warning))]'
                     : 'bg-[hsl(var(--success)/0.1)] text-[hsl(var(--success))]'
               }`}>
-                {impact > 0 ? '+' : ''}{impact.toFixed(0)}% к загрузке (оценка)
+                Наивный {impact > 0 ? '+' : ''}{impact.toFixed(0)}%
+                <MethodologyTooltip text="Простой расчёт: разница между загрузкой в день события и средней загрузкой района. Не учитывает сезон и день недели — поэтому оценка приблизительная." />
               </span>
             )}
             {correctedDeltaPct !== undefined && (
-              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+              <span className={`text-xs font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 ${
                 correctedDeltaPct >= 0
                   ? 'bg-[hsl(var(--success)/0.12)] text-[hsl(var(--success))]'
                   : 'bg-[hsl(var(--destructive)/0.1)] text-[hsl(var(--destructive))]'
               }`}>
-                {correctedDeltaPct >= 0 ? '↑' : '↓'} {Math.abs(correctedDeltaPct).toFixed(1)}%
+                Сезонный {correctedDeltaPct >= 0 ? '↑' : '↓'}{Math.abs(correctedDeltaPct).toFixed(1)}%
+                <MethodologyTooltip text="Точный расчёт: сравниваем загрузку в день события с обычной загрузкой того же дня недели за 3 недели до и после, без других мероприятий. Учитывает сезон и день недели — поэтому точнее простого расчёта." />
               </span>
             )}
             {impact === undefined && correctedDeltaPct === undefined && <span />}
@@ -737,7 +751,7 @@ function EventModal({
   onClose: () => void 
 }) {
   const navigate = useNavigate()
-  const type = _getEventType(event) as EventType
+  const type = getEventTypeKey(event)
   const { icon: Icon, label, color } = EVENT_TYPES[type]
   const date = new Date(event.date_start)
 
@@ -875,9 +889,14 @@ function EventModal({
           )}
 
           {/* Source */}
-          <p className="text-xs text-[hsl(var(--muted-foreground))] flex items-center gap-1">
+          <p className="text-xs text-[hsl(var(--muted-foreground))] flex items-center gap-1 flex-wrap">
             <Info size={12} />
             Источник: {SOURCE_LABELS[event.source_id] || event.source_id}
+            {event.also_at && event.also_at.length > 0 && (
+              <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[hsl(var(--accent)/0.15)] text-[hsl(var(--accent))] text-[10px]">
+                также: {event.also_at.map(s => SOURCE_LABELS[s] || s.replace('telegram_', 'tg/')).join(', ')}
+              </span>
+            )}
           </p>
 
           {/* Actions */}
@@ -942,33 +961,6 @@ function EventsSkeleton() {
 // ============================================================================
 // HELPERS
 // ============================================================================
-
-const _API_TYPE_MAP: Record<string, EventType> = {
-  concert: 'concert', theater: 'theater', exhibition: 'exhibition',
-  festival: 'festival', sport: 'sport', business: 'business',
-  cinema: 'cinema', kids: 'kids', holiday: 'holiday',
-  culture: 'exhibition', school_holiday: 'holiday',
-}
-
-function _getEventType(event: { title: string; source_id?: string; event_type?: string | null }): EventType {
-  if (event.event_type && event.event_type !== 'event') {
-    const mapped = _API_TYPE_MAP[event.event_type]
-    if (mapped) return mapped
-  }
-
-  const title = event.title.toLowerCase()
-  if (title.includes('концерт') || title.includes('выступлен')) return 'concert'
-  if (title.includes('театр') || title.includes('спектакль')) return 'theater'
-  if (title.includes('выставк') || title.includes('экспозиц') || title.includes('галерея')) return 'exhibition'
-  if (title.includes('фестиваль') || title.includes('fest')) return 'festival'
-  if (title.includes('матч') || title.includes('соревнован') || title.includes('турнир')) return 'sport'
-  if (title.includes('конференц') || title.includes('форум') || title.includes('семинар')) return 'business'
-  if (title.includes('фильм') || title.includes('кино')) return 'cinema'
-  if (title.includes('детск') || title.includes('дет')) return 'kids'
-  if (title.includes('праздник') || title.includes('день города')) return 'holiday'
-
-  return 'other'
-}
 
 const _CITY_TO_DISTRICT: Record<string, string> = {
   'иркутск': 'Иркутский', 'листвянк': 'Иркутский', 'хужир': 'Ольхонский',

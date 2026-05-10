@@ -1,8 +1,9 @@
 """Роутер для запуска парсеров данных."""
 from fastapi import APIRouter, HTTPException, Depends, Query
 import logging
-from typing import Any
+from typing import Any, Literal
 
+from app.constants import CITY_SLUG_TO_NAME
 from app.services.parser_health_service import parser_health_service
 from app.parsers import (
     fetch_events_irk,
@@ -30,12 +31,37 @@ async def parser_health() -> list[dict]:
 
 
 @router.post("/hotels", dependencies=[Depends(verify_api_key)])
-async def parse_hotels(days_ahead: int = Query(1, ge=1, le=30), use_regions: bool = True) -> dict[str, Any]:
-    """Запустить парсинг отелей 101Hotels (региональный режим). Требует API ключ."""
+async def parse_hotels(
+    days_ahead: int = Query(1, ge=1, le=30),
+    use_regions: bool = True,
+    mode: Literal["region", "cities_default", "cities_full"] = Query("region"),
+) -> dict[str, Any]:
+    """Запустить парсинг отелей 101Hotels. Требует API ключ.
+
+    mode (имеет приоритет над use_regions):
+    - "region" — региональный режим (REGION_SLUGS, ~200+ отелей)
+    - "cities_default" — fallback по 5 городам из CITY_DISTRICTS_EN
+    - "cities_full" — полный обход всех городов из CITY_SLUG_TO_NAME (заполнение accommodation_type)
+    """
     try:
-        result = await parse_and_save_hotels(
-            days_ahead=days_ahead, use_regions=use_regions
-        )
+        if mode == "region":
+            result = await parse_and_save_hotels(
+                days_ahead=days_ahead, use_regions=True
+            )
+        elif mode == "cities_default":
+            result = await parse_and_save_hotels(
+                days_ahead=days_ahead, use_regions=False
+            )
+        elif mode == "cities_full":
+            result = await parse_and_save_hotels(
+                days_ahead=days_ahead,
+                use_regions=False,
+                cities=list(CITY_SLUG_TO_NAME.keys()),
+            )
+        else:
+            result = await parse_and_save_hotels(
+                days_ahead=days_ahead, use_regions=use_regions
+            )
         return {"status": "ok", **result}
     except Exception as e:
         logger.error(f"101Hotels parser error: {e}")
@@ -188,14 +214,36 @@ async def parse_events_culture_rf_endpoint(
 
 
 @router.post("/events/telegram", dependencies=[Depends(verify_api_key)])
-async def parse_events_telegram_endpoint(data: DataServiceDep, save: bool = True):
+async def parse_events_telegram_endpoint(
+    data: DataServiceDep,
+    save: bool = True,
+    channels: str | None = Query(
+        None,
+        description="CSV: usernames без @ (напр. 'baikalgora,irkutskmedia'). По умолчанию — все BAIKAL_CHANNELS.",
+    ),
+):
     """Парсинг событий из Telegram каналов (web preview). Требует API ключ."""
     try:
-        events = await fetch_events_telegram(use_telethon=False)
+        from app.parsers.events_telegram import BAIKAL_CHANNELS
+        selected = None
+        if channels:
+            wanted = {c.strip().lstrip("@").lower() for c in channels.split(",") if c.strip()}
+            selected = [c for c in BAIKAL_CHANNELS if c.username.lower() in wanted]
+            if not selected:
+                raise HTTPException(404, f"Каналы не найдены среди BAIKAL_CHANNELS: {sorted(wanted)}")
+
+        events = await fetch_events_telegram(channels=selected, use_telethon=False)
         added = 0
         if save and events and data.is_connected:
             added = await _save_parsed_events(events, "telegram", data)
-        return {"status": "ok", "events_found": len(events), "events_added": added}
+        return {
+            "status": "ok",
+            "channels_used": [c.username for c in (selected or BAIKAL_CHANNELS)],
+            "events_found": len(events),
+            "events_added": added,
+        }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Telegram parser error: {e}")
         raise HTTPException(500, "Ошибка парсинга. Проверьте логи сервера.")

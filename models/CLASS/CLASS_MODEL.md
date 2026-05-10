@@ -42,19 +42,24 @@
 ### БП2. Обработка запроса пользователя
 
 **Контроллеры («control»):**
-- FastAPIController - 7 роутеров (hotels, events, query, forecast, documents, parser, analytics)
-- MainAgent (LangGraph) - StateGraph, Command pattern, 4 инструмента
+- FastAPIController - 7 роутеров (analytics, documents, events, forecast, hotels, parser, query) + 2 root-маршрута (`/`, `/health`); всего 8 групп маршрутов и 65 endpoints
+- MainAgent (LangGraph) - StateGraph, Command pattern, 12 инструментов (6 базовых + 6 RMS-расширений), MemorySaver, fallback chain Groq → DeepSeek → Mistral
 - ForecastAgent (LangGraph) - пайплайн: collect_data → run_models → analyze_factors → generate_explanation
-- EnsembleService - ансамблевое прогнозирование (Prophet + NeuralProphet + XGBoost)
-- FeatureEngineering - ML-фичи (календарные, лаговые, погодные, событийные)
+- EnsembleService - ансамблевое прогнозирование (Prophet + NeuralProphet + XGBoost) с inverse-RMSE весами
+- FeatureEngineering - 38 ML-фич (календарные, праздничные, лаговые, диффы, скользящие, погодные, событийные, трендовые, ценовые)
+- MethodologyService - seasonal-corrected baseline для impact событий (NFR7 методологическая прозрачность)
+- ParserHealthService - Redis-стороживание состояния парсеров (TTL 7 дней)
 
 **Граничные («boundary»):**
-- Home (AI-чат) - чат с LangGraph агентом
-- Situation (Дашборд) - Ensemble прогноз + CI + метрики
-- Forecast (Прогнозы) - сравнение моделей, feature importance
-- Events (Каталог событий) - поиск + фильтры по источнику
-- Map (Аналитика районов) - heatmap, radar, treemap
-- LLMService - мульти-провайдер (Mistral основной, GigaChat/Groq экспериментальные)
+- Home (Командный центр) - KPI, прогноз 14 дней, ближайшие события с impact, RMS-метрики
+- Analytics (Аналитика рынка) - heatmap, Pickup/Pace, RevPAR-таблица с drill-down, экспорт CSV
+- Forecast (Прогноз спроса) - Ensemble прогноз с CI-bands, сравнение моделей, feature importance
+- Events (Каталог событий) - поиск + фильтры по источнику и типу, also_at для дедуплицированных событий
+- Map (Регионы и карта) - Yandex Maps с маркерами объектов, heatmap, radar, treemap, GeoJSON-контур области
+- HotelDetail (Карточка объекта) - профиль отеля с динамикой загрузки, цен и сегментным benchmark
+- Chat (AI-помощник) - SSE-стриминг ответов LangGraph агента, MemorySaver
+- About (О системе) - описание архитектуры и B2B-функционала
+- LLMService - мульти-провайдер (Groq primary для tool-calling в main_agent; Mistral primary для не-tool вызовов в llm_service; DeepSeek/GigaChat/OpenRouter/Gemini в fallback)
 
 **Сущности («entity»):**
 - QueryHistory (Запрос) - пользовательский вопрос (SQLAlchemy ORM)

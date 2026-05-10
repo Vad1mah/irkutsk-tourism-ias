@@ -50,11 +50,11 @@
 
 | Код | Требование |
 |-----|------------|
-| FR4.1 | RAG-поиск через ChromaDB (GigaChat Embeddings, 629+ документов) |
+| FR4.1 | RAG-поиск через ChromaDB (GigaChat Embeddings, ~1 075 документов) |
 | FR4.2 | Ensemble прогнозирование: Prophet + NeuralProphet + XGBoost → weighted average через `executor.run_sync` |
 | FR4.3 | Feature Engineering (38 фич: calendar, holidays, lags, rolling, weather, events, trend, prices) |
 | FR4.4 | LangGraph ForecastAgent: объяснимые прогнозы (PydanticOutputParser → ForecastExplanation) |
-| FR4.5 | Генерация ответа через Mistral AI (основной) с GigaChat / Groq / DeepSeek / OpenRouter / Gemini fallback |
+| FR4.5 | Генерация ответа через Groq Llama-3.3-70b-versatile (основной для tool-calling) с автоматическим fallback chain Groq → DeepSeek → Mistral в `main_agent.call_model`; для не-tool вызовов в `llm_service` основной — Mistral Large с собственной цепочкой fallback на DeepSeek/GigaChat/OpenRouter/Gemini |
 | FR4.6 | Redis кэширование прогнозов (TTL 30 минут) |
 | FR4.7 | Расчёт impact события на загрузку. **Уточнено:** метод `seasonal_corrected` с baseline по похожим дням недели в окне ±3 нед., исключая другие event-дни и gap-периоды. Наивный метод: Δ Occupancy = Occupancy(день события) − среднее Occupancy(±7 дней). Реализован в `MethodologyService`. Эндпоинт `GET /api/analytics/events-impact?method=seasonal_corrected&window_weeks=3` |
 
@@ -62,10 +62,10 @@
 
 | Код | Требование |
 |-----|------------|
-| FR5.1 | REST API (FastAPI, 7 роутеров, 59 endpoints, Swagger UI) |
-| FR5.2 | ChromaDB для RAG (629 документов) |
-| FR5.3 | Логирование через Python logging + HealthMonitor |
-| FR5.4 | APScheduler (события 6ч, отели 2ч, погода 3ч, Telegram 1ч) |
+| FR5.1 | REST API (FastAPI, 8 групп маршрутов, 65 endpoints, Swagger UI) |
+| FR5.2 | ChromaDB для RAG (~1 075 документов) |
+| FR5.3 | Логирование через Python logging + HealthMonitor + ParserHealthService (Redis hash, TTL 7 дней) |
+| FR5.4 | APScheduler (5 cron-задач: события 6ч, отели 2ч, погода 3ч, Telegram 1ч, LLM-реклассификация событий каждые 6ч) |
 | FR5.5 | Docker Compose (PostgreSQL 16 + Redis 7 + backend + frontend) |
 | FR5.6 | Production build с code splitting (Vite 7, 4 чанка) |
 

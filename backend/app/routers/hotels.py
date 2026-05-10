@@ -91,8 +91,14 @@ async def get_hotel_statistics(
 async def hotel_segment_benchmark(
     hotel_id: str,
     data_svc: DataServiceDep,
+    cache_svc: CacheServiceDep,
 ) -> HotelSegmentBenchmarkResponse:
     """Сравнение отеля с сегментом «район × размерная категория»."""
+    cache_key = f"hotels:segment-benchmark:{hotel_id}"
+    cached = await cache_svc.get(cache_key)
+    if cached:
+        return HotelSegmentBenchmarkResponse(**cached)
+
     hotel = await data_svc.get_hotel_by_id(hotel_id)
     if not hotel:
         raise HTTPException(status_code=404, detail="Hotel not found")
@@ -114,7 +120,7 @@ async def hotel_segment_benchmark(
         exclude_hotel_id=hotel_id,
     )
 
-    return HotelSegmentBenchmarkResponse(
+    response = HotelSegmentBenchmarkResponse(
         hotel=HotelSegmentBenchmarkHotel(
             id=hotel_id,
             name=hotel_dict.get("name"),
@@ -133,3 +139,5 @@ async def hotel_segment_benchmark(
         ),
         n_in_segment=segment.get("n", 0),
     )
+    await cache_svc.set(cache_key, response.model_dump(), ttl=600)
+    return response

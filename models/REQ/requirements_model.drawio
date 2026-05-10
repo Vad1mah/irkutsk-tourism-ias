@@ -194,7 +194,35 @@
         <mxCell id="fr5_4_link" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#d6b656;strokeWidth=1;endArrow=diamond;endFill=0;" edge="1" parent="1" source="fr5_4" target="fr5">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        
+
+        <!-- ==================== B2B-расширения требований (фаза рефокуса) ==================== -->
+        <!-- Оранжевая рамка #FF8000 — добавлены при переходе на B2B-курс (06.04.2026 — 12.05.2026) -->
+        <mxCell id="fr3_8" value="FR3.8. Сегментный benchmark&#xa;(район × size_bucket) [B2B]" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#FF8000;strokeWidth=2;fontColor=#000000;fontSize=10;align=center;" vertex="1" parent="1">
+          <mxGeometry x="680" y="350" width="200" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="fr3_8_link" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#FF8000;strokeWidth=1;endArrow=diamond;endFill=0;dashed=1;" edge="1" parent="1" source="fr3_8" target="fr3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="fr3_9" value="FR3.9. Daily proxy-pickup&#xa;(booking-pace) [B2B]" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#FF8000;strokeWidth=2;fontColor=#000000;fontSize=10;align=center;" vertex="1" parent="1">
+          <mxGeometry x="680" y="400" width="200" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="fr3_9_link" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#FF8000;strokeWidth=1;endArrow=diamond;endFill=0;dashed=1;" edge="1" parent="1" source="fr3_9" target="fr3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="fr4_7" value="FR4.7. Corrected impact&#xa;(seasonal_corrected) [B2B]" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#FF8000;strokeWidth=2;fontColor=#000000;fontSize=10;align=center;" vertex="1" parent="1">
+          <mxGeometry x="400" y="790" width="200" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="fr4_7_link" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#FF8000;strokeWidth=1;endArrow=diamond;endFill=0;dashed=1;" edge="1" parent="1" source="fr4_7" target="fr4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- NFR7 — методологическая прозрачность как отдельный root-узел (нет общего NFR в файле) -->
+        <mxCell id="nfr7" value="NFR7. Методологическая прозрачность&#xa;(MethodologyTooltip + method-маркер&#xa;в API + блок «Методология» на About) [B2B]" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#FF8000;strokeWidth=2;fontColor=#000000;fontSize=10;fontStyle=1;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="1370" y="1020" width="220" height="60" as="geometry" />
+        </mxCell>
+
       </root>
     </mxGraphModel>
   </diagram>

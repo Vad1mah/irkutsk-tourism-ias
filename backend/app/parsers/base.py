@@ -322,23 +322,147 @@ def parse_russian_date(date_str: str, default_year: int | None = None) -> str | 
     return None
 
 
-def detect_event_type(title: str, description: str = "") -> str:
-    """Определить тип события по названию и описанию."""
-    text = f"{title} {description}".lower()
-    
-    categories = {
-        "concert": ["концерт", "stand up", "стендап", "шоу", "выступление"],
-        "theater": ["балет", "спектакль", "опера", "театр", "мюзикл", "драма"],
-        "exhibition": ["выставка", "экспозиция", "вернисаж", "галерея"],
-        "festival": ["фестиваль", "праздник", "карнавал", "фест"],
-        "sport": ["матч", "чемпионат", "турнир", "марафон", "соревнование", "хоккей", "футбол"],
-        "business": ["конференция", "форум", "саммит", "семинар", "мастер-класс"],
-        "cinema": ["фильм", "кино", "премьера", "показ"],
-        "kids": ["детский", "для детей", "дети", "семейный"],
+# Маппинг JSON-LD schema.org @type → внутренняя категория события
+JSONLD_TYPE_MAP: dict[str, str] = {
+    "MusicEvent": "concert",
+    "TheaterEvent": "theater",
+    "ExhibitionEvent": "exhibition",
+    "VisualArtsEvent": "exhibition",
+    "SportsEvent": "sport",
+    "Festival": "festival",
+    "FoodEvent": "festival",
+    "ChildrensEvent": "kids",
+    "MovieEvent": "cinema",
+    "ScreeningEvent": "cinema",
+    "EducationEvent": "lecture",
+    "BusinessEvent": "business",
+    "DanceEvent": "theater",
+    "ComedyEvent": "concert",
+}
+
+
+def detect_event_type(
+    title: str,
+    description: str = "",
+    jsonld_type: str | None = None,
+) -> str:
+    """Определить тип события по названию, описанию и JSON-LD типу.
+
+    Приоритет источников:
+    1. ``jsonld_type`` (schema.org @type) — если задан и есть в JSONLD_TYPE_MAP,
+       возвращает категорию сразу, минуя поиск по ключевым словам. Поддерживает
+       как короткие имена (``"MusicEvent"``), так и полные URL
+       (``"http://schema.org/MusicEvent"``, ``"https://schema.org/MusicEvent"``).
+    2. Поиск по ключевым словам в title + description. Категории проверяются в
+       порядке от более специфичных (holiday/tour/lecture) к более общим
+       (concert/theater/...), чтобы «лекторий» не ушёл в concert через «вечер».
+
+    Args:
+        title: Название события.
+        description: Описание (опционально).
+        jsonld_type: Значение @type из JSON-LD schema.org (опционально).
+
+    Returns:
+        Одна из категорий: concert / theater / exhibition / festival / sport /
+        business / cinema / kids / holiday / tour / lecture, либо ``"event"``
+        как fallback.
+    """
+    # 1. JSON-LD приоритет
+    if jsonld_type:
+        # @type может быть списком (schema.org допускает множественные типы)
+        candidates: list[str] = []
+        if isinstance(jsonld_type, list):
+            candidates = [str(t) for t in jsonld_type if t]
+        else:
+            candidates = [str(jsonld_type)]
+
+        for raw in candidates:
+            # Извлекаем последний segment: "http://schema.org/MusicEvent" → "MusicEvent"
+            segment = raw.rsplit("/", 1)[-1].rsplit("#", 1)[-1].strip()
+            mapped = JSONLD_TYPE_MAP.get(segment)
+            if mapped:
+                return mapped
+
+    # 2. Keyword-based detection (две фазы: title-only → title+description).
+    # Title — авторитетный источник; description часто шумный (особенно из
+    # text-based парсеров, где попадает текст соседнего события). Если keyword
+    # явно матчится в title — приоритет у title.
+    title_lower = title.lower()
+    full_text = f"{title} {description}".lower()
+
+    categories: dict[str, list[str]] = {
+        # Более специфичные категории — раньше, чтобы перехватывать
+        # двусмысленные тайтлы до общих «concert/theater».
+        "holiday": [
+            "день города", "юбилей", "масленица", "пасха",
+            "рождеств", "новогодн", "майские праздники",
+            "день победы", "8 марта", "23 февраля",
+            "день россии", "день народного единства",
+        ],
+        "tour": [
+            "экскурсия", "путешествие", "маршрут", "гид",
+            "поездка", "тропа", "сплав", "поход",
+            "обзорная", "прогулка по",
+            # «тур» как отдельное слово (не в составе «литературный»)
+            " тур ", "тур к", "тур по", "тур на",
+        ],
+        "lecture": [
+            "лекция", "лекторий", "литературн", "встреча с",
+            "беседа", "разговор", "диалог", "интенсив",
+            "образовательн", "просветительск",
+        ],
+        "concert": [
+            "концерт", "stand up", "стендап", "шоу", "выступление",
+            "вечер", "акустич", "джем", "оркестр", "симфон",
+            "ансамбль", "open mic", "квартет", "дуэт", "сольник",
+            "трибьют", "бенефис", "юбилейный концерт", "хор",
+        ],
+        "theater": [
+            "балет", "спектакль", "опера", "театр", "мюзикл", "драма",
+            "постановк", "режиссёр", "премьера спектакля", "антреприз",
+            "трупп", "монодрама", "комедия", "трагедия", "пьеса",
+            "читка", "перформанс",
+        ],
+        "exhibition": [
+            "выставк", "экспозиц", "вернисаж", "галере",
+            "арт-проект", "инсталляц", "арт-объект",
+            "фотовыставк", "ретроспектив", "арт-",
+            "выставочн",
+        ],
+        "festival": [
+            "фестиваль", "праздник", "карнавал", "фест",
+            "ярмарк", "съезд", "форум-фестиваль", "open-air",
+            "пикник",
+        ],
+        "sport": [
+            "матч", "чемпионат", "турнир", "марафон", "соревнование",
+            "хоккей", "футбол", "волейбол", "баскетбол",
+            "спортивн", "первенство", "забег", "велогонк",
+            "спартакиад", "кубок", "состязание",
+        ],
+        "business": [
+            "конференция", "форум", "саммит", "семинар", "мастер-класс",
+            "тренинг", "воркшоп", "круглый стол", "панельн",
+            "питч", "хакатон", "митап", "бизнес-",
+        ],
+        "cinema": [
+            "фильм", "кино", "премьер", "показ", "ретроспектив",
+            "киноночь", "киноклуб",
+        ],
+        "kids": [
+            "детский", "для детей", "дети", "семейный",
+            "семейн", "школьник", "ребёнок", "анимац", "малыш",
+        ],
     }
-    
+
+    # Phase A — match только в title (приоритет, без шума description).
     for event_type, keywords in categories.items():
-        if any(kw in text for kw in keywords):
+        if any(kw in title_lower for kw in keywords):
             return event_type
-    
+
+    # Phase B — fallback к title + description.
+    for event_type, keywords in categories.items():
+        if any(kw in full_text for kw in keywords):
+            return event_type
+
     return "event"

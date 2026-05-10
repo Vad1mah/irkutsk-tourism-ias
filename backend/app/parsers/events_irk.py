@@ -2,7 +2,7 @@
 import logging
 import aiohttp
 from bs4 import BeautifulSoup
-from datetime import date
+from datetime import date, time
 from typing import Any
 import re
 import hashlib
@@ -156,6 +156,11 @@ def _parse_irk_html(html: str) -> list[dict[str, Any]]:
         re.IGNORECASE
     )
 
+    price_re = re.compile(
+        r"(?:от\s+)?(\d{2,5})\s*(?:руб|₽|р\.?\b)",
+        re.IGNORECASE,
+    )
+
     genres = {
         "концерт", "спектакль", "выставка", "гастроли", "спорт",
         "бизнес", "другое", "балет", "конференция", "концерт при свечах",
@@ -171,6 +176,7 @@ def _parse_irk_html(html: str) -> list[dict[str, Any]]:
 
     # Собираем маппинг title → url из HTML-ссылок
     url_map = _build_url_map(soup)
+    img_map = _build_image_url_map(soup)
 
     text_content = soup.get_text(separator="\n")
     lines = [line.strip() for line in text_content.split("\n") if line.strip()]
@@ -182,9 +188,11 @@ def _parse_irk_html(html: str) -> list[dict[str, Any]]:
         date_match = date_pattern.search(line)
         if date_match:
             date_str = line
+            time_raw = date_match.group(3)  # "HH:MM" или None
             title = ""
             genre = ""
             venue = ""
+            age_restriction: str | None = None
 
             for j in range(i - 1, max(0, i - 6), -1):
                 candidate = lines[j].strip()
@@ -197,6 +205,8 @@ def _parse_irk_html(html: str) -> list[dict[str, Any]]:
                         genre = candidate
                     continue
                 if re.match(r"^\d+\+$", candidate):
+                    if age_restriction is None:
+                        age_restriction = candidate
                     continue
                 if len(candidate) > 5 and not title:
                     title = candidate
@@ -233,17 +243,54 @@ def _parse_irk_html(html: str) -> list[dict[str, Any]]:
                 event_date = _parse_irk_date(date_str)
                 event_id = generate_event_id(title, event_date, "irk")
                 event_url = url_map.get(title.lower(), "https://irk.ru/afisha/")
+                image_url = img_map.get(title.lower()[:60])
                 location = venue if venue else "Иркутск"
+
+                time_start: time | None = None
+                if time_raw:
+                    try:
+                        hh, mm = time_raw.split(":")
+                        time_start = time(int(hh), int(mm))
+                    except (ValueError, TypeError):
+                        time_start = None
+
+                # Окно из ±5 строк вокруг даты для извлечения price/description
+                window_start = max(0, i - 3)
+                window_end = min(len(lines), i + 5)
+                window_lines = lines[window_start:window_end]
+                window_text = "\n".join(window_lines)
+
+                # Цена
+                price: str | None = None
+                price_min: int | None = None
+                pm = price_re.search(window_text)
+                if pm:
+                    try:
+                        price_min = int(pm.group(1))
+                        price = f"от {price_min} руб"
+                    except (ValueError, TypeError):
+                        pass
+
+                # description не извлекаем: irk.ru/afisha не имеет описания на
+                # главной странице, а соседние строки (lookahead) — это title
+                # следующего события, что засоряет данные. Detail-страницы
+                # отсутствуют. Оставляем None — direction-of-development.
+                description: str | None = None
 
                 events.append({
                     "id": event_id,
                     "title": title,
-                    "description": None,
+                    "description": description,
                     "date_start": event_date,
-                    "event_type": detect_event_type(title, genre),
+                    "event_type": detect_event_type(title, (genre or "") + " " + (description or "")),
                     "location": location,
                     "url": event_url,
                     "source": "irk",
+                    "time_start": time_start,
+                    "age_restriction": age_restriction,
+                    "price": price,
+                    "price_min": price_min,
+                    "image_url": image_url,
                 })
 
         i += 1
@@ -263,7 +310,10 @@ def _build_url_map(soup: BeautifulSoup) -> dict[str, str]:
     """Извлечь маппинг title→url из ссылок на странице."""
     url_map: dict[str, str] = {}
     for a_tag in soup.find_all("a", href=True):
-        href = a_tag.get("href", "")
+        href_raw = a_tag.get("href")
+        if not isinstance(href_raw, str) or not href_raw:
+            continue
+        href = href_raw
         text = a_tag.get_text(strip=True)
         if not text or len(text) < 5:
             continue
@@ -272,6 +322,47 @@ def _build_url_map(soup: BeautifulSoup) -> dict[str, str]:
         if "irk.ru" in href and "/afisha/" in href:
             url_map[text.lower()] = href
     return url_map
+
+
+def _build_image_url_map(soup: BeautifulSoup) -> dict[str, str]:
+    """Маппинг title (lowercase ключ, до 60 chars) → image_url из DOM.
+
+    Стратегия: для каждого <img src> найти ближайший <a> или <h*>
+    с текстом, использовать text как ключ. Lazy-loading через data-src fallback.
+    Иконки/трекеры (по подстроке в URL) пропускаются.
+    """
+    img_map: dict[str, str] = {}
+    for img in soup.find_all("img"):
+        raw_src = img.get("src") or img.get("data-src")
+        if not isinstance(raw_src, str) or not raw_src:
+            continue
+        src = raw_src.strip()
+        if not src:
+            continue
+        # Skip иконок/трекеров
+        lower_src = src.lower()
+        if any(skip in lower_src for skip in ("icon", "logo", "pixel", "tracker", ".svg")):
+            continue
+        # Relative → absolute
+        if src.startswith("//"):
+            src = f"https:{src}"
+        elif src.startswith("/"):
+            src = f"https://irk.ru{src}"
+        elif not src.startswith(("http://", "https://")):
+            continue
+        # Найти ближайший заголовок
+        text = ""
+        anchor = img.find_parent("a")
+        if anchor:
+            text = anchor.get_text(strip=True)
+        if not text or len(text) < 5:
+            h = img.find_next(["h2", "h3", "h4"])
+            if h:
+                text = h.get_text(strip=True)
+        if text and len(text) >= 5:
+            key = text.lower()[:60]
+            img_map.setdefault(key, src)  # первое вхождение wins
+    return img_map
 
 
 def _parse_irk_date(date_str: str) -> str:

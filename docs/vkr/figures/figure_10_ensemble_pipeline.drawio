@@ -28,7 +28,7 @@
         <mxCell id="neuralprophet" parent="models_group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontFamily=Verdana;fontSize=10;" value="NeuralProphet&#xa;&#xa;AR Network (n_lags=14)&#xa;Лаговые регрессоры&#xa;погоды через PyTorch" vertex="1">
           <mxGeometry height="75" width="135" x="10" y="125" as="geometry" />
         </mxCell>
-        <mxCell id="xgboost" parent="models_group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontFamily=Verdana;fontSize=10;" value="XGBoost / LightGBM&#xa;&#xa;Градиентный бустинг&#xa;Квантильная регрессия&#xa;(интервалы 10%–90%)" vertex="1">
+        <mxCell id="xgboost" parent="models_group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontFamily=Verdana;fontSize=10;" value="XGBoost&#xa;&#xa;Градиентный бустинг&#xa;Квантильная регрессия&#xa;(интервалы 10%–90%)" vertex="1">
           <mxGeometry height="80" width="135" x="10" y="210" as="geometry" />
         </mxCell>
         <mxCell id="ensemble_block" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontFamily=Verdana;fontSize=10;fontStyle=0;" value="Ансамблевый сервис&#xa;(EnsembleService)&#xa;&#xa;Взвешенное усреднение&#xa;по формуле inverse-RMSE:&#xa;wᵢ = (1/RMSEᵢ) / Σ(1/RMSEⱼ)&#xa;&#xa;Мягкая деградация:&#xa;при ошибке модели —&#xa;перераспределение весов" vertex="1">

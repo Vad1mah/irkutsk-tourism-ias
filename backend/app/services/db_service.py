@@ -155,6 +155,12 @@ class DBService:
                     "location": r.location,
                     "source_id": r.source_id,
                     "url": r.url,
+                    "time_start": r.time_start,
+                    "price_min": r.price_min,
+                    "price_max": r.price_max,
+                    "image_url": r.image_url,
+                    "address": r.address,
+                    "age_restriction": r.age_restriction,
                 }
                 for r in rows
             ]
@@ -172,7 +178,9 @@ class DBService:
             q_text = """
                 SELECT hs.date,
                        AVG(100.0 - hs.available_rooms_percent) AS avg_occupancy,
-                       AVG(hs.min_price) FILTER (WHERE hs.min_price > 0) AS avg_price
+                       AVG(hs.min_price) FILTER (WHERE hs.min_price > 0) AS avg_price,
+                       SUM(hs.rooms_num) AS total_rooms,
+                       SUM(hs.max_capacity) AS total_capacity
                 FROM hotel_statistics hs
                 JOIN hotels h ON h.id = hs.id
                 WHERE h.district = :district
@@ -191,6 +199,8 @@ class DBService:
                     "date": row.date,
                     "avg_occupancy": round(float(row.avg_occupancy), 1) if row.avg_occupancy is not None else 0.0,
                     "avg_price": round(float(row.avg_price)) if row.avg_price else None,
+                    "total_rooms": int(row.total_rooms) if row.total_rooms is not None else None,
+                    "total_capacity": int(row.total_capacity) if row.total_capacity is not None else None,
                 }
                 for row in result
                 if row.avg_occupancy is not None
@@ -581,6 +591,7 @@ class DBService:
                 "rating": h.get("rating"),
                 "min_price": h.get("min_price"),
                 "image_url": h.get("image_url"),
+                "accommodation_type": h.get("accommodation_type"),
             })
         if not rows:
             return 0
@@ -598,6 +609,10 @@ class DBService:
                         "rating": stmt.excluded.rating,
                         "min_price": stmt.excluded.min_price,
                         "image_url": func.coalesce(stmt.excluded.image_url, Hotel.__table__.c.image_url),
+                        "accommodation_type": func.coalesce(
+                            stmt.excluded.accommodation_type,
+                            Hotel.__table__.c.accommodation_type,
+                        ),
                     },
                 )
                 await s.execute(stmt)
@@ -763,6 +778,86 @@ class DBService:
                 }
                 for r in rows
             }
+
+    async def get_hotel_stats_on_date(
+        self, target_date: date, strict: bool = False
+    ) -> dict[str, dict]:
+        """Статистика номеров по каждому отелю на конкретную дату (rooms, free, capacity).
+
+        По умолчанию (strict=False) если на target_date нет наблюдений —
+        возвращает срез на ближайший предшествующий день, иначе пустой словарь.
+        Симметрично get_latest_hotel_stats при target_date == max(date).
+
+        strict=True — только записи строго за target_date, без fallback'а.
+        Используется когда вызывающий код хочет честно сказать «за эту дату
+        нет данных» вместо подмены результатами с другой даты."""
+        async with async_session() as s:
+            if strict:
+                q = select(
+                    HotelStatistic.id,
+                    HotelStatistic.rooms_num,
+                    HotelStatistic.free_rooms_amount,
+                    HotelStatistic.max_capacity,
+                ).where(HotelStatistic.date == target_date)
+            else:
+                chosen_date_q = (
+                    select(func.max(HotelStatistic.date))
+                    .where(HotelStatistic.date <= target_date)
+                    .scalar_subquery()
+                )
+                q = select(
+                    HotelStatistic.id,
+                    HotelStatistic.rooms_num,
+                    HotelStatistic.free_rooms_amount,
+                    HotelStatistic.max_capacity,
+                ).where(HotelStatistic.date == chosen_date_q)
+            rows = (await s.execute(q)).all()
+            return {
+                r.id: {
+                    "rooms_num": r.rooms_num or 0,
+                    "free_rooms": r.free_rooms_amount or 0,
+                    "max_capacity": r.max_capacity or 0,
+                }
+                for r in rows
+            }
+
+    async def get_districts_statistics_in_period(
+        self,
+        date_from: date,
+        date_to: date,
+    ) -> list[dict]:
+        """Агрегаты по районам в произвольном диапазоне дат.
+
+        Усреднение Occupancy и avg_price выполняется по всем снимкам периода;
+        free_rooms/total_rooms берутся как средние per-day, чтобы цифры не
+        умножались на длину окна."""
+        async with async_session() as s:
+            q = text("""
+                SELECT
+                    h.district,
+                    AVG(100.0 - hs.available_rooms_percent) AS avg_occupancy,
+                    AVG(hs.free_rooms_amount) AS free_rooms_avg,
+                    AVG(hs.rooms_num) AS total_rooms_avg,
+                    AVG(hs.min_price) AS avg_price,
+                    COUNT(DISTINCT h.id) AS hotels_count
+                FROM hotels h
+                JOIN hotel_statistics hs ON h.id = hs.id
+                WHERE hs.date BETWEEN :date_from AND :date_to
+                GROUP BY h.district
+                ORDER BY avg_occupancy DESC NULLS LAST
+            """)
+            result = await s.execute(q, {"date_from": date_from, "date_to": date_to})
+            return [
+                {
+                    "district": row.district or "Неизвестный",
+                    "hotels_count": int(row.hotels_count),
+                    "total_rooms": int(round(row.total_rooms_avg or 0)),
+                    "free_rooms": int(round(row.free_rooms_avg or 0)),
+                    "avg_occupancy": round(float(row.avg_occupancy or 0), 1),
+                    "avg_price": round(float(row.avg_price or 0)),
+                }
+                for row in result
+            ]
 
     async def update_hotel_metadata(
         self,
@@ -1119,8 +1214,8 @@ class DBService:
         без временно́й метки snapshot'а.  Настоящий pickup требовал бы двух snapshot'ов —
         «сегодня» и «lookback_days назад» — для одной и той же future_date.
         Поскольку такой timestamp отсутствует, метод возвращает текущий уровень occupancy
-        для каждой будущей даты и pickup_pct=0.0, явно документируя ограничение через
-        поле methodology в ответе.
+        для каждой будущей даты и proxy_pickup_pct=0.0, явно документируя ограничение
+        через поле methodology в ответе.
 
         Args:
             district: Район Иркутской области.
@@ -1128,7 +1223,7 @@ class DBService:
             lookback_days: Запрошенный горизонт ретроспективы (сохраняется для ответа).
 
         Returns:
-            Список словарей с ключами date, occupancy_today, occupancy_lookback, pickup_pct.
+            Список словарей с ключами date, occupancy_today, occupancy_lookback, proxy_pickup_pct.
         """
         if not self.is_connected:
             return []
@@ -1163,15 +1258,15 @@ class DBService:
                 today_val = by_date.get(fd)
                 # Without per-snapshot timestamps we cannot distinguish "occupancy seen
                 # today" vs "occupancy seen lookback_days ago" for the same future date.
-                # Both slots receive the same value; pickup_pct is therefore 0.0 when data
-                # exists and None when it doesn't — caller documents this via methodology.
+                # Both slots receive the same value; proxy_pickup_pct is therefore 0.0 when
+                # data exists and None when it doesn't — caller documents this via methodology.
                 prev_val = today_val
                 pickup = 0.0 if today_val is not None else None
                 points.append({
                     "date": fd.isoformat(),
                     "occupancy_today": round(today_val, 2) if today_val is not None else None,
                     "occupancy_lookback": round(prev_val, 2) if prev_val is not None else None,
-                    "pickup_pct": pickup,
+                    "proxy_pickup_pct": pickup,
                 })
             return points
         except Exception as exc:
@@ -1235,6 +1330,96 @@ class DBService:
         except Exception as exc:
             logger.error("segments_by_accommodation_type: %s", exc)
             return {}
+
+    async def district_segment_breakdown(self, district: str) -> dict:
+        """Drill-down RMS-таблицы: разбивка района по типу размещения и size_bucket.
+
+        Возвращает:
+            {
+              "district": "...",
+              "total_objects": int,
+              "by_size": [{size, count, avg_occupancy, avg_min_price, revpar}, ...],
+              "by_accommodation_type": [{type, count, avg_occupancy, avg_min_price, revpar}, ...],
+            }
+        Метрики берутся с последних снимков hotel_statistics за каждый отель в районе.
+        """
+        if not self.is_connected:
+            return {"district": district, "total_objects": 0, "by_size": [], "by_accommodation_type": []}
+        try:
+            async with async_session() as s:
+                latest_cte = """
+                    WITH latest AS (
+                        SELECT DISTINCT ON (hs.id)
+                               hs.id, hs.rooms_num, hs.available_rooms_percent, hs.min_price,
+                               h.accommodation_type
+                        FROM hotel_statistics hs
+                        JOIN hotels h ON h.id = hs.id
+                        WHERE h.district = :district
+                        ORDER BY hs.id, hs.date DESC
+                    )
+                """
+
+                size_q = latest_cte + """
+                    SELECT
+                        CASE
+                            WHEN rooms_num <= 15 THEN 'mini'
+                            WHEN rooms_num <= 50 THEN 'mid'
+                            ELSE 'large'
+                        END AS size_bucket,
+                        COUNT(*) AS n,
+                        AVG(100 - available_rooms_percent) AS avg_occ,
+                        AVG(NULLIF(min_price, 0)) AS avg_price
+                    FROM latest
+                    WHERE rooms_num IS NOT NULL
+                    GROUP BY size_bucket
+                    ORDER BY n DESC
+                """
+                size_rows = (await s.execute(text(size_q), {"district": district})).all()
+                by_size = []
+                for r in size_rows:
+                    occ = float(r.avg_occ or 0)
+                    price = float(r.avg_price or 0)
+                    by_size.append({
+                        "size": r.size_bucket,
+                        "count": int(r.n),
+                        "avg_occupancy": round(occ, 1),
+                        "avg_min_price": int(price) if price else None,
+                        "revpar": int(price * occ / 100) if price and occ else None,
+                    })
+
+                type_q = latest_cte + """
+                    SELECT
+                        COALESCE(accommodation_type, 'не указан') AS at,
+                        COUNT(*) AS n,
+                        AVG(100 - available_rooms_percent) AS avg_occ,
+                        AVG(NULLIF(min_price, 0)) AS avg_price
+                    FROM latest
+                    GROUP BY at
+                    ORDER BY n DESC
+                """
+                type_rows = (await s.execute(text(type_q), {"district": district})).all()
+                by_type = []
+                for r in type_rows:
+                    occ = float(r.avg_occ or 0)
+                    price = float(r.avg_price or 0)
+                    by_type.append({
+                        "type": r.at,
+                        "count": int(r.n),
+                        "avg_occupancy": round(occ, 1),
+                        "avg_min_price": int(price) if price else None,
+                        "revpar": int(price * occ / 100) if price and occ else None,
+                    })
+
+                total = sum(b["count"] for b in by_size)
+                return {
+                    "district": district,
+                    "total_objects": total,
+                    "by_size": by_size,
+                    "by_accommodation_type": by_type,
+                }
+        except Exception as exc:
+            logger.error("district_segment_breakdown(%s): %s", district, exc)
+            return {"district": district, "total_objects": 0, "by_size": [], "by_accommodation_type": []}
 
     async def get_hotel_latest_stats(self, hotel_id: str) -> dict:
         """Последняя запись статистики для конкретного отеля.

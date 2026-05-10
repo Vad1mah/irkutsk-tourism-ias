@@ -30,6 +30,7 @@ export type Event = {
   price_max: number | null
   image_url: string | null
   age_restriction: string | null
+  also_at?: string[]
 }
 
 export type QueryResponse = {
@@ -63,7 +64,9 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
     } catch {
       // Игнорируем ошибки парсинга
     }
-    throw new Error(errorMessage)
+    const err = new Error(errorMessage) as Error & { status: number }
+    err.status = response.status
+    throw err
   }
   return response.json()
 }
@@ -229,7 +232,7 @@ export type BookingPacePoint = {
   date: string
   occupancy_today: number | null
   occupancy_lookback: number | null
-  pickup_pct: number | null
+  proxy_pickup_pct: number | null
 }
 
 export type BookingPaceResponse = {
@@ -240,9 +243,9 @@ export type BookingPaceResponse = {
   methodology: string
   points: BookingPacePoint[]
   summary: {
-    avg_pickup_pct: number | null
-    max_pickup_pct: number | null
-    min_pickup_pct: number | null
+    avg_proxy_pickup_pct: number | null
+    max_proxy_pickup_pct: number | null
+    min_proxy_pickup_pct: number | null
     trend: string
   }
 }
@@ -250,7 +253,12 @@ export type BookingPaceResponse = {
 export type OccupancyTimeseriesResponse = {
   district: string
   days: number
-  points: Array<{ date: string; occupancy: number }>
+  points: Array<{
+    date: string
+    occupancy: number
+    total_rooms?: number | null
+    total_capacity?: number | null
+  }>
   summary: { min: number | null; max: number | null; avg: number | null; samples: number }
 }
 
@@ -280,6 +288,20 @@ export type SegmentsResponse = {
   by_size: Record<string, { count: number; avg_occupancy: number | null; avg_price: number | null }>
   by_accommodation_type: Record<string, { count: number; avg_price: number | null }>
   size_thresholds: { mini_max: number; mid_max: number }
+}
+
+export type DistrictSegmentItem = {
+  count: number
+  avg_occupancy: number
+  avg_min_price: number | null
+  revpar: number | null
+}
+
+export type DistrictSegmentsResponse = {
+  district: string
+  total_objects: number
+  by_size: Array<DistrictSegmentItem & { size: string }>
+  by_accommodation_type: Array<DistrictSegmentItem & { type: string }>
 }
 
 export type HotelSegmentBenchmarkResponse = {
@@ -493,7 +515,13 @@ export const api = {
     const url = year ? `/api/analytics/correlation?year=${year}` : '/api/analytics/correlation'
     return request<CorrelationData>(url)
   },
-  getDistricts: () => request<DistrictData[]>('/api/analytics/districts'),
+  getDistricts: (dateFrom?: string, dateTo?: string) => {
+    const qs = new URLSearchParams()
+    if (dateFrom) qs.set('date_from', dateFrom)
+    if (dateTo) qs.set('date_to', dateTo)
+    const tail = qs.toString() ? `?${qs.toString()}` : ''
+    return request<DistrictData[]>(`/api/analytics/districts${tail}`)
+  },
   getRecommendations: () => request<Recommendation[]>('/api/analytics/recommendations'),
   getKPI: () => request<KPIData>('/api/analytics/kpi'),
   getHotelsByDistrict: () => request<HotelsByDistrict[]>('/api/analytics/hotels-by-district'),
@@ -522,13 +550,19 @@ export const api = {
 
   getEventsImpact: () => request<EventImpact[]>('/api/analytics/events-impact'),
 
-  getHotelsMap: (district?: string) => {
-    const params = district ? `?district=${encodeURIComponent(district)}` : ''
-    return request<HotelsMapData>(`/api/analytics/hotels-map${params}`)
+  getHotelsMap: (district?: string, snapshotDate?: string) => {
+    const qs = new URLSearchParams()
+    if (district) qs.set('district', district)
+    if (snapshotDate) qs.set('date', snapshotDate)
+    const tail = qs.toString() ? `?${qs.toString()}` : ''
+    return request<HotelsMapData>(`/api/analytics/hotels-map${tail}`)
   },
 
-  getPriceHistory: (days: number = 180) =>
-    request<PriceHistoryData>(`/api/analytics/price-history?days=${days}`),
+  getPriceHistory: (days: number = 180, district?: string) => {
+    const qs = new URLSearchParams({ days: String(days) })
+    if (district) qs.set('district', district)
+    return request<PriceHistoryData>(`/api/analytics/price-history?${qs.toString()}`)
+  },
 
   getWeekdayHeatmap: (district?: string) => {
     const params = district ? `?district=${encodeURIComponent(district)}` : ''
@@ -580,6 +614,11 @@ export const api = {
   },
 
   getSegments: () => request<SegmentsResponse>('/api/analytics/segments'),
+
+  getDistrictSegments: (district: string) =>
+    request<DistrictSegmentsResponse>(
+      `/api/analytics/district-segments?district=${encodeURIComponent(district)}`,
+    ),
 
   getHotelSegmentBenchmark: (hotelId: string) =>
     request<HotelSegmentBenchmarkResponse>(`/api/hotels/${encodeURIComponent(hotelId)}/segment-benchmark`),

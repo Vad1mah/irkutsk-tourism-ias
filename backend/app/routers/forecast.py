@@ -405,7 +405,7 @@ async def compare_all_models(
         return response
 
 
-LLM_EXPLAIN_TIMEOUT_S = 5.0
+LLM_EXPLAIN_TIMEOUT_S = 30.0
 
 
 def _extract_factors_from_ensemble(result: dict) -> list[dict]:

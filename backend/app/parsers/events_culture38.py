@@ -2,10 +2,12 @@
 import logging
 import aiohttp
 from bs4 import BeautifulSoup
-from datetime import date
+from datetime import date, time
 from typing import Any
 import re
 import hashlib
+
+_TIME_RE = re.compile(r"\b([01]?\d|2[0-3]):([0-5]\d)\b")
 
 from app.config import settings
 from app.parsers.base import detect_event_type
@@ -133,6 +135,73 @@ _date_prefix_re = re.compile(
     re.IGNORECASE,
 )
 
+_MONTHS_MAP = {
+    "января": 1, "февраля": 2, "марта": 3, "апреля": 4,
+    "мая": 5, "июня": 6, "июля": 7, "августа": 8,
+    "сентября": 9, "октября": 10, "ноября": 11, "декабря": 12,
+}
+
+# Диапазон в одном месяце: "15-22 марта", "5–12 июля", "с 1 по 7 апреля"
+_date_range_re = re.compile(
+    rf'(?:с\s+)?(\d{{1,2}})\s*[-–—]\s*(\d{{1,2}})\s+({_MONTHS})',
+    re.IGNORECASE,
+)
+# Диапазон через "с N M по K M2"
+_date_range_two_months_re = re.compile(
+    rf'с\s+(\d{{1,2}})\s+({_MONTHS})\s+(?:по|до)\s+(\d{{1,2}})\s+({_MONTHS})',
+    re.IGNORECASE,
+)
+
+
+def _parse_culture38_date_range(date_str: str) -> tuple[str | None, str | None]:
+    """Парсит диапазон дат из строки.
+
+    Возвращает кортеж (start, end) в формате YYYY-MM-DD или (None, None).
+    Поддерживает: "15-22 марта", "с 1 апреля по 7 мая".
+    """
+    if not date_str:
+        return None, None
+    today = date.today()
+
+    # Двухмесячный диапазон
+    m2 = _date_range_two_months_re.search(date_str.lower())
+    if m2:
+        try:
+            d_start = int(m2.group(1))
+            mo_start = _MONTHS_MAP[m2.group(2)]
+            d_end = int(m2.group(3))
+            mo_end = _MONTHS_MAP[m2.group(4)]
+            year = today.year
+            if mo_start < today.month or (mo_start == today.month and d_start < today.day):
+                year += 1
+            return (
+                f"{year}-{mo_start:02d}-{d_start:02d}",
+                f"{year}-{mo_end:02d}-{d_end:02d}",
+            )
+        except (ValueError, KeyError):
+            pass
+
+    # Одномесячный диапазон
+    m1 = _date_range_re.search(date_str.lower())
+    if m1:
+        try:
+            d_start = int(m1.group(1))
+            d_end = int(m1.group(2))
+            mo = _MONTHS_MAP[m1.group(3)]
+            year = today.year
+            if mo < today.month or (mo == today.month and d_start < today.day):
+                year += 1
+            if d_end <= d_start:
+                return f"{year}-{mo:02d}-{d_start:02d}", None
+            return (
+                f"{year}-{mo:02d}-{d_start:02d}",
+                f"{year}-{mo:02d}-{d_end:02d}",
+            )
+        except (ValueError, KeyError):
+            pass
+
+    return None, None
+
 
 def _parse_culture38_html(html: str) -> list[dict[str, Any]]:
     """Парсинг HTML страницы culture38.ru/afisha."""
@@ -151,6 +220,22 @@ def _parse_culture38_html(html: str) -> list[dict[str, Any]]:
         if raw_title.lower() in ["все", "сегодня", "завтра", "выходные", "еще",
                                    "пушкинская карта"]:
             continue
+
+        # image_url: первая <img> внутри ссылки или в parent
+        image_url: str | None = None
+        img = link.find("img", src=True)
+        if img and isinstance(img.get("src"), str):
+            src = img["src"]
+            if src.startswith("/"):
+                src = f"https://culture38.ru{src}"
+            image_url = src
+        elif link.parent:
+            img2 = link.parent.find("img", src=True)
+            if img2 and isinstance(img2.get("src"), str):
+                src = img2["src"]
+                if src.startswith("/"):
+                    src = f"https://culture38.ru{src}"
+                image_url = src
 
         # Убираем дату из начала title ("15 – 22 мартаТекст" → "Текст")
         title = _date_prefix_re.sub("", raw_title).strip()
@@ -190,21 +275,48 @@ def _parse_culture38_html(html: str) -> list[dict[str, Any]]:
                     location = venue_text
 
         full_url = f"https://culture38.ru{href}" if href.startswith("/") else href
-        event_date = _parse_culture38_date(date_str) if date_str else None
+
+        # Сначала пытаемся распарсить диапазон дат "15-22 марта"
+        date_end: str | None = None
+        if date_str or raw_title:
+            # raw_title может содержать диапазон, если sibling ничего не дал
+            range_source = date_str or raw_title
+            rng_start, rng_end = _parse_culture38_date_range(range_source)
+            if rng_start:
+                event_date = rng_start
+                date_end = rng_end
+            else:
+                event_date = _parse_culture38_date(date_str) if date_str else None
+        else:
+            event_date = None
+
         event_id = _generate_event_id(title, "culture38", event_date or "")
 
         if event_date is None:
             continue
+
+        # Best-effort: время из строки даты (например "15 марта 18:00")
+        time_start: time | None = None
+        if date_str:
+            tm = _TIME_RE.search(date_str)
+            if tm:
+                try:
+                    time_start = time(int(tm.group(1)), int(tm.group(2)))
+                except (ValueError, TypeError):
+                    time_start = None
 
         events.append({
             "id": event_id,
             "title": title,
             "description": None,
             "date_start": event_date,
+            "date_end": date_end,
             "event_type": detect_event_type(title),
             "location": location,
             "url": full_url,
             "source": "culture38",
+            "time_start": time_start,
+            "image_url": image_url,
         })
 
     # Удаляем дубликаты

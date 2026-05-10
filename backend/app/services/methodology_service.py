@@ -5,6 +5,10 @@
   исключая дни других событий и gap-периоды.
 - corrected_impact = (observed - baseline) / baseline * 100%
 - confidence = функция от размера выборки.
+
+Также экспортируется `METHODOLOGY_PROMPT_RULES` — единый источник 8 правил
+для системных промптов AI-агента (см. main_agent + llm_service RAG-fallback).
+Изменять только здесь — оба промпта импортируют эту строку.
 """
 from __future__ import annotations
 
@@ -15,6 +19,16 @@ from statistics import mean, stdev
 from typing import Iterable, Literal
 
 from app.constants import BASELINE_CONFIDENCE_HIGH, BASELINE_CONFIDENCE_MEDIUM
+
+
+METHODOLOGY_PROMPT_RULES = """1. Всегда указывай район или географический скоп ответа.
+2. Всегда указывай период данных, на которые опирается ответ.
+3. Всегда указывай метод/методологию метрики (например, "seasonal_corrected" для impact событий).
+4. Всегда указывай базу для сравнения (с прошлой неделей, с регионом, с baseline).
+5. При нехватке данных — явно говори, чего не хватает, не выдумывай.
+6. Не сравнивай отель с конкретными конкурентами — у нас нет данных; используй сегментный benchmark.
+7. RevPAR и ADR — это прокси (рассчитываются из min_price), а не реальные значения; помечай это.
+8. Период gap данных июль-сентябрь 2025 известен; не интерполируй молча — явно отмечай разрыв."""
 
 
 @dataclass(frozen=True)
@@ -70,7 +84,12 @@ class MethodologyService:
         baseline: SeasonalBaseline,
     ) -> dict:
         if baseline.mean is None or baseline.mean == 0:
-            return {"delta_pct": None, "confidence": baseline.confidence}
+            return {
+                "delta_pct": None,
+                "confidence": baseline.confidence,
+                "n_samples": baseline.n_samples,
+                "method": "naive_fallback",
+            }
         delta = (observed - baseline.mean) / baseline.mean * 100.0
         # 95% CI (упрощённо: ±1.96 * std/sqrt(n) в %)
         if baseline.std is not None and baseline.n_samples >= 2:

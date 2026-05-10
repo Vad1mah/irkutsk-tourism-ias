@@ -42,8 +42,8 @@
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         
-        <!-- RESOURCE - YDB -->
-        <mxCell id="res1" value="«resource»&#xa;YDB (база данных)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#ffd93d;fontColor=#d68910;fontSize=10;align=center;" vertex="1" parent="1">
+        <!-- RESOURCE - PostgreSQL -->
+        <mxCell id="res1" value="«resource»&#xa;База данных" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#ffd93d;fontColor=#d68910;fontSize=10;align=center;" vertex="1" parent="1">
           <mxGeometry x="200" y="100" width="120" height="50" as="geometry" />
         </mxCell>
         <mxCell id="arrow_res1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#ffd93d;strokeWidth=2;endArrow=classic;entryX=0.2;entryY=0;" edge="1" parent="1" source="res1" target="proc1">
@@ -51,7 +51,7 @@
         </mxCell>
         
         <!-- RESOURCE - AI Agent -->
-        <mxCell id="res2" value="«resource»&#xa;AI-агент&#xa;(MiMo + RAG)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#ffd93d;fontColor=#d68910;fontSize=10;align=center;" vertex="1" parent="1">
+        <mxCell id="res2" value="«resource»&#xa;Интеллектуальный агент" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#ffd93d;fontColor=#d68910;fontSize=10;align=center;" vertex="1" parent="1">
           <mxGeometry x="340" y="100" width="120" height="50" as="geometry" />
         </mxCell>
         <mxCell id="arrow_res2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#ffd93d;strokeWidth=2;endArrow=classic;entryX=0.4;entryY=0;" edge="1" parent="1" source="res2" target="proc1">
@@ -59,7 +59,7 @@
         </mxCell>
         
         <!-- RESOURCE - Prophet -->
-        <mxCell id="res3" value="«resource»&#xa;Prophet&#xa;(прогнозирование)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#ffd93d;fontColor=#d68910;fontSize=10;align=center;" vertex="1" parent="1">
+        <mxCell id="res3" value="«resource»&#xa;Модуль прогнозирования" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#ffd93d;fontColor=#d68910;fontSize=10;align=center;" vertex="1" parent="1">
           <mxGeometry x="480" y="100" width="120" height="50" as="geometry" />
         </mxCell>
         <mxCell id="arrow_res3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#ffd93d;strokeWidth=2;endArrow=classic;entryX=0.6;entryY=0;" edge="1" parent="1" source="res3" target="proc1">
@@ -67,7 +67,7 @@
         </mxCell>
         
         <!-- RESOURCE - Web Interface -->
-        <mxCell id="res4" value="«resource»&#xa;Веб-интерфейс&#xa;(React)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#ffd93d;fontColor=#d68910;fontSize=10;align=center;" vertex="1" parent="1">
+        <mxCell id="res4" value="«resource»&#xa;Веб-интерфейс" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#ffd93d;fontColor=#d68910;fontSize=10;align=center;" vertex="1" parent="1">
           <mxGeometry x="620" y="100" width="120" height="50" as="geometry" />
         </mxCell>
         <mxCell id="arrow_res4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#ffd93d;strokeWidth=2;endArrow=classic;entryX=0.8;entryY=0;" edge="1" parent="1" source="res4" target="proc1">
@@ -142,7 +142,7 @@
         </mxCell>
         
         <!-- Resource для P1 -->
-        <mxCell id="rs1" value="«resource»&#xa;YDB" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#ffd93d;fontColor=#d68910;fontSize=9;align=center;" vertex="1" parent="1">
+        <mxCell id="rs1" value="«resource»&#xa;База данных" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#ffd93d;fontColor=#d68910;fontSize=9;align=center;" vertex="1" parent="1">
           <mxGeometry x="190" y="160" width="80" height="45" as="geometry" />
         </mxCell>
         <mxCell id="arr_rs1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#ffd93d;strokeWidth=2;endArrow=classic;entryX=0.5;entryY=0;" edge="1" parent="1" source="rs1" target="p1">
@@ -158,7 +158,7 @@
         </mxCell>
         
         <!-- Output P1 -->
-        <mxCell id="ot1" value="«output»&#xa;Обновлённые&#xa;данные в YDB" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#22c55e;fontColor=#27ae60;fontSize=9;align=center;" vertex="1" parent="1">
+        <mxCell id="ot1" value="«output»&#xa;Обновлённые&#xa;данные о туризме" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#22c55e;fontColor=#27ae60;fontSize=9;align=center;" vertex="1" parent="1">
           <mxGeometry x="400" y="310" width="110" height="55" as="geometry" />
         </mxCell>
         <mxCell id="arr_ot1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#22c55e;strokeWidth=2;endArrow=classic;" edge="1" parent="1" source="p1" target="ot1">
@@ -194,7 +194,7 @@
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         
-        <mxCell id="rs2b" value="«resource»&#xa;FastAPI" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#ffd93d;fontColor=#d68910;fontSize=9;align=center;" vertex="1" parent="1">
+        <mxCell id="rs2b" value="«resource»&#xa;Сервер приложений" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#ffd93d;fontColor=#d68910;fontSize=9;align=center;" vertex="1" parent="1">
           <mxGeometry x="660" y="160" width="80" height="45" as="geometry" />
         </mxCell>
         <mxCell id="arr_rs2b" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#ffd93d;strokeWidth=2;endArrow=classic;entryX=0.7;entryY=0;" edge="1" parent="1" source="rs2b" target="p2">
@@ -231,7 +231,7 @@
         </mxCell>
         
         <!-- Information для P3 -->
-        <mxCell id="inf3" value="«information»&#xa;Данные YDB" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#4ecdc4;fontColor=#16a085;fontSize=9;align=center;" vertex="1" parent="1">
+        <mxCell id="inf3" value="«information»&#xa;Накопленные&#xa;туристические данные" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#4ecdc4;fontColor=#16a085;fontSize=9;align=center;" vertex="1" parent="1">
           <mxGeometry x="1050" y="450" width="100" height="50" as="geometry" />
         </mxCell>
         <mxCell id="arr_inf3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#4ecdc4;strokeWidth=2;endArrow=classic;entryX=0.7;entryY=1;" edge="1" parent="1" source="inf3" target="p3">
@@ -246,21 +246,21 @@
         </mxCell>
         
         <!-- Resource для P3 -->
-        <mxCell id="rs3" value="«resource»&#xa;AI-агент (MiMo)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#ffd93d;fontColor=#d68910;fontSize=9;align=center;" vertex="1" parent="1">
+        <mxCell id="rs3" value="«resource»&#xa;Интеллектуальный агент" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#ffd93d;fontColor=#d68910;fontSize=9;align=center;" vertex="1" parent="1">
           <mxGeometry x="920" y="160" width="100" height="45" as="geometry" />
         </mxCell>
         <mxCell id="arr_rs3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#ffd93d;strokeWidth=2;endArrow=classic;entryX=0.3;entryY=0;" edge="1" parent="1" source="rs3" target="p3">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         
-        <mxCell id="rs3b" value="«resource»&#xa;Chroma (RAG)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#ffd93d;fontColor=#d68910;fontSize=9;align=center;" vertex="1" parent="1">
+        <mxCell id="rs3b" value="«resource»&#xa;Векторный индекс" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#ffd93d;fontColor=#d68910;fontSize=9;align=center;" vertex="1" parent="1">
           <mxGeometry x="1040" y="160" width="100" height="45" as="geometry" />
         </mxCell>
         <mxCell id="arr_rs3b" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#ffd93d;strokeWidth=2;endArrow=classic;entryX=0.6;entryY=0;" edge="1" parent="1" source="rs3b" target="p3">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         
-        <mxCell id="rs3c" value="«resource»&#xa;Prophet" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#ffd93d;fontColor=#d68910;fontSize=9;align=center;" vertex="1" parent="1">
+        <mxCell id="rs3c" value="«resource»&#xa;Модуль прогнозирования" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#ffd93d;fontColor=#d68910;fontSize=9;align=center;" vertex="1" parent="1">
           <mxGeometry x="1160" y="160" width="80" height="45" as="geometry" />
         </mxCell>
         <mxCell id="arr_rs3c" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#ffd93d;strokeWidth=2;endArrow=classic;entryX=0.9;entryY=0;" edge="1" parent="1" source="rs3c" target="p3">

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Query, HTTPException, Depends
 import hashlib
 import logging
+import re
 from datetime import date
 from typing import Any
 
@@ -52,6 +53,54 @@ def _is_outside_region(location) -> bool:
     return False
 
 
+_TITLE_NORMALIZE_RE = re.compile(r"[^\w\s]", flags=re.UNICODE)
+
+
+def _normalize_title_for_dedup(title: str) -> str:
+    """Ключ дедупа: lowercase, без пунктуации, схлопнутые пробелы, до 60 симв."""
+    if not title:
+        return ""
+    cleaned = _TITLE_NORMALIZE_RE.sub(" ", title.lower())
+    return " ".join(cleaned.split())[:60]
+
+
+def _completeness_score(row: dict) -> int:
+    """Чем больше непустых полей — тем «полнее» запись. Используем для выбора best-of-group."""
+    score = 0
+    for key in ("description", "image_url", "address", "time_start", "price_min", "url"):
+        v = row.get(key)
+        if v not in (None, "", 0):
+            score += 1
+    return score
+
+
+def _dedup_events(rows: list[dict]) -> list[dict]:
+    """Cross-source дедуп на чтении. Группирует по (нормализованный title, date_start),
+    в каждой группе берёт самую полную запись и склеивает source_id остальных в also_at."""
+    groups: dict[tuple[str, Any], list[dict]] = {}
+    for row in rows:
+        key = (_normalize_title_for_dedup(row.get("title", "")), row.get("date_start"))
+        if not key[0]:
+            groups.setdefault(("__no_key__", row.get("event_id")), []).append(row)
+            continue
+        groups.setdefault(key, []).append(row)
+
+    merged: list[dict] = []
+    for group in groups.values():
+        if len(group) == 1:
+            merged.append(group[0])
+            continue
+        primary = max(group, key=_completeness_score)
+        primary_source = primary.get("source_id")
+        also = sorted({
+            r.get("source_id") for r in group
+            if r.get("source_id") and r.get("source_id") != primary_source
+        })
+        primary = {**primary, "also_at": list(also)}
+        merged.append(primary)
+    return merged
+
+
 @router.get("", response_model=list[Event])
 async def get_events(
     data_svc: DataServiceDep,
@@ -82,6 +131,12 @@ async def get_events(
             text = (title + " " + (description or "")).lower()
             return any(marker in text for marker in _SPAM_MARKERS)
 
+        clean_rows = [
+            row for row in events_data
+            if not _is_spam(row.get("title", ""), row.get("description"))
+            and not _is_outside_region(row.get("location"))
+        ]
+        deduped_rows = _dedup_events(clean_rows)
         result = [
             Event(
                 event_id=row["event_id"],
@@ -93,10 +148,15 @@ async def get_events(
                 location=row.get("location"),
                 source_id=row.get("source_id", "unknown"),
                 url=row.get("url"),
+                time_start=row.get("time_start"),
+                price_min=row.get("price_min"),
+                price_max=row.get("price_max"),
+                image_url=row.get("image_url"),
+                address=row.get("address"),
+                age_restriction=row.get("age_restriction"),
+                also_at=row.get("also_at", []),
             )
-            for row in events_data
-            if not _is_spam(row.get("title", ""), row.get("description"))
-            and not _is_outside_region(row.get("location"))
+            for row in deduped_rows
         ]
         await cache.set(cache_key, [e.model_dump() for e in result], ttl=120)
         return result

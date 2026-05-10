@@ -46,10 +46,10 @@
 - PostgreSQL 16 (основное хранилище)
 - Redis 7 (кэш прогнозов и RMS-агрегатов, TTL 30 мин)
 - ChromaDB (RAG, 629+ документов)
-- AI-агент (LangGraph + 6 tools + Mistral Large)
+- AI-агент (LangGraph + 12 tools + Groq Llama-3.3-70b с fallback на DeepSeek и Mistral Large)
 - Ensemble прогнозирование (Prophet + NeuralProphet + XGBoost через `executor.run_sync`)
-- FastAPI backend (7 роутеров, 59 endpoints)
-- React 18 + Vite 7 frontend (8 страниц)
+- FastAPI backend (8 групп маршрутов, 65 endpoints)
+- React 18 + Vite 7 frontend (8 страниц, Recharts + Yandex Maps)
 
 ### Выходные элементы
 
@@ -84,7 +84,7 @@
 | «information» | Параметры запроса (объект, район, диапазон дат, тип данных, горизонт) |
 | «resource» | FastAPI router, middleware/rate_limit, B2B-эндпоинты, AI-агент (LangGraph) |
 | «goal» | Удобный ввод параметров и получение структурированного ответа в формате, пригодном для бизнес-решения |
-| «output» | Структурированный JSON / CSV / визуализация (Recharts, ECharts) |
+| «output» | Структурированный JSON / CSV / визуализация (Recharts, Yandex Maps) |
 
 ### Процесс 3: Анализ данных и формирование B2B-результата
 
@@ -92,7 +92,7 @@
 |---------|----------|
 | «event» | Поступление параметризованного запроса на прогноз / RMS / экспорт |
 | «information» | Данные PostgreSQL (`hotel_statistics`, `events`, `hotels`), кэш Redis, индекс ChromaDB |
-| «resource» | Ensemble (Prophet + NeuralProphet + XGBoost), feature_engineering (38 признаков), AI-агент (Mistral Large), сервис расчёта RMS-метрик, сервис экспорта CSV |
+| «resource» | Ensemble (Prophet + NeuralProphet + XGBoost), feature_engineering (38 признаков), AI-агент (Groq primary + DeepSeek/Mistral fallback chain), MethodologyService для seasonal-corrected impact, сервис расчёта RMS-метрик, сервис экспорта CSV |
 | «goal» | Качественный анализ, точный прогноз и воспроизводимые метрики для B2B-сегментов |
 | «output» | Прогноз с CI-bands, RMS-метрики, impact-оценка событий, региональная сводка, CSV-выгрузка, ответ AI-агента |
 

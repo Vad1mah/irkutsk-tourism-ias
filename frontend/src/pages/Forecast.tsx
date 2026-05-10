@@ -14,10 +14,12 @@ import {
 } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardContent, Badge, Dropdown } from '../components/ui'
 import { ErrorState } from '../components/ErrorState'
+import { MethodologyTooltip } from '../components/MethodologyTooltip'
 import { exportChartPng } from '../utils/export'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { DEFAULT_DISTRICTS } from '../constants/districts'
-import { localizeFeature } from '../utils/localizeFeatures'
+import { localizeFeature, describeFeature } from '../utils/localizeFeatures'
+import { RECHARTS_TOOLTIP_PROPS, BAR_CURSOR_TRANSPARENT } from '../utils/chartTheme'
 
 type SeasonData = {
   month: string
@@ -67,7 +69,7 @@ function Forecast() {
 
   const { data: districtsData } = useQuery({
     queryKey: ['districts'],
-    queryFn: api.getDistricts,
+    queryFn: () => api.getDistricts(),
     staleTime: 10 * 60 * 1000,
   })
   const districtNames = districtsData?.map(d => d.district) || DEFAULT_DISTRICTS
@@ -142,6 +144,7 @@ function Forecast() {
   const missingPeriods: MissingPeriod[] = correlationData?.missing_periods || []
   const dataCoverage = correlationData?.data_coverage || ''
   const availableYears = correlationData?.available_years || []
+  const validMonthsCount = parseInt(dataCoverage.split('/')[0] || '0', 10)
   const seasonInsights = _calculateInsights(monthsData)
 
   const forecastEvents = (() => {
@@ -244,15 +247,19 @@ function Forecast() {
       {viewMode === 'seasonality' ? (
         loadingCorrelation ? (
           <SeasonalitySkeleton />
-        ) : monthsData.length === 0 ? (
+        ) : monthsData.length === 0 || validMonthsCount === 0 ? (
           <Card variant="glass" className="border-[hsl(var(--warning))]">
             <CardContent>
               <div className="flex items-center gap-3">
                 <AlertCircle className="w-6 h-6 text-[hsl(var(--warning))]" />
                 <div>
-                  <p className="font-medium">Нет данных о сезонности</p>
+                  <p className="font-medium">
+                    {selectedYear != null ? `Нет данных за ${selectedYear} год` : 'Нет данных о сезонности'}
+                  </p>
                   <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                    Для анализа сезонности нужны данные за несколько месяцев.
+                    {selectedYear != null && availableYears.length > 0
+                      ? `За выбранный год ни в одном месяце не накоплено достаточно наблюдений. Доступны годы с данными: ${availableYears.join(', ')}.`
+                      : 'Для анализа сезонности нужны данные за несколько месяцев.'}
                   </p>
                 </div>
               </div>
@@ -287,7 +294,7 @@ function Forecast() {
                     <div className="w-10 h-10 rounded-xl bg-[hsl(var(--success)/0.2)] flex items-center justify-center">
                       <Sun className="w-5 h-5 text-[hsl(var(--success))]" />
                     </div>
-                    <Badge variant="success" size="sm">Рекомендуем</Badge>
+                    <Badge variant="success" size="sm">Низкий сезон</Badge>
                   </div>
                   <h3 className="font-semibold">{seasonInsights.bestMonth || '—'}</h3>
                   <p className="text-sm text-[hsl(var(--muted-foreground))]">{seasonInsights.bestReason}</p>
@@ -311,7 +318,7 @@ function Forecast() {
                     <div className="w-10 h-10 rounded-xl bg-[hsl(var(--primary)/0.1)] flex items-center justify-center">
                       <DollarSign className="w-5 h-5 text-[hsl(var(--primary))]" />
                     </div>
-                    <Badge variant="primary" size="sm">Экономия</Badge>
+                    <Badge variant="primary" size="sm">Минимум цены</Badge>
                   </div>
                   <h3 className="font-semibold">{seasonInsights.cheapestMonth || '—'}</h3>
                   <p className="text-sm text-[hsl(var(--muted-foreground))]">{seasonInsights.cheapestReason}</p>
@@ -362,11 +369,8 @@ function Forecast() {
                     <YAxis yAxisId="left" tickFormatter={(v) => `${v}%`} axisLine={false} tickLine={false} />
                     <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} />
                     <Tooltip
-                      contentStyle={{
-                        backgroundColor: 'hsl(var(--card))',
-                        border: '1px solid hsl(var(--border))',
-                        borderRadius: '12px',
-                      }}
+                      {...RECHARTS_TOOLTIP_PROPS}
+                      cursor={BAR_CURSOR_TRANSPARENT}
                       formatter={(value, name) => {
                         const v = value as number | null
                         const n = name as string
@@ -436,14 +440,10 @@ function Forecast() {
                       <XAxis dataKey="month" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
                       <YAxis tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} axisLine={false} tickLine={false} />
                       <Tooltip
+                        {...RECHARTS_TOOLTIP_PROPS}
                         formatter={(value) => {
                           const v = value as number | null
                           return v === null ? ['Нет данных'] : [`${v?.toLocaleString()}₽`, 'Ср. цена']
-                        }}
-                        contentStyle={{
-                          backgroundColor: 'hsl(var(--card))',
-                          border: '1px solid hsl(var(--border))',
-                          borderRadius: '8px',
                         }}
                       />
                       <Area
@@ -566,6 +566,7 @@ function Forecast() {
                       width={45}
                     />
                     <Tooltip
+                      {...RECHARTS_TOOLTIP_PROPS}
                       formatter={(v: number, name: string) => {
                         const labels: Record<string, string> = {
                           occupancy: 'Прогноз',
@@ -575,13 +576,6 @@ function Forecast() {
                         return [`${Math.round(v)}%`, labels[name] || name]
                       }}
                       labelFormatter={(d) => new Date(d).toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}
-                      contentStyle={{
-                        backgroundColor: 'hsl(var(--card))',
-                        border: '1px solid hsl(var(--border))',
-                        borderRadius: '12px',
-                        color: 'hsl(var(--foreground))',
-                      }}
-                      itemStyle={{ color: 'hsl(var(--foreground))' }}
                     />
                     <Area type="monotone" dataKey="upper" stroke="none" fill="url(#ciGrad)" />
                     <Area type="monotone" dataKey="lower" stroke="none" fill="hsl(var(--background))" />
@@ -778,14 +772,9 @@ function Forecast() {
                       width={40}
                     />
                     <Tooltip
+                      {...RECHARTS_TOOLTIP_PROPS}
                       formatter={(v: number, name: string) => [`${Math.round(v)}%`, MODEL_LABELS[name] || name]}
                       labelFormatter={(d) => new Date(d).toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'long' })}
-                      contentStyle={{
-                        backgroundColor: 'hsl(var(--card))',
-                        border: '1px solid hsl(var(--border))',
-                        borderRadius: '8px',
-                        color: 'hsl(var(--foreground))',
-                      }}
                     />
                     <Legend formatter={(v) => MODEL_LABELS[v] || v} />
                     {Object.keys(modelForecasts).map(model => (
@@ -877,6 +866,42 @@ function Forecast() {
                       </tbody>
                     </table>
                   </div>
+
+                  <div className="mt-5 grid md:grid-cols-3 gap-3 text-xs">
+                    <div className="rounded-lg border border-[hsl(var(--border))] p-3">
+                      <p className="font-semibold text-[hsl(var(--foreground))] mb-1 inline-flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: MODEL_COLORS.prophet }} />
+                        Prophet
+                      </p>
+                      <p className="text-[hsl(var(--muted-foreground))] leading-relaxed">
+                        Декомпозиция ряда на тренд + годовая/недельная сезонность + праздники.
+                        Использует погоду как regressor. Консервативна, хороша на спокойных рядах.
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-[hsl(var(--border))] p-3">
+                      <p className="font-semibold text-[hsl(var(--foreground))] mb-1 inline-flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: MODEL_COLORS.neuralprophet }} />
+                        NeuralProphet
+                      </p>
+                      <p className="text-[hsl(var(--muted-foreground))] leading-relaxed">
+                        Нейросетевая надстройка над Prophet с lagged-регрессорами.
+                        Лучше ловит автокорреляции на коротких горизонтах, но требует больше данных.
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-[hsl(var(--border))] p-3">
+                      <p className="font-semibold text-[hsl(var(--foreground))] mb-1 inline-flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: MODEL_COLORS.xgboost }} />
+                        XGBoost
+                      </p>
+                      <p className="text-[hsl(var(--muted-foreground))] leading-relaxed">
+                        Градиентный бустинг на 38 признаках (календарь, лаги, погода, события).
+                        Ловит нелинейные взаимодействия. Quantile-режим даёт интервал уверенности.
+                      </p>
+                    </div>
+                  </div>
+                  <p className="mt-3 text-xs text-[hsl(var(--muted-foreground))] italic">
+                    Ансамбль выбирает лучшую модель по минимальному RMSE на тестовом окне. Метка <Badge variant="success" size="sm">лучшая</Badge> — это победитель.
+                  </p>
                 </CardContent>
               </Card>
             )}
@@ -887,29 +912,45 @@ function Forecast() {
                 <CardHeader className="pb-2">
                   <div className="flex items-center gap-2">
                     <Cpu className="w-5 h-5 text-[hsl(var(--warning))]" />
-                    <CardTitle>Важность признаков (XGBoost)</CardTitle>
+                    <CardTitle>На что больше всего смотрит модель</CardTitle>
                   </div>
+                  <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                    Чем длиннее столбик — тем сильнее этот признак влияет на прогноз. Наведите курсор, чтобы увидеть, что значит каждый признак.
+                  </p>
                 </CardHeader>
                 <CardContent>
-                  <ResponsiveContainer width="100%" height={240}>
-                    <BarChart data={topFeatures} layout="vertical">
+                  <ResponsiveContainer width="100%" height={Math.max(280, topFeatures.length * 32)}>
+                    <BarChart data={topFeatures} layout="vertical" margin={{ left: 8, right: 16, top: 4, bottom: 4 }}>
                       <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 10 }} />
                       <YAxis
-                        dataKey="name"
+                        dataKey="displayName"
                         type="category"
-                        width={140}
+                        width={200}
                         tick={{ fontSize: 12 }}
-                        tickFormatter={(name: string) => localizeFeature(name)}
                         axisLine={false}
                         tickLine={false}
+                        interval={0}
                       />
                       <Tooltip
-                        formatter={(v: number) => [v.toFixed(4), 'Важность']}
-                        contentStyle={{
-                          backgroundColor: 'hsl(var(--card))',
-                          border: '1px solid hsl(var(--border))',
-                          borderRadius: '8px',
-                          color: 'hsl(var(--foreground))',
+                        cursor={BAR_CURSOR_TRANSPARENT}
+                        content={({ active, payload }) => {
+                          if (!active || !payload?.length) return null
+                          const item = payload[0].payload as { displayName: string; description: string; importance: number }
+                          return (
+                            <div style={RECHARTS_TOOLTIP_PROPS.contentStyle as React.CSSProperties}>
+                              <div style={{ ...(RECHARTS_TOOLTIP_PROPS.labelStyle as React.CSSProperties), fontWeight: 600 }}>
+                                {item.displayName}
+                              </div>
+                              {item.description && (
+                                <div style={{ fontSize: 12, opacity: 0.85, marginTop: 4, maxWidth: 280, lineHeight: 1.4 }}>
+                                  {item.description}
+                                </div>
+                              )}
+                              <div style={{ fontSize: 12, marginTop: 4, opacity: 0.7 }}>
+                                Важность: {item.importance.toFixed(4)}
+                              </div>
+                            </div>
+                          )
                         }}
                       />
                       <Bar dataKey="importance" fill="hsl(var(--warning))" radius={[0, 4, 4, 0]} />
@@ -958,15 +999,25 @@ function Forecast() {
                     </div>
                     {validationData.mae_per_day && validationData.mae_per_day.length > 0 && (
                       <div>
-                        <p className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-2">MAE по дням</p>
-                        <ResponsiveContainer width="100%" height={140}>
-                          <BarChart data={validationData.mae_per_day.map((mae, i) => ({ day: `Д${i + 1}`, mae: Number(mae.toFixed(2)) }))}>
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <p className="text-xs font-medium text-[hsl(var(--muted-foreground))]">MAE по дням</p>
+                          <MethodologyTooltip text="Средняя ошибка по абсолютной величине для каждого дня горизонта. Чем больше дней до прогноза — тем выше MAE. Идеальный график: ровный или слабо растущий вправо." />
+                        </div>
+                        <ResponsiveContainer width="100%" height={150}>
+                          <BarChart data={validationData.mae_per_day.map((mae, i) => {
+                            const iso = validationData.forecasted?.[i]?.date
+                            const label = iso
+                              ? new Date(iso).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })
+                              : `Д${i + 1}`
+                            return { day: label, mae: Number(mae.toFixed(2)) }
+                          })}>
                             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                            <XAxis dataKey="day" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} label={{ value: 'Дата', position: 'insideBottom', offset: -2, fontSize: 10 }} />
-                            <YAxis tick={{ fontSize: 10 }} axisLine={false} tickLine={false} label={{ value: 'MAE, %', angle: -90, position: 'insideLeft', fontSize: 10 }} />
+                            <XAxis dataKey="day" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} interval={validationData.mae_per_day.length > 8 ? 1 : 0} />
+                            <YAxis tick={{ fontSize: 10 }} axisLine={false} tickLine={false} label={{ value: 'MAE, п.п.', angle: -90, position: 'insideLeft', fontSize: 10 }} />
                             <Tooltip
-                              formatter={(v: number) => [`${v}%`, 'MAE']}
-                              contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', color: 'hsl(var(--foreground))' }}
+                              {...RECHARTS_TOOLTIP_PROPS}
+                              cursor={BAR_CURSOR_TRANSPARENT}
+                              formatter={(v: number) => [`${v} п.п.`, 'MAE']}
                             />
                             <Bar dataKey="mae" fill="hsl(var(--success))" radius={[4, 4, 0, 0]} />
                           </BarChart>
@@ -1109,14 +1160,9 @@ function Forecast() {
                       width={40}
                     />
                     <Tooltip
+                      {...RECHARTS_TOOLTIP_PROPS}
                       formatter={(v: number, name: string) => [`${Math.round(v)}%`, name]}
                       labelFormatter={(d) => new Date(d).toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'long' })}
-                      contentStyle={{
-                        backgroundColor: 'hsl(var(--card))',
-                        border: '1px solid hsl(var(--border))',
-                        borderRadius: '8px',
-                        color: 'hsl(var(--foreground))',
-                      }}
                     />
                     <Legend />
                     <Line type="monotone" dataKey={district} stroke="hsl(var(--primary))" strokeWidth={2.5} dot={false} />
@@ -1248,7 +1294,12 @@ function _buildMultiModelData(
 function _getTopFeatures(fi: Record<string, Record<string, number>>) {
   const xgbFeatures = fi.xgboost || fi.XGBoost || {}
   return Object.entries(xgbFeatures)
-    .map(([name, importance]) => ({ name, importance: Number(importance) }))
+    .map(([name, importance]) => ({
+      name,
+      displayName: localizeFeature(name),
+      description: describeFeature(name),
+      importance: Number(importance),
+    }))
     .sort((a, b) => b.importance - a.importance)
     .slice(0, 10)
 }
@@ -1284,9 +1335,9 @@ function _calculateInsights(months: SeasonData[]) {
 
   return {
     bestMonth: bestMonth?.month || null,
-    bestReason: bestMonth ? `Заполняемость ${Math.round(bestMonth.occupancy)}%, меньше туристов` : 'Нет данных',
+    bestReason: bestMonth ? `Заполняемость ${Math.round(bestMonth.occupancy)}% — окно для тех. работ, промо-тарифов, event-маркетинга` : 'Нет данных',
     peakMonth: peakMonth?.month || null,
-    peakReason: peakMonth ? `Заполняемость ${Math.round(peakMonth.occupancy)}%, бронируйте заранее` : 'Нет данных',
+    peakReason: peakMonth ? `Заполняемость ${Math.round(peakMonth.occupancy)}% — потенциал для динамического pricing и LOS-фильтров` : 'Нет данных',
     cheapestMonth: cheapestMonth?.month || null,
     cheapestReason: cheapestMonth ? `Ср. цена ${Math.round(cheapestMonth.avgPrice).toLocaleString()}₽` : 'Нет данных',
   }

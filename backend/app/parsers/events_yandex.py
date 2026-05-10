@@ -122,6 +122,19 @@ def parse_yandex_jsonld_event(jsonld: dict, source_url: str) -> dict:
         except (ValueError, TypeError):
             pass
 
+    # Дата окончания (для многодневных событий)
+    end_raw = jsonld.get("endDate") or ""
+    date_end: str | None = None
+    if end_raw:
+        try:
+            dt_end = datetime.fromisoformat(end_raw.replace("Z", "+00:00"))
+            date_end_value = str(dt_end.date())
+            # Не сохраняем endDate, если он совпадает со startDate
+            if date_end_value != event_date:
+                date_end = date_end_value
+        except (ValueError, TypeError):
+            pass
+
     # Описание до 2000 символов
     desc_raw = (jsonld.get("description") or "").strip()
     description: str | None = desc_raw[:2000] if desc_raw else None
@@ -141,25 +154,43 @@ def parse_yandex_jsonld_event(jsonld: dict, source_url: str) -> dict:
         except ValueError:
             pass
 
-    # Место
+    # Место и адрес
     location_data = jsonld.get("location", {})
+    address: str | None = None
     if isinstance(location_data, dict):
         location = location_data.get("name") or "Иркутск"
+        addr_raw = location_data.get("address")
+        if isinstance(addr_raw, dict):
+            street = addr_raw.get("streetAddress") or addr_raw.get("addressLocality")
+            if street:
+                address = str(street).strip() or None
+        elif isinstance(addr_raw, str) and addr_raw.strip():
+            address = addr_raw.strip()
     else:
         location = "Иркутск"
 
-    # Цена
+    # Цена (lowPrice / highPrice / price)
     offers = jsonld.get("offers", {})
     price_min: int | None = None
+    price_max: int | None = None
     price: str | None = None
     if isinstance(offers, dict):
         raw_price = offers.get("lowPrice") or offers.get("price")
         if raw_price is not None:
             try:
-                price_min = int(raw_price)
-                price = f"от {price_min} руб"
+                price_min = int(float(raw_price))
             except (ValueError, TypeError):
                 pass
+        raw_high = offers.get("highPrice") or offers.get("maxPrice")  # noqa: dup
+        if raw_high is not None:
+            try:
+                price_max = int(float(raw_high))
+            except (ValueError, TypeError):
+                pass
+        if price_min is not None and price_max is not None and price_max > price_min:
+            price = f"{price_min} — {price_max} руб"
+        elif price_min is not None:
+            price = f"от {price_min} руб"
 
     return {
         "title": name,
@@ -169,8 +200,11 @@ def parse_yandex_jsonld_event(jsonld: dict, source_url: str) -> dict:
         "time_start": time_start,
         "url": source_url or jsonld.get("url"),
         "date_start": event_date,
+        "date_end": date_end,
         "location": location,
+        "address": address,
         "price_min": price_min,
+        "price_max": price_max,
         "price": price,
     }
 
@@ -187,7 +221,8 @@ class YandexAfishaParser(BaseParser):
         self,
         categories: list[str] | None = None,
         days_ahead: int = 30,
-        use_ai: bool = True
+        use_ai: bool = True,
+        **kwargs,
     ) -> list[ParsedEvent]:
         """
         Получить события с Яндекс Афиши.
@@ -336,11 +371,13 @@ class YandexAfishaParser(BaseParser):
         # Описание
         description = text[:2000].strip()
         
+        if not event_date:
+            return None
         event_id = self.generate_event_id(title, event_date, "yandex")
         event_type = detect_event_type(title, description)
-        
+
         try:
-            return ParsedEvent(
+            return ParsedEvent(  # pyright: ignore[reportCallIssue]
                 id=event_id,
                 title=title,
                 description=description,
@@ -373,7 +410,9 @@ class YandexAfishaParser(BaseParser):
         # JSON-LD schema.org
         for script in soup.find_all('script', type='application/ld+json'):
             try:
-                data = json.loads(script.string)
+                if not script.string:
+                    continue
+                data = json.loads(str(script.string))
                 if isinstance(data, dict) and data.get('@type') == 'Event':
                     events.extend(self._parse_jsonld_event(data))
                 elif isinstance(data, list):
@@ -397,6 +436,19 @@ class YandexAfishaParser(BaseParser):
             fields = parse_yandex_jsonld_event(data, source_url=data.get("url") or "")
             event_id = self.generate_event_id(fields["title"], fields["date_start"], "yandex")
 
+            # JSON-LD @type может быть строкой или списком; берём первый "Event"-подтип
+            raw_type = data.get("@type")
+            jsonld_type: str | None = None
+            if isinstance(raw_type, list):
+                for t in raw_type:
+                    if isinstance(t, str) and "Event" in t:
+                        jsonld_type = t
+                        break
+                if jsonld_type is None and raw_type:
+                    jsonld_type = str(raw_type[0]) if raw_type[0] else None
+            elif isinstance(raw_type, str):
+                jsonld_type = raw_type
+
             time_start = fields["time_start"]
             # ParsedEvent.time_start ожидает str | None
             time_start_str: str | None = None
@@ -405,20 +457,27 @@ class YandexAfishaParser(BaseParser):
             elif isinstance(time_start, str):
                 time_start_str = time_start
 
-            event = ParsedEvent(
+            event = ParsedEvent(  # pyright: ignore[reportCallIssue]
                 id=event_id,
                 title=fields["title"],
                 description=fields["description"],
                 date_start=fields["date_start"],
                 time_start=time_start_str,
-                event_type=detect_event_type(fields["title"]),
+                event_type=detect_event_type(
+                    fields["title"],
+                    fields.get("description") or "",
+                    jsonld_type=jsonld_type,
+                ),
                 location=fields["location"],
+                address=fields.get("address"),
                 price=fields["price"],
                 price_min=fields["price_min"],
+                price_max=fields.get("price_max"),
                 age_restriction=fields["age_restriction"],
                 source="yandex",
                 url=fields["url"] or None,
                 image_url=fields["image_url"],
+                date_end=fields.get("date_end"),
             )
             events.append(event)
 

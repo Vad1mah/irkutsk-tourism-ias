@@ -1,6 +1,12 @@
-"""Pytest fixtures для тестирования."""
-import asyncio
-from typing import AsyncGenerator, Generator
+"""Pytest fixtures для тестирования.
+
+Все async fixtures и тесты выполняются на session-scoped event loop'е
+(см. pytest.ini → asyncio_default_*_loop_scope = session). Это нужно,
+потому что asyncpg pool создаётся в setup_services один раз на сессию
+и связан с loop'ом своего создания — function-loop'ы вызывают
+RuntimeError: Task attached to a different loop.
+"""
+from typing import AsyncGenerator
 
 import pytest
 import pytest_asyncio
@@ -11,24 +17,14 @@ from app.services.data_service import data_service
 from app.services.cache_service import cache_service
 
 
-@pytest.fixture(scope="session")
-def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
-    """Создаём event loop для всех async тестов."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
-
-
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def setup_services():
-    """Инициализация сервисов перед тестами."""
-    # Подключаемся к БД если доступна
+    """Инициализация сервисов перед тестами (session-wide)."""
     try:
         await data_service.connect()
     except Exception:
         pass  # БД может быть недоступна в CI
 
-    # Подключаемся к Redis если доступен
     try:
         await cache_service.connect()
     except Exception:
@@ -36,16 +32,20 @@ async def setup_services():
 
     yield
 
-    # Cleanup
     try:
         await cache_service.close()
     except Exception:
         pass
 
+    try:
+        await data_service.close()
+    except Exception:
+        pass
 
-@pytest_asyncio.fixture
+
+@pytest_asyncio.fixture(loop_scope="session")
 async def client(setup_services) -> AsyncGenerator[AsyncClient, None]:
-    """HTTP клиент для тестирования API."""
+    """HTTP клиент для тестирования API на session loop'е."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac

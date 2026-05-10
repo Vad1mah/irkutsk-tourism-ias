@@ -693,7 +693,7 @@ Agent: search_events() + get_revenue_metrics()
 ### Q: Чем подтверждено качество?
 
 **A:** Двумя уровнями тестов:
-1. 207 модульных тестов в 8 файлах (test_agent_tools, test_ensemble_service, test_forecast_helpers, test_llm_temperatures, test_metrics_validation, test_routers, test_schemas, test_security)
+1. 208 модульных тестов в 33 файлах (включая test_persona_walkthrough, test_compare_districts, test_events_impact_method, test_methodology_service и др.)
 2. 9 сквозных E2E-сценариев против запущенного backend
 Кроме того — стилевая проверка отчёта по 32 пунктам преподавателя.
 
@@ -724,8 +724,8 @@ Agent: search_events() + get_revenue_metrics()
   - Методологические тултипы на всех KPI-метриках
 - **Новые сервисы:** MethodologyService (расчёт corrected impact), ParserHealthService (Redis-based мониторинг парсеров)
 - **AI-агент расширен до 12 tools** (добавлено 6 B2B-инструментов)
-- **Тестовое покрытие:** 207 тестов (было 104, +99)
-- **API:** 67 endpoints в 7 роутерах (было 63, +4)
+- **Тестовое покрытие:** 208 тестов (было 104, +104)
+- **API:** 62 endpoints в 7 роутерах (после рефокуса: −7 dead-endpoints, +11 новых B2B)
 
 ---
 
@@ -750,9 +750,9 @@ Agent: search_events() + get_revenue_metrics()
 | Объектов размещения | 1 366 |
 | Записей статистики | 37 663 |
 | Событий | 318 из 8 источников |
-| API endpoint | 67 в 7 роутерах |
+| API endpoint | 62 в 7 роутерах (после рефокуса: −7 dead, +11 новых B2B) |
 | Инструментов агента | 12 (включая 6 новых B2B-tools) |
-| Модульных тестов | 207 пройдено в 8 файлах |
+| Модульных тестов | 208 пройдено в 33 файлах |
 | RMSE Ensemble (Иркутский) | 2,67 п. п. |
 | Галлюцинаций AI | <5 % |
 | Mistral токенов | 1 миллиард в месяц (бесплатный тариф) |

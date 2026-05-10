@@ -43,7 +43,7 @@
 
 ## Phase 5: Verification (this phase)
 
-- **pytest:** 207 tests collected, 0 FAILED, 0 ERROR. Pre-existing asyncpg teardown noise (event loop harness issue) — not regressions.
+- **pytest:** 211 tests collected, 208 passed, 0 FAILED, 0 ERROR, 1 skipped (test_correlation_coefficient_in_valid_range — не хватает гистограммы), 2 conditional-skip (Redis недоступен в test env). Cross-loop bug устранён — `pytest-asyncio` сконфигурирован на session-scoped loop, `data_service.close()` вызывается в teardown для чистого выхода.
 - **tsc:** `npx tsc --noEmit` — clean, no output.
 - **build:** `npm run build` — clean, built in 3.75s.
 - **Smoke test (backend on :8000):** 9 endpoints tested — 6 × 200, 3 × 400 (Cyrillic not URL-encoded in bash loop; same endpoints return 200 with proper encoding per pytest logs).
@@ -67,7 +67,7 @@
 | Backend services | 19 |
 | Backend routers | 8 |
 | Backend parsers | 17 |
-| Backend test files | 33 (207 tests) |
+| Backend test files | 33 (211 tests, 208 passed, 1 skipped + 2 conditional-skip) |
 | Frontend pages | 8 |
 | Frontend components | 10 |
 | Git commits (master→HEAD) | 69 |

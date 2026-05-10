@@ -4,6 +4,7 @@
 - Региональный (по умолчанию): na_baikale + irkutskaya_oblast — 200+ отелей
 - По городам (fallback): запросы по отдельным slug-ам городов
 """
+import asyncio
 import aiohttp
 import logging
 from datetime import date, timedelta
@@ -62,6 +63,19 @@ def _extract_image_url(raw: dict) -> str | None:
     return None
 
 
+def _extract_accommodation_type(hotel: dict) -> str | None:
+    """Извлечь тип размещения из API ответа.
+
+    Приоритет: type_name > category_name > type (если строка).
+    Числовые коды отбрасываем — без справочника они бесполезны.
+    """
+    for key in ("type_name", "category_name", "type"):
+        value = hotel.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
 def _extract_hotel_data(hotel: dict, city_slug: str) -> dict:
     """Извлечь данные об отеле из API ответа."""
     coords = hotel.get("coords", [])
@@ -78,6 +92,7 @@ def _extract_hotel_data(hotel: dict, city_slug: str) -> dict:
         "rating": hotel.get("rating"),
         "min_price": hotel.get("min_price"),
         "image_url": _extract_image_url(hotel),
+        "accommodation_type": _extract_accommodation_type(hotel),
     }
 
 
@@ -213,7 +228,7 @@ async def fetch_hotels_by_region(
             new_count = 0
             for hotel in raw:
                 hotel_id = hotel.get("id")
-                if hotel_id in seen_ids:
+                if hotel_id is None or hotel_id in seen_ids:
                     continue
                 seen_ids.add(hotel_id)
 
@@ -244,6 +259,7 @@ async def fetch_hotels_by_cities(
     start_date = today.strftime("%d.%m.%Y")
     end_date = next_day.strftime("%d.%m.%Y")
 
+    seen_ids: set[int] = set()
     all_hotels: list[dict] = []
     all_statistics: list[dict] = []
 
@@ -258,8 +274,14 @@ async def fetch_hotels_by_cities(
             )
 
             for hotel in raw:
+                hotel_id = hotel.get("id")
+                if hotel_id is None or hotel_id in seen_ids:
+                    continue
+                seen_ids.add(hotel_id)
                 all_hotels.append(_extract_hotel_data(hotel, city))
                 all_statistics.append(_extract_statistic_data(hotel, today))
+
+            await asyncio.sleep(0.3)
 
     logger.info(f"Итого (по городам): {len(all_hotels)} отелей")
     return all_hotels, all_statistics

@@ -37,7 +37,7 @@ const TECH_STACK = [
       { name: 'LangGraph', desc: 'Граф состояний с Command routing' },
       { name: 'Mistral Large', desc: 'LLM для tool calling' },
       { name: 'RAG (ChromaDB)', desc: 'Векторная база знаний' },
-      { name: '5 инструментов', desc: 'Поиск, погода, прогноз, статистика' },
+      { name: '12 B2B-инструментов', desc: 'RMS-метрики, прогноз, события, сегменты, методология' },
     ],
   },
   {
@@ -82,9 +82,13 @@ function About() {
         </div>
         <h1 className="text-3xl font-bold mb-2">ИАС «Прибайкалье»</h1>
         <p className="text-lg text-[hsl(var(--muted-foreground))]">
-          Информационно-аналитическая система мониторинга и прогнозирования туристической активности Иркутской области
+          B2B-инструмент анализа рынка размещения и Revenue Management для трёх сегментов: владельцев средств размещения, региональной администрации и исследовательских групп.
+        </p>
+        <p className="text-sm text-[hsl(var(--muted-foreground))] mt-2">
+          Иркутская область, 15 районов · мониторинг загрузки, цен и событийного спроса · ансамбль ML-моделей · AI-агент с RMS-инструментами.
         </p>
         <div className="flex items-center justify-center gap-2 mt-3">
+          <Badge variant="primary" size="sm">B2B</Badge>
           <Badge variant="primary" size="sm">ВКР 2026</Badge>
         </div>
       </div>
@@ -328,20 +332,62 @@ function About() {
             <AlertTriangle className="w-5 h-5 text-[hsl(var(--warning))]" />
             <CardTitle>Что не делает система (известные ограничения)</CardTitle>
           </div>
+          <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">
+            Раскройте каждый пункт, чтобы увидеть, что означает ограничение и как его снять. Это помогает корректно интерпретировать цифры.
+          </p>
         </CardHeader>
         <CardContent>
           <div className="space-y-2 text-sm">
             {[
-              'Не показывает true ADR / RevPAR — используются прокси из min_price.',
-              'Не делает comp set с конкретными конкурентами — используется анонимный сегментный benchmark.',
-              'Не использует real-time pickup — только daily proxy-pickup из snapshot diffs.',
-              'Не учитывает channel mix (OTA vs direct), LOS, source markets, GOPPAR — нет данных.',
-              'Alembic migrations — направление развития; сейчас используется create_all + миграционный скрипт.',
-            ].map((item) => (
-              <div key={item} className="flex items-start gap-2 p-2.5 rounded-lg bg-[hsl(var(--secondary)/0.3)]">
-                <XCircle size={14} className="text-[hsl(var(--warning))] flex-shrink-0 mt-0.5" />
-                <p className="text-[hsl(var(--muted-foreground))]">{item}</p>
-              </div>
+              {
+                title: 'Не показывает true ADR / RevPAR',
+                summary: 'Используем прокси из min_price отелей, а не реальную выручку.',
+                expanded: 'ADR (Average Daily Rate) — средняя оплаченная цена за номер за сутки. RevPAR (Revenue Per Available Room) = ADR × Загрузка — выручка с одного доступного номера. Источник «настоящего» ADR — PMS отеля или Booking.com Insights API. У нас нет доступа, поэтому используем медиану публичных min_price (с 101hotels). Систематическое смещение: реальный ADR обычно на 15–30% выше публикуемой минимальной цены. Чтобы снять ограничение — нужен договор с PMS-провайдером (TravelLine, Bnovo) или платный API Booking.',
+              },
+              {
+                title: 'Не делает comp set с конкретными конкурентами',
+                summary: 'Используется анонимный сегментный benchmark (тип×размер).',
+                expanded: 'Comp set — это набор конкретных отелей-конкурентов, выбранных вручную (обычно 3–10 объектов). RMS-системы (STR, OTA Insights) дают гостю отчёт «вы vs comp set». У нас вместо этого — статистический benchmark по сегменту: показываем «вы vs средний по сегменту вашего размера и типа». Чтобы дать конкретный comp set — нужен UI, в котором пользователь сам отметит конкурентов, и собственные ID отелей в системе (сейчас используем 101hotels.com IDs).',
+              },
+              {
+                title: 'Не использует real-time pickup',
+                summary: 'Только daily proxy-pickup из snapshot diffs.',
+                expanded: 'Pickup — это новые брони, поступающие в реальном времени. RMS видят его в кабинете отельера через PMS. У нас нет доступа в PMS, поэтому считаем proxy-pickup: разница свободных номеров между двумя дневными снимками 101hotels (через каждые 2 часа). Это даёт «новые брони за сутки», но не различает источник (OTA/direct/walk-in) и не реагирует мгновенно. Чтобы получить real-time — нужен webhook от PMS.',
+              },
+              {
+                title: 'Не учитывает channel mix, LOS, source markets, GOPPAR',
+                summary: 'Эти признаки требуют данных, которые есть только у самого отеля.',
+                expanded: 'Channel mix — доля бронирований по каналам (OTA Booking, прямые, агенты). LOS (Length of Stay) — средняя длина проживания. Source markets — страны/регионы гостей. GOPPAR (Gross Operating Profit per Available Room) — операционная прибыль на номер. Все эти показатели хранятся в PMS отеля и не публикуются на 101hotels. Без partnership с конкретными отелями получить их невозможно. Снимаем ограничение только переходом на B2B SaaS-модель, где отельеры сами загружают свои данные.',
+              },
+              {
+                title: 'События из источников без detail-страниц приходят неполными',
+                summary: 'afisha.irk.ru, culture38.ru — нет описания, времени, цены, адреса.',
+                expanded: 'Многие региональные афиши — это HTML-листинги без отдельной страницы события. Парсер видит только: название, дату, иногда город. Описание/время/цена/возрастное ограничение не существуют в HTML — это не ограничение нашего парсера, а ограничение источника. Полные данные есть только там, где разметка schema.org/Event (kassir.ru, yandex.afisha). Снимается только с появлением API у конкретного агрегатора.',
+              },
+              {
+                title: 'Telegram-парсинг — best-effort через web preview',
+                summary: 'Без Telethon API key (api_id/hash) тянем только публичные превью каналов.',
+                expanded: 'Telegram даёт два пути: (1) официальный MTProto API через Telethon — нужны api_id/hash и аккаунт-юзербот; (2) web preview t.me/s/<channel> — простой HTML, никакой авторизации, но содержит только последние ≈10 сообщений и не позволяет искать по дате. Мы используем (2), что объясняет небольшое число событий и отсутствие изображений в части сообщений. Для полноты — нужен Telethon с зарегистрированным userbot.',
+              },
+              {
+                title: 'Alembic-миграции пока не применяются',
+                summary: 'Сейчас используется create_all + ручной миграционный скрипт.',
+                expanded: 'Alembic — стандартный инструмент версионирования схемы PostgreSQL. У нас каркас Alembic настроен (backend/alembic/env.py), но в production используется SQLAlchemy create_all + миграционный скрипт под каждое изменение схемы. Это упрощает работу для пилота, но затрудняет откат. До прод-деплоя — нужно перевести на ревизии Alembic (это запланировано в roadmap, но не блокирует выпускную работу).',
+              },
+            ].map(({ title, summary, expanded }) => (
+              <details key={title} className="rounded-lg bg-[hsl(var(--secondary)/0.3)] border border-transparent open:border-[hsl(var(--border))] transition-colors group">
+                <summary className="cursor-pointer list-none p-2.5 flex items-start gap-2 hover:bg-[hsl(var(--secondary)/0.5)] rounded-lg">
+                  <XCircle size={14} className="text-[hsl(var(--warning))] flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="font-medium text-[hsl(var(--foreground))]">{title}</p>
+                    <p className="text-[hsl(var(--muted-foreground))] text-xs mt-0.5">{summary}</p>
+                  </div>
+                  <span className="text-[hsl(var(--muted-foreground))] text-xs flex-shrink-0 mt-0.5 group-open:rotate-180 transition-transform">▾</span>
+                </summary>
+                <div className="px-2.5 pb-3 pt-1 ml-6 text-xs text-[hsl(var(--muted-foreground))] leading-relaxed">
+                  {expanded}
+                </div>
+              </details>
             ))}
           </div>
         </CardContent>

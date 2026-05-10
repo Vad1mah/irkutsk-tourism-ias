@@ -21,6 +21,8 @@ _PRICE_MIN_RE = re.compile(
     re.IGNORECASE,
 )
 
+_AGE_RE = re.compile(r"\b(\d{1,2})\s*\+")
+
 
 def _extract_price_min(text: str | None) -> int | None:
     """Возвращает min цену из текста (RU formats: 'от N руб', 'от N₽')."""
@@ -33,6 +35,51 @@ def _extract_price_min(text: str | None) -> int | None:
         return int(m.group(1))
     except (ValueError, TypeError):
         return None
+
+
+def _extract_age_restriction(text: str | None) -> str | None:
+    """Извлекает возрастное ограничение '16+' / '6-12' из текста.
+
+    Args:
+        text: Описание/название события.
+
+    Returns:
+        Строка вида ``"NN+"`` или None.
+    """
+    if not text:
+        return None
+    m = _AGE_RE.search(text)
+    if not m:
+        return None
+    try:
+        age = int(m.group(1))
+        if 0 < age <= 21:
+            return f"{age}+"
+    except ValueError:
+        pass
+    return None
+
+
+def _extract_price_max_from_offers(offers: Any) -> int | None:
+    """Извлекает highPrice/maxPrice из JSON-LD offers (dict или list)."""
+    if isinstance(offers, list):
+        for off in offers:
+            if isinstance(off, dict):
+                v = off.get("highPrice") or off.get("maxPrice")
+                if v is not None:
+                    try:
+                        return int(float(v))
+                    except (ValueError, TypeError):
+                        continue
+        return None
+    if isinstance(offers, dict):
+        v = offers.get("highPrice") or offers.get("maxPrice")
+        if v is not None:
+            try:
+                return int(float(v))
+            except (ValueError, TypeError):
+                return None
+    return None
 
 
 async def fetch_events_zeroevent(years: list[int] | None = None, by_month: bool = True) -> list[dict[str, Any]]:
@@ -189,6 +236,12 @@ def _parse_zeroevent_html(html: str, year: int) -> list[dict[str, Any]]:
             event_id = f"zeroevent_{hashlib.md5(content.encode()).hexdigest()[:12]}"
             description = _clean_html(item.get("description", ""))
             price_min = _extract_price_min(description) if description else None
+            price_max = _extract_price_max_from_offers(item.get("offers"))
+            age_restriction = (
+                _extract_age_restriction(description)
+                or _extract_age_restriction(name)
+            )
+            jsonld_type = item.get("@type")
 
             events.append({
                 "id": event_id,
@@ -196,12 +249,16 @@ def _parse_zeroevent_html(html: str, year: int) -> list[dict[str, Any]]:
                 "description": description,
                 "date_start": str(start_date),
                 "date_end": str(end_date) if end_date else None,
-                "event_type": detect_event_type(name),
+                "event_type": detect_event_type(
+                    name, description or "", jsonld_type=jsonld_type
+                ),
                 "location": location,
                 "source": "zeroevent",
                 "url": item.get("url", ""),
                 "image_url": item.get("image", ""),
                 "price_min": price_min,
+                "price_max": price_max,
+                "age_restriction": age_restriction,
             })
     
     except json.JSONDecodeError as e:

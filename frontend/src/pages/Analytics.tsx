@@ -8,6 +8,7 @@ import {
   type CorrectedEventsImpact,
   type SegmentsResponse,
   type PriceDistributionResponse,
+  type DistrictSegmentsResponse,
 } from '../api/client'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -19,8 +20,11 @@ import {
 } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardContent, Badge, Dropdown, Button } from '../components/ui'
 import { ErrorState } from '../components/ErrorState'
+import { MethodologyTooltip } from '../components/MethodologyTooltip'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { DEFAULT_DISTRICT, ALL_DISTRICT_NAMES } from '../constants/districts'
+import { localizeConfidence, localizeAccommodationType, localizeSizeBucket } from '../utils/localize'
+import { RECHARTS_TOOLTIP_PROPS, BAR_CURSOR_TRANSPARENT } from '../utils/chartTheme'
 
 type Tab = 'regions' | 'seasonality' | 'events' | 'segments'
 
@@ -225,6 +229,12 @@ function RegionsTab({
   navigate: (path: string) => void
 }) {
   const [showOnlyReliable, setShowOnlyReliable] = useState(true)
+  const [expandedDistrict, setExpandedDistrict] = useState<string | null>(null)
+  const { data: drillDown, isLoading: drillLoading } = useQuery({
+    queryKey: ['district-segments', expandedDistrict],
+    queryFn: () => api.getDistrictSegments(expandedDistrict!),
+    enabled: !!expandedDistrict,
+  })
 
   const list = revenueSummary.by_district
   const totalRev = list.reduce((s, d) => s + (d.revpar || 0) * (d.hotels_count || 0), 0)
@@ -258,6 +268,7 @@ function RegionsTab({
             icon={DollarSign}
             description="Средний тариф номера"
             accent="accent"
+            tooltip="ADR (Average Daily Rate) — средний тариф номера за сутки. Считаем по медиане минимальных цен на сайтах бронирования. Реальный тариф обычно на 15–30% выше — мы видим только рекламируемую цену."
           />
           <KPICard
             title="RevPAR"
@@ -265,12 +276,13 @@ function RegionsTab({
             icon={TrendingUp}
             description="Выручка на доступный номер"
             accent="success"
+            tooltip="RevPAR (Revenue per Available Room) — выручка с доступного номера = ADR × Загрузка. Главный показатель в гостиничном бизнесе: учитывает и цену, и заполняемость. Используем для сравнения районов и трендов."
           />
           <KPICard
             title="Объектов"
             value={districtKpi ? String(districtKpi.hotels_count) : '—'}
             icon={Building2}
-            description={districtKpi ? `Достоверность: ${confidenceLabel(districtKpi.confidence)}` : ''}
+            description={districtKpi ? `Достоверность: ${localizeConfidence(districtKpi.confidence)}` : ''}
           />
         </div>
         <p className="text-xs text-[hsl(var(--muted-foreground))] mt-2 flex items-start gap-1.5">
@@ -286,7 +298,11 @@ function RegionsTab({
             <div className="flex items-center gap-2">
               <TrendingUp className="w-5 h-5 text-[hsl(var(--success))]" />
               <CardTitle className="text-base">Топ-5 районов по RevPAR</CardTitle>
+              <MethodologyTooltip text="RevPAR (Revenue per Available Room) — выручка на доступный номер: ADR × Загрузка. Главный показатель в гостиничном бизнесе: учитывает и цену, и заполняемость." />
             </div>
+            <p className="text-xs text-[hsl(var(--muted-foreground))]">
+              Чем выше столбец, тем больше выручки приносит каждый номер района за сутки.
+            </p>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={160}>
@@ -295,13 +311,9 @@ function RegionsTab({
                   tickFormatter={(v: number) => `${v.toLocaleString('ru-RU')}₽`} />
                 <YAxis type="category" dataKey="district" width={90} tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
                 <Tooltip
+                  {...RECHARTS_TOOLTIP_PROPS}
+                  cursor={BAR_CURSOR_TRANSPARENT}
                   formatter={(v: number) => [`${v.toLocaleString('ru-RU')} ₽`, 'RevPAR']}
-                  contentStyle={{
-                    backgroundColor: 'hsl(var(--card))',
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: '8px',
-                    fontSize: 12,
-                  }}
                 />
                 <Bar dataKey="revpar" radius={[0, 4, 4, 0]}>
                   {top5.map((entry, index) => (
@@ -348,9 +360,24 @@ function RegionsTab({
                   <th className="py-2 pr-3 text-right">Объектов</th>
                   <th className="py-2 pr-3 text-right">Загрузка</th>
                   <th className="py-2 pr-3 text-right">ADR</th>
-                  <th className="py-2 pr-3 text-right">RevPAR</th>
-                  <th className="py-2 pr-3 text-right">Δ к региону</th>
-                  <th className="py-2 text-center">Достоверность</th>
+                  <th className="py-2 pr-3 text-right">
+                    <span className="inline-flex items-center gap-1 justify-end">
+                      RevPAR
+                      <MethodologyTooltip text="RevPAR = ADR × Загрузка. Выручка с одного доступного номера за сутки." />
+                    </span>
+                  </th>
+                  <th className="py-2 pr-3 text-right">
+                    <span className="inline-flex items-center gap-1 justify-end">
+                      Δ к региону
+                      <MethodologyTooltip text="Отклонение RevPAR района от средневзвешенного по региону. Зелёный — выше региона, красный — ниже." />
+                    </span>
+                  </th>
+                  <th className="py-2 text-center">
+                    <span className="inline-flex items-center gap-1 justify-center">
+                      Достоверность
+                      <MethodologyTooltip text="Высокая — ≥5 объектов с данными за период, средняя — 2–4 объекта, низкая — ≤1 объект." />
+                    </span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -359,26 +386,45 @@ function RegionsTab({
                   const deltaPct = regionAvgRevpar > 0 ? (delta / regionAvgRevpar) * 100 : 0
                   const isHi = d.confidence === 'high'
                   const isMid = d.confidence === 'medium'
+                  const isExpanded = expandedDistrict === d.district
                   return (
-                    <tr
-                      key={d.district}
-                      className={`border-b border-[hsl(var(--border))] cursor-pointer hover:bg-[hsl(var(--secondary)/0.4)] ${d.district === selectedDistrict ? 'bg-[hsl(var(--primary)/0.06)]' : ''}`}
-                      onClick={() => setSelectedDistrict(d.district)}
-                    >
-                      <td className="py-2 pr-3 font-medium">{d.district}</td>
-                      <td className="py-2 pr-3 text-right tabular-nums">{d.hotels_count ?? '—'}</td>
-                      <td className="py-2 pr-3 text-right tabular-nums">{d.occupancy != null ? `${d.occupancy}%` : '—'}</td>
-                      <td className="py-2 pr-3 text-right tabular-nums">{d.adr ? `${d.adr.toLocaleString('ru-RU')}₽` : '—'}</td>
-                      <td className="py-2 pr-3 text-right tabular-nums font-semibold">{d.revpar ? `${d.revpar.toLocaleString('ru-RU')}₽` : '—'}</td>
-                      <td className={`py-2 pr-3 text-right tabular-nums ${delta > 0 ? 'text-[hsl(var(--success))]' : delta < 0 ? 'text-[hsl(var(--destructive))]' : 'text-[hsl(var(--muted-foreground))]'}`}>
-                        {regionAvgRevpar > 0 ? `${delta > 0 ? '+' : ''}${deltaPct.toFixed(1)}%` : '—'}
-                      </td>
-                      <td className="py-2 text-center">
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs ${isHi ? 'bg-[hsl(var(--success)/0.15)] text-[hsl(var(--success))]' : isMid ? 'bg-[hsl(var(--primary)/0.15)] text-[hsl(var(--primary))]' : 'bg-[hsl(var(--muted-foreground)/0.15)] text-[hsl(var(--muted-foreground))]'}`}>
-                          {isHi ? `${d.hotels_count}+ объектов` : isMid ? `${d.hotels_count} объектов` : `${d.hotels_count ?? 0} (мало)`}
-                        </span>
-                      </td>
-                    </tr>
+                    <Fragment key={d.district}>
+                      <tr
+                        className={`border-b border-[hsl(var(--border))] cursor-pointer hover:bg-[hsl(var(--secondary)/0.4)] ${d.district === selectedDistrict ? 'bg-[hsl(var(--primary)/0.06)]' : ''}`}
+                        onClick={() => setExpandedDistrict(isExpanded ? null : d.district)}
+                      >
+                        <td className="py-2 pr-3 font-medium">
+                          <span className="inline-block w-3 mr-1 text-[hsl(var(--muted-foreground))]">
+                            {isExpanded ? '▾' : '▸'}
+                          </span>
+                          {d.district}
+                        </td>
+                        <td className="py-2 pr-3 text-right tabular-nums">{d.hotels_count ?? '—'}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums">{d.occupancy != null ? `${d.occupancy}%` : '—'}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums">{d.adr ? `${d.adr.toLocaleString('ru-RU')}₽` : '—'}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums font-semibold">{d.revpar ? `${d.revpar.toLocaleString('ru-RU')}₽` : '—'}</td>
+                        <td className={`py-2 pr-3 text-right tabular-nums ${delta > 0 ? 'text-[hsl(var(--success))]' : delta < 0 ? 'text-[hsl(var(--destructive))]' : 'text-[hsl(var(--muted-foreground))]'}`}>
+                          {regionAvgRevpar > 0 ? `${delta > 0 ? '+' : ''}${deltaPct.toFixed(1)}%` : '—'}
+                        </td>
+                        <td className="py-2 text-center">
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs ${isHi ? 'bg-[hsl(var(--success)/0.15)] text-[hsl(var(--success))]' : isMid ? 'bg-[hsl(var(--primary)/0.15)] text-[hsl(var(--primary))]' : 'bg-[hsl(var(--muted-foreground)/0.15)] text-[hsl(var(--muted-foreground))]'}`}>
+                            {isHi ? `${d.hotels_count}+ объектов` : isMid ? `${d.hotels_count} объектов` : `${d.hotels_count ?? 0} (мало)`}
+                          </span>
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr className="bg-[hsl(var(--secondary)/0.25)]">
+                          <td colSpan={7} className="px-3 py-4">
+                            <DistrictDrillDown
+                              loading={drillLoading}
+                              data={drillDown}
+                              onPickAsFilter={() => setSelectedDistrict(d.district)}
+                              isFilterDistrict={d.district === selectedDistrict}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   )
                 })}
                 {filteredSorted.length === 0 && (
@@ -396,7 +442,7 @@ function RegionsTab({
                     <span className="font-semibold text-[hsl(var(--foreground))]">
                       {Math.round(regionAvgRevpar).toLocaleString('ru-RU')} ₽
                     </span>
-                    . Клик по строке выбирает район.
+                    . Клик по строке раскрывает разбивку по типам размещения.
                   </td>
                 </tr>
               </tfoot>
@@ -408,8 +454,8 @@ function RegionsTab({
       {/* Quick navigation */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: 'Прогноз спроса', desc: 'Ensemble ML', icon: TrendingUp, path: `/forecast?district=${encodeURIComponent(selectedDistrict)}` },
-          { label: 'События и спрос', desc: 'Календарь + impact', icon: Calendar, path: '/events' },
+          { label: 'Прогноз спроса', desc: 'Среднее по 3 моделям', icon: TrendingUp, path: `/forecast?district=${encodeURIComponent(selectedDistrict)}` },
+          { label: 'События и спрос', desc: 'Календарь и влияние', icon: Calendar, path: '/events' },
           { label: 'Региональная карта', desc: 'Объекты на карте', icon: MapPin, path: '/map' },
           { label: 'О системе', desc: 'Методология', icon: Info, path: '/about' },
         ].map(item => (
@@ -456,16 +502,19 @@ function SeasonalityTab({
               <CardTitle className="text-base">Динамика бронирований по дням</CardTitle>
             </div>
             {pickup?.summary && (
-              <Badge
-                variant={pickup.summary.trend === 'ускорение' ? 'success' : pickup.summary.trend === 'замедление' ? 'danger' : 'outline'}
-                size="sm"
-              >
-                {pickup.summary.trend}
-              </Badge>
+              <span className="inline-flex items-center gap-1">
+                <Badge
+                  variant={pickup.summary.trend === 'ускорение' ? 'success' : pickup.summary.trend === 'замедление' ? 'danger' : 'outline'}
+                  size="sm"
+                >
+                  {pickup.summary.trend}
+                </Badge>
+                <MethodologyTooltip text="Сравнение последних 3 дней с первыми 3 в окне 30 дней. «Ускорение» — рост бронирований более чем на 20%. «Замедление» — спад более чем на 20%. Иначе — «стабильно»." />
+              </span>
             )}
           </div>
           <p className="text-sm text-[hsl(var(--muted-foreground))]">
-            Изменение числа бронирований за сутки (Pickup): положительное значение — рост бронирований, отрицательное — сдача номеров. Период — последние 30 дней.
+            Изменение бронирований за сутки. Зелёные столбики — клиенты бронируют, красные — отменяют или съезжают. Линия — накопленное количество бронирований за последние 30 дней.
           </p>
         </CardHeader>
         <CardContent>
@@ -484,12 +533,8 @@ function SeasonalityTab({
                 <YAxis yAxisId="booked" tick={{ fontSize: 10 }} axisLine={false} />
                 <YAxis yAxisId="pickup" orientation="right" tick={{ fontSize: 10 }} axisLine={false} />
                 <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'hsl(var(--card))',
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: '8px',
-                    fontSize: 12,
-                  }}
+                  {...RECHARTS_TOOLTIP_PROPS}
+                  cursor={BAR_CURSOR_TRANSPARENT}
                 />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Bar yAxisId="pickup" dataKey="pickup" name="Δ бронирований за день" fill="hsl(var(--accent))" />
@@ -506,16 +551,25 @@ function SeasonalityTab({
             </ResponsiveContainer>
           ) : (
             <p className="text-sm text-[hsl(var(--muted-foreground))] py-8 text-center">
-              Недостаточно дневных снимков для расчёта pickup за выбранный район.
+              Недостаточно дневных снимков, чтобы посчитать темп бронирований по этому району.
             </p>
           )}
 
           {pickup?.summary && (pickup.points?.length ?? 0) > 0 && (
-            <div className="grid grid-cols-3 gap-3 mt-3 pt-3 border-t border-[hsl(var(--border))]">
-              <PickupStat label="Ср. pickup/день" value={`${pickup.summary.avg_pickup > 0 ? '+' : ''}${pickup.summary.avg_pickup}`} />
-              <PickupStat label="Макс." value={`+${pickup.summary.max_pickup}`} />
-              <PickupStat label="Мин." value={`${pickup.summary.min_pickup}`} />
-            </div>
+            <>
+              <div className="grid grid-cols-3 gap-3 mt-3 pt-3 border-t border-[hsl(var(--border))]">
+                <PickupStat label="Ср. изменение/день" value={`${pickup.summary.avg_pickup > 0 ? '+' : ''}${pickup.summary.avg_pickup}`} />
+                <PickupStat label="Лучший день" value={`+${pickup.summary.max_pickup}`} />
+                <PickupStat label="Худший день" value={`${pickup.summary.min_pickup}`} />
+              </div>
+              <p className="text-xs text-[hsl(var(--muted-foreground))] mt-2">
+                {pickup.summary.trend === 'ускорение'
+                  ? `Спрос ускоряется: за последние 3 дня бронируют в среднем активнее, чем в начале окна. Рекомендуем удерживать текущие тарифы.`
+                  : pickup.summary.trend === 'замедление'
+                    ? `Спрос ослабевает: бронирований сейчас меньше, чем в начале окна. Рассмотрите промо или снижение тарифа на нечувствительные даты.`
+                    : `Спрос стабилен: значимых сдвигов в темпе бронирований за окно не зафиксировано.`}
+              </p>
+            </>
           )}
         </CardContent>
       </Card>
@@ -586,12 +640,12 @@ function EventsTab({
                 onChange={e => setOnlySignificant(e.target.checked)}
                 className="w-4 h-4 rounded border-[hsl(var(--border))] accent-[hsl(var(--primary))] cursor-pointer"
               />
-              <span className="text-[hsl(var(--muted-foreground))]">только impact ≥ 5%</span>
+              <span className="text-[hsl(var(--muted-foreground))]">только |влияние| ≥ 5%</span>
             </label>
           </div>
           <p className="text-sm text-[hsl(var(--muted-foreground))]">
-            Seasonal-corrected: отклонение загрузки в день события от базовой линии (похожие дни недели в окне ±3 нед.).
-            Сортировка по модулю влияния.
+            Отклонение загрузки в день события от обычного уровня — медианы по похожим дням недели в окне ±3 недели. Сортировка по модулю влияния.{' '}
+            <MethodologyTooltip text="Базовая линия — медиана загрузки по тем же дням недели в трёх неделях до и после события (исключая другие event-дни). Отклонение в процентных пунктах: положительное — спрос выше нормы, отрицательное — ниже." />
           </p>
         </CardHeader>
         <CardContent>
@@ -635,7 +689,7 @@ function EventsTab({
                         <td className="py-2 pr-3 text-right tabular-nums">{e.n_samples}</td>
                         <td className="py-2 text-center">
                           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs ${isHi ? 'bg-[hsl(var(--success)/0.15)] text-[hsl(var(--success))]' : isMid ? 'bg-[hsl(var(--primary)/0.15)] text-[hsl(var(--primary))]' : 'bg-[hsl(var(--muted-foreground)/0.15)] text-[hsl(var(--muted-foreground))]'}`}>
-                            {e.confidence}
+                            {localizeConfidence(e.confidence)}
                           </span>
                         </td>
                       </tr>
@@ -659,12 +713,6 @@ function EventsTab({
 
 // ─── Tab: Сегменты ────────────────────────────────────────────────────────────
 
-const SIZE_LABELS: Record<string, string> = {
-  mini: 'Мини',
-  mid: 'Средние',
-  large: 'Крупные',
-}
-
 function SegmentsTab({
   segments,
   loadSegments,
@@ -682,7 +730,7 @@ function SegmentsTab({
   const accTypeData = useMemo(() => {
     if (!segments) return []
     return Object.entries(segments.by_accommodation_type)
-      .map(([type, v]) => ({ type: type || 'Не указан', count: v.count, avg_price: v.avg_price ?? 0 }))
+      .map(([type, v]) => ({ type: localizeAccommodationType(type), count: v.count, avg_price: v.avg_price ?? 0 }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 10)
   }, [segments])
@@ -692,7 +740,7 @@ function SegmentsTab({
     if (!segments) return []
     return Object.entries(segments.by_size).map(([bucket, v]) => ({
       bucket,
-      label: SIZE_LABELS[bucket] || bucket,
+      label: localizeSizeBucket(bucket),
       count: v.count,
       avg_occupancy: v.avg_occupancy,
       avg_price: v.avg_price,
@@ -719,43 +767,40 @@ function SegmentsTab({
           <div className="flex items-center gap-2">
             <Building2 className="w-5 h-5 text-[hsl(var(--primary))]" />
             <CardTitle className="text-base">Структура по типу размещения</CardTitle>
+            <MethodologyTooltip text="Распределение объектов по типу: отель, гостевой дом, хостел, апартаменты, база отдыха, шале, кемпинг и др. Тип берётся из 101hotels live-каталога и из OSM Overpass с привязкой по координатам (радиус 0.5 км)." />
           </div>
           <p className="text-sm text-[hsl(var(--muted-foreground))]">
-            Количество объектов и средняя цена по типу размещения.
+            Количество объектов в районе и средняя цена за номер по каждому типу.
           </p>
         </CardHeader>
         <CardContent>
           {loadSegments ? (
             <div className="h-56 skeleton rounded-xl" />
           ) : accTypeData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={accTypeData} margin={{ left: 0, right: 16, top: 4, bottom: 40 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+            <ResponsiveContainer width="100%" height={Math.max(220, accTypeData.length * 36)}>
+              <BarChart data={accTypeData} layout="vertical" margin={{ left: 8, right: 16, top: 4, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
+                <XAxis xAxisId="count" type="number" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
                 <XAxis
-                  dataKey="type"
-                  tick={{ fontSize: 9 }}
+                  xAxisId="price"
+                  type="number"
+                  orientation="top"
+                  tick={{ fontSize: 10 }}
                   axisLine={false}
-                  angle={-30}
-                  textAnchor="end"
-                  interval={0}
+                  tickLine={false}
+                  tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k ₽`}
                 />
-                <YAxis yAxisId="count" tick={{ fontSize: 10 }} axisLine={false} />
-                <YAxis yAxisId="price" orientation="right" tick={{ fontSize: 10 }} axisLine={false}
-                  tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`} />
+                <YAxis dataKey="type" type="category" width={140} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} interval={0} />
                 <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'hsl(var(--card))',
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: '8px',
-                    fontSize: 12,
-                  }}
+                  {...RECHARTS_TOOLTIP_PROPS}
+                  cursor={BAR_CURSOR_TRANSPARENT}
                   formatter={(v: number, name: string) =>
                     name === 'avg_price' ? [`${v.toLocaleString('ru-RU')} ₽`, 'Ср. цена'] : [v, 'Объектов']
                   }
                 />
                 <Legend wrapperStyle={{ fontSize: 11 }} formatter={(v) => v === 'count' ? 'Объектов' : 'Ср. цена (₽)'} />
-                <Bar yAxisId="count" dataKey="count" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                <Bar yAxisId="price" dataKey="avg_price" fill="hsl(var(--accent))" radius={[4, 4, 0, 0]} />
+                <Bar xAxisId="count" dataKey="count" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
+                <Bar xAxisId="price" dataKey="avg_price" fill="hsl(var(--accent))" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
@@ -767,8 +812,9 @@ function SegmentsTab({
       {/* Size bucket KPI cards */}
       {sizeBuckets.length > 0 && (
         <div>
-          <p className="text-xs uppercase tracking-wider text-[hsl(var(--muted-foreground))] mb-2">
-            KPI по размеру объекта
+          <p className="text-xs uppercase tracking-wider text-[hsl(var(--muted-foreground))] mb-2 inline-flex items-center gap-1.5">
+            <span>KPI по размеру объекта</span>
+            <MethodologyTooltip text="Размер определяется по числу номеров: «Мини» — до 15 номеров, «Средние» — 16–50, «Крупные» — 51 и больше. Если число номеров не указано в источнике, объект попадает в «Мини»." />
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {sizeBuckets.map(b => (
@@ -806,7 +852,7 @@ function SegmentsTab({
             <CardTitle className="text-base">Распределение цен — {selectedDistrict}</CardTitle>
           </div>
           <p className="text-sm text-[hsl(var(--muted-foreground))]">
-            Перцентили min_price за последние 30 дней. p50 — медиана (прокси-ADR).
+            Распределение минимальных цен за номер по объектам района за 30 дней. Каждый столбец — граница: например, «10%» означает, что 10% объектов дешевле этой цены, а 90% — дороже.
           </p>
         </CardHeader>
         <CardContent>
@@ -817,16 +863,13 @@ function SegmentsTab({
               <ResponsiveContainer width="100%" height={180}>
                 <BarChart data={pDistData} margin={{ left: 0, right: 16, top: 4, bottom: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                  <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickFormatter={_pctLabel} />
                   <YAxis tick={{ fontSize: 10 }} axisLine={false} tickFormatter={(v: number) => `${v.toLocaleString('ru-RU')}₽`} />
                   <Tooltip
-                    contentStyle={{
-                      backgroundColor: 'hsl(var(--card))',
-                      border: '1px solid hsl(var(--border))',
-                      borderRadius: '8px',
-                      fontSize: 12,
-                    }}
-                    formatter={(v: number) => [`${v.toLocaleString('ru-RU')} ₽`, 'Цена']}
+                    {...RECHARTS_TOOLTIP_PROPS}
+                    cursor={BAR_CURSOR_TRANSPARENT}
+                    formatter={(v: number) => [`${v.toLocaleString('ru-RU')} ₽`, 'Граница цены']}
+                    labelFormatter={_pctTooltipLabel}
                   />
                   <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                     {pDistData.map((entry, index) => {
@@ -872,16 +915,16 @@ function MethodologyFooter() {
         <p className="text-xs font-semibold uppercase tracking-wider text-[hsl(var(--muted-foreground))]">Методология</p>
       </div>
       <p className="text-xs text-[hsl(var(--muted-foreground))]">
-        <span className="font-medium text-[hsl(var(--foreground))]">RevPAR</span> = ADR × Occupancy.
-        Прокси-ADR = медиана min_price по объектам района за выбранный период.
+        <span className="font-medium text-[hsl(var(--foreground))]">RevPAR</span> = ADR × Загрузка.
+        Прокси-ADR — медиана минимальной цены за номер по объектам района за выбранный период.
       </p>
       <p className="text-xs text-[hsl(var(--muted-foreground))]">
         <span className="font-medium text-[hsl(var(--foreground))]">Достоверность:</span>{' '}
-        high = ≥5 объектов с данными; medium = 2–4 объекта; low = ≤1 объект.
+        высокая — ≥5 объектов с данными; средняя — 2–4 объекта; низкая — ≤1 объект.
       </p>
       <p className="text-xs text-[hsl(var(--muted-foreground))]">
-        <span className="font-medium text-[hsl(var(--foreground))]">События (seasonal_corrected):</span>{' '}
-        базовая линия — медиана загрузки по похожим дням недели в окне ±3 нед. относительно даты события, исключая другие event-дни.
+        <span className="font-medium text-[hsl(var(--foreground))]">События (с поправкой на сезонность):</span>{' '}
+        базовая линия — медиана загрузки по похожим дням недели в окне ±3 нед. относительно даты события, исключая дни других мероприятий.
       </p>
     </div>
   )
@@ -889,12 +932,13 @@ function MethodologyFooter() {
 
 // ─── Shared components ────────────────────────────────────────────────────────
 
-const KPICard = memo(function KPICard({ title, value, icon: Icon, description, accent }: {
+const KPICard = memo(function KPICard({ title, value, icon: Icon, description, accent, tooltip }: {
   title: string
   value: string
   icon: React.ElementType
   description: string
   accent?: 'primary' | 'accent' | 'success'
+  tooltip?: string
 }) {
   const accentClass =
     accent === 'success' ? 'bg-[hsl(var(--success)/0.1)] text-[hsl(var(--success))]' :
@@ -908,7 +952,10 @@ const KPICard = memo(function KPICard({ title, value, icon: Icon, description, a
         </div>
         <div className="min-w-0">
           <p className="text-xl font-bold tabular-nums truncate">{value}</p>
-          <p className="text-xs text-[hsl(var(--muted-foreground))]">{title}</p>
+          <p className="text-xs text-[hsl(var(--muted-foreground))] flex items-center gap-1">
+            {title}
+            {tooltip && <MethodologyTooltip text={tooltip} />}
+          </p>
           <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">{description}</p>
         </div>
       </div>
@@ -941,16 +988,21 @@ function HatchIcon() {
 
 function WeekdayHeatmapComponent({ heatmap }: { heatmap: { data: WeekdayHeatmapCell[]; weekdays: string[]; months: string[] } }) {
   const grid: Record<string, WeekdayHeatmapCell> = {}
-  let max = 0
   for (const cell of heatmap.data) {
     grid[`${cell.weekday}-${cell.month}`] = cell
-    if (cell.occupancy > max) max = cell.occupancy
   }
 
+  const observed = heatmap.data
+    .filter(c => c.samples >= 5 && c.occupancy > 0)
+    .map(c => c.occupancy)
+  const obsMin = observed.length ? Math.min(...observed) : 0
+  const obsMax = observed.length ? Math.max(...observed) : 100
+  const span = Math.max(obsMax - obsMin, 1)
+
   const colorFor = (occ: number) => {
-    if (max === 0) return 'hsl(var(--muted)/0.2)'
-    const t = Math.min(1, occ / Math.max(max, 60))
-    return `hsl(var(--primary) / ${(0.15 + t * 0.7).toFixed(2)})`
+    if (observed.length === 0) return 'hsl(var(--muted)/0.2)'
+    const t = Math.min(1, Math.max(0, (occ - obsMin) / span))
+    return `hsl(var(--primary) / ${(0.15 + t * 0.75).toFixed(2)})`
   }
 
   return (
@@ -1040,7 +1092,11 @@ function WeekdayHeatmapComponent({ heatmap }: { heatmap: { data: WeekdayHeatmapC
           <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: 'hsl(var(--primary)/0.45)' }} />
           <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: 'hsl(var(--primary)/0.85)' }} />
         </span>
-        <span>0–{Math.round(max)}%</span>
+        <span>
+          {observed.length > 0
+            ? `${Math.round(obsMin)}%–${Math.round(obsMax)}% (контраст по наблюдаемому диапазону)`
+            : 'нет данных'}
+        </span>
       </p>
     </div>
   )
@@ -1071,10 +1127,6 @@ function ExportButtons({ district }: { district: string }) {
   )
 }
 
-function confidenceLabel(c: 'high' | 'medium' | 'low'): string {
-  return c === 'high' ? 'высокая' : c === 'medium' ? 'средняя' : 'низкая'
-}
-
 function AnalyticsSkeleton() {
   return (
     <div className="space-y-6">
@@ -1085,6 +1137,126 @@ function AnalyticsSkeleton() {
       <div className="h-64 skeleton rounded-2xl" />
       <div className="h-64 skeleton rounded-2xl" />
       <div className="h-72 skeleton rounded-2xl" />
+    </div>
+  )
+}
+
+const _PCT_AXIS: Record<string, string> = {
+  p10: '10%', p25: '25%', p50: 'Медиана', p75: '75%', p90: '90%',
+}
+
+const _PCT_TOOLTIP: Record<string, string> = {
+  p10: '10% самых дешёвых объектов',
+  p25: '25% дешевле',
+  p50: 'Медиана — середина рынка',
+  p75: '25% дороже',
+  p90: '10% самых дорогих объектов',
+}
+
+function _pctLabel(v: string): string {
+  return _PCT_AXIS[v] ?? v
+}
+
+function _pctTooltipLabel(v: string): string {
+  return _PCT_TOOLTIP[v] ?? v
+}
+
+function DistrictDrillDown({
+  loading,
+  data,
+  onPickAsFilter,
+  isFilterDistrict,
+}: {
+  loading: boolean
+  data: DistrictSegmentsResponse | undefined
+  onPickAsFilter: () => void
+  isFilterDistrict: boolean
+}) {
+  if (loading) {
+    return <div className="h-24 skeleton rounded-md" />
+  }
+  if (!data || data.total_objects === 0) {
+    return (
+      <p className="text-xs text-[hsl(var(--muted-foreground))] italic">
+        Нет данных для сегментирования (района нет в hotel_statistics или мало объектов).
+      </p>
+    )
+  }
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="text-xs text-[hsl(var(--muted-foreground))]">
+          <span className="font-medium text-[hsl(var(--foreground))]">{data.total_objects} объектов</span>
+          {' '}в районе <span className="font-medium text-[hsl(var(--foreground))]">{data.district}</span>.
+          Метрики — по последнему снимку каждого отеля.
+        </div>
+        {!isFilterDistrict && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onPickAsFilter() }}
+            className="text-xs px-2 py-1 rounded-md bg-[hsl(var(--primary))] text-white hover:bg-[hsl(var(--primary)/0.9)]"
+          >
+            Применить фильтр
+          </button>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-wider text-[hsl(var(--muted-foreground))] mb-1.5">
+            По типу размещения
+          </p>
+          <table className="w-full text-xs">
+            <thead className="text-[hsl(var(--muted-foreground))]">
+              <tr className="border-b border-[hsl(var(--border))]">
+                <th className="text-left py-1.5">Тип</th>
+                <th className="text-right py-1.5">Объектов</th>
+                <th className="text-right py-1.5">Загрузка</th>
+                <th className="text-right py-1.5">RevPAR</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.by_accommodation_type.map(s => (
+                <tr key={s.type} className="border-b border-[hsl(var(--border)/0.4)]">
+                  <td className="py-1.5">{localizeAccommodationType(s.type)}</td>
+                  <td className="text-right tabular-nums">{s.count}</td>
+                  <td className="text-right tabular-nums">{s.avg_occupancy.toFixed(1)}%</td>
+                  <td className="text-right tabular-nums font-medium">
+                    {s.revpar ? `${s.revpar.toLocaleString('ru-RU')}₽` : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div>
+          <p className="text-xs uppercase tracking-wider text-[hsl(var(--muted-foreground))] mb-1.5">
+            По размеру
+          </p>
+          <table className="w-full text-xs">
+            <thead className="text-[hsl(var(--muted-foreground))]">
+              <tr className="border-b border-[hsl(var(--border))]">
+                <th className="text-left py-1.5">Размер</th>
+                <th className="text-right py-1.5">Объектов</th>
+                <th className="text-right py-1.5">Загрузка</th>
+                <th className="text-right py-1.5">RevPAR</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.by_size.map(s => (
+                <tr key={s.size} className="border-b border-[hsl(var(--border)/0.4)]">
+                  <td className="py-1.5">{localizeSizeBucket(s.size)}</td>
+                  <td className="text-right tabular-nums">{s.count}</td>
+                  <td className="text-right tabular-nums">{s.avg_occupancy.toFixed(1)}%</td>
+                  <td className="text-right tabular-nums font-medium">
+                    {s.revpar ? `${s.revpar.toLocaleString('ru-RU')}₽` : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   )
 }

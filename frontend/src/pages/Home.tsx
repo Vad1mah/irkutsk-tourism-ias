@@ -10,6 +10,9 @@ import { api } from '../api/client'
 import { Card, Button, Badge, Dropdown } from '../components/ui'
 import { MethodologyTooltip } from '../components/MethodologyTooltip'
 import { ALL_DISTRICT_NAMES, DEFAULT_DISTRICT } from '../constants/districts'
+import { localizeConfidence, localizeSeries, FORECAST_HEADER_TEXT, FORECAST_METHODOLOGY_TEXT } from '../utils/localize'
+import { formatRuDate, formatRuDateRange } from '../utils/format'
+import { RECHARTS_TOOLTIP_PROPS, BAR_CURSOR_TRANSPARENT } from '../utils/chartTheme'
 import {
   AreaChart, Area, ResponsiveContainer, XAxis, YAxis, Tooltip, ReferenceLine, ComposedChart,
 } from 'recharts'
@@ -184,14 +187,14 @@ function Home() {
           value={districtKpi?.adr ? `${districtKpi.adr.toLocaleString('ru-RU')}₽` : '—'}
           sub="Средний тариф номера"
           accent="accent"
-          tooltip="Прокси-ADR — медианная мин. цена номера на снимке. Реальный ADR обычно на 15-30% выше."
+          tooltip="ADR (Average Daily Rate) — средний тариф номера за сутки. Считаем по медиане минимальных цен на сайтах бронирования. Реальный тариф обычно на 15–30% выше — мы видим только рекламируемую цену."
         />
         <KPITile
           icon={Banknote}
           label="RevPAR"
           value={districtKpi?.revpar ? `${districtKpi.revpar.toLocaleString('ru-RU')}₽` : '—'}
           sub="Выручка на доступный номер"
-          tooltip="Прокси-RevPAR = прокси-ADR × occupancy. Метрика для сравнения трендов, не для абсолютных ROI."
+          tooltip="RevPAR (Revenue per Available Room) — выручка с доступного номера = ADR × Загрузка. Главный показатель в гостиничном бизнесе: учитывает и цену, и заполняемость. Используем для сравнения районов и трендов."
         />
       </div>
 
@@ -199,9 +202,12 @@ function Home() {
       <Card variant="glass" padding="lg">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <div>
-            <h2 className="text-lg font-semibold">Факт (−14 дней) + Прогноз (+{FORECAST_HORIZON} дней)</h2>
+            <div className="flex items-center gap-1.5">
+              <h2 className="text-lg font-semibold">Загрузка отелей: факт и прогноз</h2>
+              <MethodologyTooltip text={FORECAST_METHODOLOGY_TEXT} />
+            </div>
             <p className="text-sm text-[hsl(var(--muted-foreground))]">
-              Ensemble: Prophet + NeuralProphet + XGBoost. Вертикальная линия — сегодня.
+              {FORECAST_HEADER_TEXT} Вертикальная линия — сегодня.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -237,15 +243,20 @@ function Home() {
               <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(v: string) => v.slice(5)} axisLine={false} />
               <YAxis tick={{ fontSize: 10 }} axisLine={false} domain={[0, 100]} tickFormatter={(v: number) => `${v}%`} />
               <Tooltip
-                contentStyle={{
-                  backgroundColor: 'hsl(var(--card))',
-                  border: '1px solid hsl(var(--border))',
-                  borderRadius: '8px',
-                  fontSize: 12,
-                }}
-                labelFormatter={(label: string) => `Дата: ${label}`}
-                formatter={(v: number, _name: string) => {
-                  return [`${Number(v).toFixed(1)}%`, _name]
+                content={({ active, payload, label }) => {
+                  if (!active || !payload || !payload.length) return null
+                  const visible = payload.filter(p => p.dataKey === 'factual' || p.dataKey === 'forecast')
+                  if (!visible.length) return null
+                  return (
+                    <div style={{ ...RECHARTS_TOOLTIP_PROPS.contentStyle, padding: '8px 12px' }}>
+                      <div style={RECHARTS_TOOLTIP_PROPS.labelStyle}>Дата: {label}</div>
+                      {visible.map(p => (
+                        <div key={String(p.dataKey)} style={{ color: p.stroke as string, fontWeight: 500 }}>
+                          {localizeSeries(String(p.dataKey))}: {Number(p.value).toFixed(1)}%
+                        </div>
+                      ))}
+                    </div>
+                  )
                 }}
               />
               <ReferenceLine x={combinedSeries.today} stroke="hsl(var(--muted-foreground))" strokeDasharray="4 2" label={{ value: 'Сегодня', fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
@@ -271,12 +282,15 @@ function Home() {
               <h2 className="text-base font-semibold">Динамика бронирований за 30 дней</h2>
             </div>
             {pickup?.summary && (
-              <Badge
-                variant={pickup.summary.trend === 'ускорение' ? 'success' : pickup.summary.trend === 'замедление' ? 'danger' : 'outline'}
-                size="sm"
-              >
-                {pickup.summary.trend}
-              </Badge>
+              <span className="inline-flex items-center gap-1">
+                <Badge
+                  variant={pickup.summary.trend === 'ускорение' ? 'success' : pickup.summary.trend === 'замедление' ? 'danger' : 'outline'}
+                  size="sm"
+                >
+                  {pickup.summary.trend}
+                </Badge>
+                <MethodologyTooltip text="Сравнение последних 3 дней с первыми 3 в окне 30 дней. «Ускорение» — рост бронирований более чем на 20%, «замедление» — спад более чем на 20%, иначе — «стабильно»." />
+              </span>
             )}
           </div>
           {pickup && pickup.points.length > 0 ? (
@@ -286,8 +300,9 @@ function Home() {
                   <XAxis dataKey="date" hide />
                   <YAxis hide />
                   <Tooltip
-                    contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: 12 }}
-                    formatter={(v: number) => [`${v}`, 'Pickup']}
+                    {...RECHARTS_TOOLTIP_PROPS}
+                    cursor={BAR_CURSOR_TRANSPARENT}
+                    formatter={(v: number) => [v > 0 ? `+${v}` : `${v}`, 'Изменение бронирований за сутки']}
                   />
                   <Area type="monotone" dataKey="pickup" stroke="hsl(var(--accent))" fill="hsl(var(--accent)/0.2)" />
                 </AreaChart>
@@ -298,17 +313,24 @@ function Home() {
                   <p className="font-semibold tabular-nums">{pickup.summary.avg_pickup > 0 ? '+' : ''}{pickup.summary.avg_pickup}</p>
                 </div>
                 <div>
-                  <span className="text-[hsl(var(--muted-foreground))]">Макс</span>
+                  <span className="text-[hsl(var(--muted-foreground))]">Лучший день</span>
                   <p className="font-semibold tabular-nums text-[hsl(var(--success))]">+{pickup.summary.max_pickup}</p>
                 </div>
                 <div>
-                  <span className="text-[hsl(var(--muted-foreground))]">Мин</span>
+                  <span className="text-[hsl(var(--muted-foreground))]">Худший день</span>
                   <p className="font-semibold tabular-nums text-[hsl(var(--destructive))]">{pickup.summary.min_pickup}</p>
                 </div>
               </div>
+              <p className="text-xs text-[hsl(var(--muted-foreground))] mt-2 leading-snug">
+                {pickup.summary.trend === 'ускорение'
+                  ? 'Спрос ускоряется: за последние 3 дня бронируют активнее, чем в начале окна. Имеет смысл удержать или поднять тариф на ближайшие даты.'
+                  : pickup.summary.trend === 'замедление'
+                    ? 'Спрос ослабевает: бронирований сейчас меньше, чем в начале окна. Рассмотрите промо или скидку на нечувствительные даты.'
+                    : 'Спрос стабилен: значимых сдвигов в темпе бронирований за окно не зафиксировано.'}
+              </p>
             </>
           ) : (
-            <p className="text-sm text-[hsl(var(--muted-foreground))] py-6 text-center">Нет данных pickup для района.</p>
+            <p className="text-sm text-[hsl(var(--muted-foreground))] py-6 text-center">Недостаточно дневных снимков, чтобы рассчитать темп бронирований по этому району.</p>
           )}
         </Card>
 
@@ -316,7 +338,7 @@ function Home() {
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Calendar size={18} className="text-[hsl(var(--accent))]" />
-              <h2 className="text-base font-semibold">Топ-5 событий по impact</h2>
+              <h2 className="text-base font-semibold">Топ-5 событий по влиянию на спрос</h2>
             </div>
             <Button variant="secondary" size="sm" onClick={() => navigate('/events')}>
               Все события
@@ -335,18 +357,22 @@ function Home() {
                     <p className="text-xs text-[hsl(var(--muted-foreground))]">{e.district}</p>
                   </div>
                   <div className="flex flex-col items-end gap-1">
-                    <Badge variant={(e.delta_pct ?? 0) > 0 ? 'success' : 'danger'} size="sm">
-                      {(e.delta_pct ?? 0) > 0 ? '+' : ''}{(e.delta_pct ?? 0).toFixed(1)}%
-                    </Badge>
-                    <span className={`text-[10px] font-medium ${e.confidence === 'high' ? 'text-[hsl(var(--success))]' : e.confidence === 'medium' ? 'text-[hsl(var(--accent))]' : 'text-[hsl(var(--muted-foreground))]'}`}>
-                      {e.confidence}
+                    <span className="flex items-center gap-1">
+                      <Badge variant={(e.delta_pct ?? 0) > 0 ? 'success' : 'danger'} size="sm">
+                        {(e.delta_pct ?? 0) > 0 ? '+' : ''}{(e.delta_pct ?? 0).toFixed(1)}%
+                      </Badge>
+                      <MethodologyTooltip text="На сколько процентов загрузка в день события отличается от обычной. Сравниваем с такими же днями недели за 3 недели до и после события, исключая дни других мероприятий." />
+                    </span>
+                    <span className={`text-[10px] font-medium flex items-center gap-1 ${e.confidence === 'high' ? 'text-[hsl(var(--success))]' : e.confidence === 'medium' ? 'text-[hsl(var(--accent))]' : 'text-[hsl(var(--muted-foreground))]'}`}>
+                      {localizeConfidence(e.confidence)}
+                      <MethodologyTooltip text="Насколько надёжен расчёт. Высокая — нашли 5 и более похожих дней для сравнения; средняя — 2-4 дня; низкая — только 1 день, оценка ориентировочная." />
                     </span>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-sm text-[hsl(var(--muted-foreground))] py-6 text-center">Нет событий с рассчитанным impact.</p>
+            <p className="text-sm text-[hsl(var(--muted-foreground))] py-6 text-center">Нет событий с рассчитанной оценкой влияния на спрос.</p>
           )}
         </Card>
       </div>
@@ -358,7 +384,7 @@ function Home() {
           <h2 className="text-lg font-semibold">Быстрые B2B-запросы к AI-аналитику</h2>
         </div>
         <p className="text-sm text-[hsl(var(--muted-foreground))] mb-3">
-          AI-агент работает с тем же ML-ядром: ensemble-прогноз, события, RMS-метрики.
+          AI-агент использует те же данные, что и дашборды: прогноз спроса, события, RMS-метрики по районам.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {B2B_QUICK_PROMPTS.map(({ icon: Icon, short, prompt }) => (
@@ -398,9 +424,9 @@ function Home() {
               <p className="text-sm font-semibold tabular-nums">{metadata.events_count}</p>
             </div>
             <div>
-              <p className="text-xs text-[hsl(var(--muted-foreground))]">Данные с / по</p>
+              <p className="text-xs text-[hsl(var(--muted-foreground))]">Период данных</p>
               <p className="text-sm font-semibold tabular-nums">
-                {metadata.data_range.from?.slice(0, 7) ?? '—'} / {metadata.data_range.to?.slice(0, 7) ?? '—'}
+                {formatRuDate(metadata.data_range.from)} – {formatRuDate(metadata.data_range.to)}
               </p>
             </div>
             <div>
@@ -412,9 +438,16 @@ function Home() {
           </div>
           {metadata.gap_periods.length > 0 && (
             <div className="mt-2 pt-2 border-t border-[hsl(var(--border))]">
-              <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                Пробелы данных: {metadata.gap_periods.map(g => `${g.from?.slice(0, 7) ?? '?'}–${g.to?.slice(0, 7) ?? '?'} (${g.gap_days} дн.)`).join('; ')}
-              </p>
+              <div className="flex items-start gap-1.5">
+                <p className="text-xs text-[hsl(var(--muted-foreground))] inline-flex items-center gap-1">
+                  <span>Пробелы в данных</span>
+                  <MethodologyTooltip text="Периоды, когда парсеры были временно отключены и статистика по отелям не собиралась. Прогнозы и сравнения за эти даты могут быть менее точными." />
+                  <span>:</span>
+                </p>
+                <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                  {metadata.gap_periods.map(g => `${formatRuDateRange(g.from, g.to)} (${g.gap_days} дн.)`).join('; ')}
+                </p>
+              </div>
             </div>
           )}
         </Card>
@@ -424,7 +457,7 @@ function Home() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { label: 'Аналитика рынка', desc: 'RMS-метрики, heatmap, события', icon: BarChart3, path: `/analytics?district=${encodeURIComponent(district)}` },
-          { label: 'Прогноз спроса', desc: 'Ensemble ML + объяснение', icon: TrendingUp, path: `/forecast?district=${encodeURIComponent(district)}` },
+          { label: 'Прогноз спроса', desc: 'Среднее по 3 моделям + факторы', icon: TrendingUp, path: `/forecast?district=${encodeURIComponent(district)}` },
           { label: 'Региональная карта', desc: 'Объекты + загрузка', icon: MapPin, path: '/map' },
           { label: 'Спросить AI', desc: 'Свой запрос в чат', icon: MessageSquare, path: '/chat' },
         ].map(item => (

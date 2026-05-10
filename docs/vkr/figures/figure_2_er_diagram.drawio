@@ -7,7 +7,7 @@
 
         <!-- Hotel table -->
         <mxCell id="hotel" value="Hotel" style="shape=table;startSize=30;container=1;collapsible=0;childLayout=tableLayout;fixedRows=1;rowLines=0;fontStyle=1;align=center;resizeLast=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;fontFamily=Times New Roman;" vertex="1" parent="1">
-          <mxGeometry x="40" y="100" width="250" height="260" as="geometry"/>
+          <mxGeometry x="40" y="100" width="250" height="286" as="geometry"/>
         </mxCell>
         <mxCell id="h1" value="" style="shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;fillColor=none;collapsible=0;dropTarget=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=11;fontFamily=Times New Roman;" vertex="1" parent="hotel">
           <mxGeometry y="30" width="250" height="26" as="geometry"/>
@@ -69,11 +69,20 @@
         <mxCell id="h7a" value="" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;overflow=hidden;fontSize=10;fontFamily=Times New Roman;" vertex="1" parent="h7">
           <mxGeometry width="40" height="26" as="geometry"><mxRectangle width="40" height="26" as="alternateBounds"/></mxGeometry>
         </mxCell>
-        <mxCell id="h7b" value="hotel_type: String(100)" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;overflow=hidden;fontSize=11;fontFamily=Times New Roman;" vertex="1" parent="h7">
+        <mxCell id="h7b" value="accommodation_type: String(100)" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;overflow=hidden;fontSize=11;fontFamily=Times New Roman;" vertex="1" parent="h7">
           <mxGeometry x="40" width="210" height="26" as="geometry"><mxRectangle width="210" height="26" as="alternateBounds"/></mxGeometry>
         </mxCell>
-        <mxCell id="h_count" value="1 366 записей" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=10;fontFamily=Times New Roman;fontColor=#999999;" vertex="1" parent="hotel">
-          <mxGeometry x="70" y="220" width="90" height="30" as="geometry"/>
+        <mxCell id="h8" value="" style="shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;fillColor=none;collapsible=0;dropTarget=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=11;fontFamily=Times New Roman;" vertex="1" parent="hotel">
+          <mxGeometry y="212" width="250" height="26" as="geometry"/>
+        </mxCell>
+        <mxCell id="h8a" value="" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;overflow=hidden;fontSize=10;fontFamily=Times New Roman;" vertex="1" parent="h8">
+          <mxGeometry width="40" height="26" as="geometry"><mxRectangle width="40" height="26" as="alternateBounds"/></mxGeometry>
+        </mxCell>
+        <mxCell id="h8b" value="image_url, tripadvisor_*: Text" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;overflow=hidden;fontSize=11;fontFamily=Times New Roman;" vertex="1" parent="h8">
+          <mxGeometry x="40" width="210" height="26" as="geometry"><mxRectangle width="210" height="26" as="alternateBounds"/></mxGeometry>
+        </mxCell>
+        <mxCell id="h_count" value="1 428 записей" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=10;fontFamily=Times New Roman;fontColor=#999999;" vertex="1" parent="hotel">
+          <mxGeometry x="70" y="248" width="90" height="30" as="geometry"/>
         </mxCell>
 
         <!-- HotelStatistic table -->
@@ -104,7 +113,7 @@
         <mxCell id="s3a" value="" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;overflow=hidden;fontSize=10;fontFamily=Times New Roman;" vertex="1" parent="s3">
           <mxGeometry width="45" height="26" as="geometry"><mxRectangle width="45" height="26" as="alternateBounds"/></mxGeometry>
         </mxCell>
-        <mxCell id="s3b" value="total_rooms, available_rooms" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;overflow=hidden;fontSize=11;fontFamily=Times New Roman;" vertex="1" parent="s3">
+        <mxCell id="s3b" value="rooms_num, free_rooms_amount: Int" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;overflow=hidden;fontSize=11;fontFamily=Times New Roman;" vertex="1" parent="s3">
           <mxGeometry x="45" width="205" height="26" as="geometry"><mxRectangle width="205" height="26" as="alternateBounds"/></mxGeometry>
         </mxCell>
         <mxCell id="s4" value="" style="shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;fillColor=none;collapsible=0;dropTarget=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=11;fontFamily=Times New Roman;" vertex="1" parent="stat">
@@ -113,7 +122,7 @@
         <mxCell id="s4a" value="" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;overflow=hidden;fontSize=10;fontFamily=Times New Roman;" vertex="1" parent="s4">
           <mxGeometry width="45" height="26" as="geometry"><mxRectangle width="45" height="26" as="alternateBounds"/></mxGeometry>
         </mxCell>
-        <mxCell id="s4b" value="availability: Float CHECK(0–100)" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;overflow=hidden;fontSize=11;fontFamily=Times New Roman;" vertex="1" parent="s4">
+        <mxCell id="s4b" value="available_rooms_percent: Float (0–100)" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;overflow=hidden;fontSize=11;fontFamily=Times New Roman;" vertex="1" parent="s4">
           <mxGeometry x="45" width="205" height="26" as="geometry"><mxRectangle width="205" height="26" as="alternateBounds"/></mxGeometry>
         </mxCell>
         <mxCell id="s5" value="" style="shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;fillColor=none;collapsible=0;dropTarget=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=11;fontFamily=Times New Roman;" vertex="1" parent="stat">
@@ -122,13 +131,13 @@
         <mxCell id="s5a" value="" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;overflow=hidden;fontSize=10;fontFamily=Times New Roman;" vertex="1" parent="s5">
           <mxGeometry width="45" height="26" as="geometry"><mxRectangle width="45" height="26" as="alternateBounds"/></mxGeometry>
         </mxCell>
-        <mxCell id="s5b" value="min_price: Float" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;overflow=hidden;fontSize=11;fontFamily=Times New Roman;" vertex="1" parent="s5">
+        <mxCell id="s5b" value="min_price: Int, max_capacity" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;overflow=hidden;fontSize=11;fontFamily=Times New Roman;" vertex="1" parent="s5">
           <mxGeometry x="45" width="205" height="26" as="geometry"><mxRectangle width="205" height="26" as="alternateBounds"/></mxGeometry>
         </mxCell>
 
         <!-- Event table -->
         <mxCell id="event" value="Event" style="shape=table;startSize=30;container=1;collapsible=0;childLayout=tableLayout;fixedRows=1;rowLines=0;fontStyle=1;align=center;resizeLast=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;fontFamily=Times New Roman;" vertex="1" parent="1">
-          <mxGeometry x="40" y="430" width="250" height="190" as="geometry"/>
+          <mxGeometry x="40" y="430" width="250" height="216" as="geometry"/>
         </mxCell>
         <mxCell id="e1" value="" style="shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;fillColor=none;collapsible=0;dropTarget=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=11;fontFamily=Times New Roman;" vertex="1" parent="event">
           <mxGeometry y="30" width="250" height="26" as="geometry"/>
@@ -163,11 +172,29 @@
         <mxCell id="e4a" value="" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;overflow=hidden;fontSize=10;fontFamily=Times New Roman;" vertex="1" parent="e4">
           <mxGeometry width="40" height="26" as="geometry"><mxRectangle width="40" height="26" as="alternateBounds"/></mxGeometry>
         </mxCell>
-        <mxCell id="e4b" value="location, source: String" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;overflow=hidden;fontSize=11;fontFamily=Times New Roman;" vertex="1" parent="e4">
+        <mxCell id="e4b" value="location, source, address" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;overflow=hidden;fontSize=11;fontFamily=Times New Roman;" vertex="1" parent="e4">
+          <mxGeometry x="40" width="210" height="26" as="geometry"><mxRectangle width="210" height="26" as="alternateBounds"/></mxGeometry>
+        </mxCell>
+        <mxCell id="e5" value="" style="shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;fillColor=none;collapsible=0;dropTarget=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=11;fontFamily=Times New Roman;" vertex="1" parent="event">
+          <mxGeometry y="134" width="250" height="26" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5a" value="" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;overflow=hidden;fontSize=10;fontFamily=Times New Roman;" vertex="1" parent="e5">
+          <mxGeometry width="40" height="26" as="geometry"><mxRectangle width="40" height="26" as="alternateBounds"/></mxGeometry>
+        </mxCell>
+        <mxCell id="e5b" value="time_start, price_min/max, image_url" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;overflow=hidden;fontSize=11;fontFamily=Times New Roman;" vertex="1" parent="e5">
+          <mxGeometry x="40" width="210" height="26" as="geometry"><mxRectangle width="210" height="26" as="alternateBounds"/></mxGeometry>
+        </mxCell>
+        <mxCell id="e6" value="" style="shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;fillColor=none;collapsible=0;dropTarget=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=11;fontFamily=Times New Roman;" vertex="1" parent="event">
+          <mxGeometry y="160" width="250" height="26" as="geometry"/>
+        </mxCell>
+        <mxCell id="e6a" value="" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;overflow=hidden;fontSize=10;fontFamily=Times New Roman;" vertex="1" parent="e6">
+          <mxGeometry width="40" height="26" as="geometry"><mxRectangle width="40" height="26" as="alternateBounds"/></mxGeometry>
+        </mxCell>
+        <mxCell id="e6b" value="description: Text, age_restriction" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;overflow=hidden;fontSize=11;fontFamily=Times New Roman;" vertex="1" parent="e6">
           <mxGeometry x="40" width="210" height="26" as="geometry"><mxRectangle width="210" height="26" as="alternateBounds"/></mxGeometry>
         </mxCell>
         <mxCell id="e_count" value="376 записей" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=10;fontFamily=Times New Roman;fontColor=#999999;" vertex="1" parent="event">
-          <mxGeometry x="75" y="145" width="80" height="30" as="geometry"/>
+          <mxGeometry x="75" y="190" width="80" height="22" as="geometry"/>
         </mxCell>
 
         <!-- QueryHistory table -->

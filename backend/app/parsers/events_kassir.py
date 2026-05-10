@@ -81,6 +81,99 @@ def _extract_full_description(jsonld: dict) -> str | None:
     return desc[:2000] if desc else None
 
 
+_AGE_RE = re.compile(r"\b(\d{1,2})\s*\+")
+
+
+def _extract_age_from_text(text: str | None) -> str | None:
+    """Извлекает возрастное ограничение вида '16+' / '18+' из текста.
+
+    Args:
+        text: Произвольный текст (title/description/markdown context).
+
+    Returns:
+        Строка вида ``"NN+"`` или None.
+    """
+    if not text:
+        return None
+    m = _AGE_RE.search(text)
+    if not m:
+        return None
+    try:
+        age = int(m.group(1))
+        if 0 < age <= 21:
+            return f"{age}+"
+    except ValueError:
+        pass
+    return None
+
+
+# Markdown-мусор, который точно не относится к описанию события
+_MD_NOISE_LINES = re.compile(
+    r"^(?:афиша|билеты|kassir|логотип|меню|реклама|подробнее|купить билет"
+    r"|показать ещё|показать еще)\b",
+    re.IGNORECASE,
+)
+
+
+def _description_from_markdown_context(
+    markdown: str,
+    match_end: int,
+    max_lookahead: int = 25,
+) -> str | None:
+    """Извлекает текст описания из Markdown после блока с датой/ценой.
+
+    Берёт строки после конца совпадения паттерна до следующего разделителя
+    (картинка ![…](…), заголовок ##, начало нового списка с датой).
+    Чистит пустые/шумовые строки и склеивает в один параграф,
+    пропуская через _extract_full_description для единого формата.
+
+    Args:
+        markdown: Полный Markdown-текст страницы.
+        match_end: Индекс конца совпадения regex'а в markdown.
+        max_lookahead: Максимум строк вперёд для сбора описания.
+
+    Returns:
+        Строка описания (до 2000 chars) или None.
+    """
+    tail = markdown[match_end:]
+    lines = tail.split("\n")
+    chunks: list[str] = []
+    for raw in lines[: max_lookahead + 5]:
+        s = raw.strip()
+        if not s:
+            if chunks:
+                continue
+            else:
+                continue
+        # Граница следующего события / следующей секции
+        if s.startswith("![") or s.startswith("##") or s.startswith("---"):
+            break
+        # Bullet с датой/ценой — это уже следующее событие
+        if s.startswith("*") and re.search(
+            r"\d{1,2}\s+(?:января|февраля|марта|апреля|мая|июня|июля|"
+            r"августа|сентября|октября|ноября|декабря)",
+            s.lower(),
+        ):
+            break
+        if _MD_NOISE_LINES.match(s):
+            continue
+        # Markdown-bullet "* …" — оставляем содержимое после маркера
+        cleaned = re.sub(r"^\*\s+", "", s)
+        # Markdown-ссылки и картинки внутри строки удаляем
+        cleaned = re.sub(r"!\[[^\]]*\]\([^)]+\)", "", cleaned)
+        cleaned = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", cleaned)
+        cleaned = cleaned.strip()
+        if not cleaned:
+            continue
+        chunks.append(cleaned)
+        if len(chunks) >= max_lookahead:
+            break
+    if not chunks:
+        return None
+    text = " ".join(chunks)
+    return _extract_full_description({"description": text})
+
+
 # Категории Kassir.ru
 KASSIR_CATEGORIES = {
     "koncerty": "концерты",
@@ -101,7 +194,8 @@ class KassirParser(BaseParser):
     async def fetch_events(
         self,
         categories: list[str] | None = None,
-        use_ai: bool = True
+        use_ai: bool = True,
+        **kwargs,
     ) -> list[ParsedEvent]:
         """
         Получить события с Kassir.ru.
@@ -200,18 +294,18 @@ class KassirParser(BaseParser):
             date_str = match.group(2).strip()
             price_min_str = match.group(3).strip()
             price_max_str = match.group(4).strip()
-            
+
             skip_words = ['афиша', 'билеты', 'kassir', 'логотип', 'меню', 'реклама']
             if any(w in title.lower() for w in skip_words):
                 continue
-            
+
             if len(title) < 3:
                 continue
-            
+
             event_date = parse_russian_date(date_str)
             if not event_date:
                 event_date = str(date.today())
-            
+
             try:
                 price_min = int(re.sub(r'\s+', '', price_min_str))
                 price_max = int(re.sub(r'\s+', '', price_max_str))
@@ -220,19 +314,23 @@ class KassirParser(BaseParser):
                 price_min = None
                 price_max = None
                 price = None
-            
+
             event_id = self.generate_event_id(title, event_date, "kassir")
-            
+            description = _description_from_markdown_context(markdown, match.end())
+            age_restriction = _extract_age_from_text(description) or _extract_age_from_text(title)
+
             try:
-                event = ParsedEvent(
+                event = ParsedEvent(  # pyright: ignore[reportCallIssue]
                     id=event_id,
                     title=title,
-                    description=None,
+                    description=description,
                     date_start=event_date,
-                    event_type=detect_event_type(title),
+                    event_type=detect_event_type(title, description or ""),
                     location=venue_map.get(title.lower(), "Иркутск"),
                     price=price,
                     price_min=price_min,
+                    price_max=price_max,
+                    age_restriction=age_restriction,
                     source="kassir",
                     url=url_map.get(title.lower()),
                 )
@@ -272,17 +370,22 @@ class KassirParser(BaseParser):
                 price_min = None
                 price_max = None
                 price = None
-            
+
+            description = _description_from_markdown_context(markdown, match.end())
+            age_restriction = _extract_age_from_text(description) or _extract_age_from_text(title)
+
             try:
-                event = ParsedEvent(
+                event = ParsedEvent(  # pyright: ignore[reportCallIssue]
                     id=event_id,
                     title=title,
-                    description=None,
+                    description=description,
                     date_start=event_date,
-                    event_type=detect_event_type(title),
+                    event_type=detect_event_type(title, description or ""),
                     location=venue_map.get(title.lower(), "Иркутск"),
                     price=price,
                     price_min=price_min,
+                    price_max=price_max,
+                    age_restriction=age_restriction,
                     source="kassir",
                     url=url_map.get(title.lower()),
                 )
@@ -330,17 +433,21 @@ class KassirParser(BaseParser):
                 price = None
             
             event_id = self.generate_event_id(title, event_date, "kassir")
-            
+            description = _description_from_markdown_context(markdown, match.end())
+            age_restriction = _extract_age_from_text(description) or _extract_age_from_text(title)
+
             try:
-                event = ParsedEvent(
+                event = ParsedEvent(  # pyright: ignore[reportCallIssue]
                     id=event_id,
                     title=title,
-                    description=None,
+                    description=description,
                     date_start=event_date,
-                    event_type=detect_event_type(title),
+                    event_type=detect_event_type(title, description or ""),
                     location=venue_map.get(title.lower(), "Иркутск"),
                     price=price,
                     price_min=price_min,
+                    price_max=price_max,
+                    age_restriction=age_restriction,
                     source="kassir",
                     url=url_map.get(title.lower()),
                 )
@@ -388,16 +495,20 @@ class KassirParser(BaseParser):
                 price_min = None
                 price = price_str
             
+            description = _description_from_markdown_context(markdown, match.end())
+            age_restriction = _extract_age_from_text(description) or _extract_age_from_text(title)
+
             try:
-                event = ParsedEvent(
+                event = ParsedEvent(  # pyright: ignore[reportCallIssue]
                     id=event_id,
                     title=title,
-                    description=None,
+                    description=description,
                     date_start=event_date,
-                    event_type=detect_event_type(title),
+                    event_type=detect_event_type(title, description or ""),
                     location=venue_map.get(title.lower(), "Иркутск"),
                     price=price,
                     price_min=price_min,
+                    age_restriction=age_restriction,
                     source="kassir",
                     url=url_map.get(title.lower()),
                 )
@@ -452,7 +563,9 @@ class KassirParser(BaseParser):
         # Сначала пробуем JSON-LD (самый надёжный источник)
         for script in soup.find_all('script', type='application/ld+json'):
             try:
-                data = json.loads(script.string)
+                if not script.string:
+                    continue
+                data = json.loads(str(script.string))
                 if '@graph' in data:
                     for item in data['@graph']:
                         if item.get('@type') == 'Event':
@@ -508,6 +621,14 @@ class KassirParser(BaseParser):
                 # ISO format: 2026-03-15T19:00:00+08:00
                 start_date = start_date[:10]
 
+            # Дата окончания
+            end_raw = data.get('endDate', '')
+            date_end: str | None = None
+            if end_raw:
+                end_date = end_raw[:10]
+                if end_date and end_date != start_date:
+                    date_end = end_date
+
             # Локация
             location = data.get('location', {})
             location_name = ''
@@ -525,14 +646,63 @@ class KassirParser(BaseParser):
             else:
                 event_id = f"kassir_{hashlib.md5(name.encode()).hexdigest()[:10]}"
 
-            return ParsedEvent(
+            description_text = _extract_full_description(data) or ""
+
+            # Цена min/max
+            offers = data.get("offers", {})
+            price_min: int | None = None
+            price_max: int | None = None
+            price: str | None = None
+            if isinstance(offers, dict):
+                raw_low = offers.get("lowPrice") or offers.get("price")
+                if raw_low is not None:
+                    try:
+                        price_min = int(float(raw_low))
+                    except (ValueError, TypeError):
+                        pass
+                raw_high = offers.get("highPrice") or offers.get("maxPrice")
+                if raw_high is not None:
+                    try:
+                        price_max = int(float(raw_high))
+                    except (ValueError, TypeError):
+                        pass
+                if price_min is not None and price_max is not None and price_max > price_min:
+                    price = f"{price_min} — {price_max} руб"
+                elif price_min is not None:
+                    price = f"от {price_min} руб"
+
+            # Возрастное ограничение
+            age_restriction: str | None = None
+            age_raw = data.get("typicalAgeRange") or ""
+            if isinstance(age_raw, str) and "-" in age_raw:
+                try:
+                    min_age = int(age_raw.split("-")[0])
+                    if min_age > 0:
+                        age_restriction = f"{min_age}+"
+                except ValueError:
+                    pass
+            if age_restriction is None and description_text:
+                m_age = re.search(r"\b(\d{1,2})\s*\+", description_text)
+                if m_age:
+                    age_restriction = f"{m_age.group(1)}+"
+
+            return ParsedEvent(  # pyright: ignore[reportCallIssue]
                 id=event_id,
                 title=name,
-                description=_extract_full_description(data),
+                description=description_text or None,
                 date_start=start_date,
-                event_type=detect_event_type(name, data.get('description', '')),
+                date_end=date_end,
+                event_type=detect_event_type(
+                    name,
+                    data.get('description', '') or "",
+                    jsonld_type=data.get('@type'),
+                ),
                 location=location_name,
                 address=_extract_address_from_jsonld(data),
+                price=price,
+                price_min=price_min,
+                price_max=price_max,
+                age_restriction=age_restriction,
                 source="kassir",
                 url=event_url,
             )
@@ -595,7 +765,7 @@ class KassirParser(BaseParser):
             
             event_id = self.generate_event_id(title, event_date, "kassir")
             
-            return ParsedEvent(
+            return ParsedEvent(  # pyright: ignore[reportCallIssue]
                 id=event_id,
                 title=title,
                 description=None,
