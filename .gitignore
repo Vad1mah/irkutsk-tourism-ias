@@ -7,6 +7,71 @@ authorized_key.json
 .remember/
 .claude/
 
+# AI-helper artifacts (для научного руководителя — оставлены локально, не в репо)
+CLAUDE.md
+claude-vpn.bat
+AI_TEXT_DETECTION_RULES.md
+docs/NORTH_STAR.md
+docs/SESSION_HANDOFF.md
+docs/MERGE_GUIDE.md
+docs/PHASE_REBUILD_SUMMARY.md
+docs/REFOCUS_PLAN.md
+docs/AUDIT_FILES_2026_05_11.md
+docs/superpowers/
+docs/_archive/
+docs/vkr/AUDIT_AI_TRACES.md
+docs/vkr/AUDIT_32_RULES.md
+docs/vkr/AUDIT_DIFF_ORIGINAL.md
+docs/vkr/AUDIT_TABLES_FIGURES.md
+docs/vkr/SESSION_DELTA_REPORT.md
+docs/vkr/VKR_REVISION_PLAN.md
+docs/project/PROJECT_AUDIT.md
+docs/project/PROJECT_FOCUS.md
+docs/project/PROJECT_CONTEXT.md
+
+# Reference materials (локальные методички, чужие работы — не в публичный репо)
+example/
+teachers_materials/
+new_tasks/
+
+# Diff/legacy versions of отчёт ВКР (заменены на финальный OTCHET_PO_PRAKTIKE.md)
+docs/ORIGINAL_OTCHET.md
+docs/OTCHET_DIFF_ANALYSIS.md
+docs/OTCHET_DIFF_ANALYSIS.docx
+docs/vkr/OTCHET_PO_PRAKTIKE_FROM_DOCX.md
+docs/vkr/cursovaya_backup/
+docs/vkr/*.bak_*
+
+# Legacy backend scripts (один-разовые, поглощены main кодом)
+backend/scripts/audit_chat.py
+backend/scripts/audit_frontend.py
+backend/scripts/audit_quick.py
+backend/scripts/audit_tabs.py
+backend/scripts/take_screenshots.py
+backend/scripts/take_screenshots_v2.py
+backend/scripts/take_screenshots_v3.py
+backend/scripts/import_csv_to_pg.py
+backend/scripts/import_missing_hotels.py
+backend/scripts/migrate_event_schema_v2.py
+backend/scripts/test_llm_providers.py
+backend/scripts/fill_hotel_types_from_xotelo.py
+
+# Backend runtime/build artifacts
+backend/agent_graph.png
+backend/chroma_data/
+backend/tests/metrics_report.json
+backend/tests/results_20260206_*.json
+
+# Local screenshots / playwright debug
+.screenshots/
+screenshots/
+{*}.png
+.pytest-*.log
+__pycache__/
+.cache/
+.playwright-mcp/
+frontend/_shot_map*.mjs
+
 # Python
 __pycache__/
 *.pyc

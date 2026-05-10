@@ -280,12 +280,10 @@ irkutsk-tourism-ias/
 │   ├── presentation/                 Слайды защиты + текст речи
 │   ├── project/                      Концепция, ТЗ, ТЭО, WBS, риски
 │   ├── research/                     18 файлов обоснования выбора стека
-│   ├── NORTH_STAR.md                 Единый источник правды по курсу проекта
 │   └── DEPLOYMENT.md                 Инструкции деплоя
 ├── docker-compose.yml                Postgres + Redis + Backend + Frontend
 ├── README.md                         Этот файл
-├── LICENSE                           MIT
-└── CLAUDE.md                         Технические правила работы с кодом
+└── LICENSE                           MIT
 ```
 
 ## Тестирование
@@ -327,7 +325,7 @@ curl http://localhost:8000/health                         # smoke-test API
 - **Telegram**: через web-preview без MTProto API key — `image_url` ограничен.
 - **ADR / RevPAR**: считаются как proxy-метрики (на основе минимальной цены за ночь), не реальный revenue per room.
 
-Полный список ограничений с обоснованиями — в `CLAUDE.md` (раздел «Известные ограничения»).
+Полный список ограничений с обоснованиями документирован в основном отчёте по практике (раздел «Ограничения и направления развития»).
 
 ## Авторство
 
@@ -345,8 +343,6 @@ curl http://localhost:8000/health                         # smoke-test API
 
 ## Дополнительные ресурсы
 
-- [`CLAUDE.md`](CLAUDE.md) — технические правила работы с кодом, для AI-ассистентов
-- [`docs/NORTH_STAR.md`](docs/NORTH_STAR.md) — единый источник правды о курсе проекта
 - [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — инструкции по развёртыванию
 - [`docs/vkr/OTCHET_PO_PRAKTIKE.md`](docs/vkr/OTCHET_PO_PRAKTIKE.md) — финальный отчёт по преддипломной практике
-- [`docs/AUDIT_FILES_2026_05_11.md`](docs/AUDIT_FILES_2026_05_11.md) — пофайловый аудит репозитория
+- [`docs/research/`](docs/research/) — обоснование выбора стека (FastAPI, React, PostgreSQL, ансамбль ML, LLM-провайдеры)
