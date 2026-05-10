@@ -1,0 +1,166 @@
+<mxfile host="app.diagrams.net" agent="Claude Code">
+  <diagram name="A0 Декомпозиция" id="idef0-a0">
+    <mxGraphModel dx="2100" dy="1200" grid="1" gridSize="20" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2000" pageHeight="1080" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontFamily=Verdana;fontSize=18;fontStyle=1;fillColor=none;strokeColor=none;" value="A0: Декомпозиция функциональной модели IDEF0 — пять подфункций работы с туристическими данными" vertex="1">
+          <mxGeometry height="40" width="1960" x="20" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="A1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#1f4e79;strokeWidth=2;fontFamily=Verdana;fontSize=14;fontStyle=1;align=center;verticalAlign=middle;" value="Собирать и&#xa;нормализовать&#xa;туристические данные" vertex="1">
+          <mxGeometry height="160" width="220" x="260" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="A1_num" parent="1" style="text;html=1;align=right;verticalAlign=bottom;fontFamily=Verdana;fontSize=14;fontStyle=1;fillColor=none;strokeColor=none;" value="A1" vertex="1">
+          <mxGeometry height="20" width="40" x="430" y="630" as="geometry" />
+        </mxCell>
+        <mxCell id="A2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#1f4e79;strokeWidth=2;fontFamily=Verdana;fontSize=14;fontStyle=1;align=center;verticalAlign=middle;" value="Анализировать&#xa;исторические данные&#xa;туризма" vertex="1">
+          <mxGeometry height="160" width="220" x="560" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="A2_num" parent="1" style="text;html=1;align=right;verticalAlign=bottom;fontFamily=Verdana;fontSize=14;fontStyle=1;fillColor=none;strokeColor=none;" value="A2" vertex="1">
+          <mxGeometry height="20" width="40" x="730" y="630" as="geometry" />
+        </mxCell>
+        <mxCell id="A3" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#1f4e79;strokeWidth=2;fontFamily=Verdana;fontSize=14;fontStyle=1;align=center;verticalAlign=middle;" value="Анализировать&#xa;влияние туристических&#xa;событий" vertex="1">
+          <mxGeometry height="160" width="220" x="860" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="A3_num" parent="1" style="text;html=1;align=right;verticalAlign=bottom;fontFamily=Verdana;fontSize=14;fontStyle=1;fillColor=none;strokeColor=none;" value="A3" vertex="1">
+          <mxGeometry height="20" width="40" x="1030" y="630" as="geometry" />
+        </mxCell>
+        <mxCell id="A4" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#1f4e79;strokeWidth=2;fontFamily=Verdana;fontSize=14;fontStyle=1;align=center;verticalAlign=middle;" value="Прогнозировать&#xa;занятость и цены" vertex="1">
+          <mxGeometry height="160" width="220" x="1160" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="A4_num" parent="1" style="text;html=1;align=right;verticalAlign=bottom;fontFamily=Verdana;fontSize=14;fontStyle=1;fillColor=none;strokeColor=none;" value="A4" vertex="1">
+          <mxGeometry height="20" width="40" x="1330" y="630" as="geometry" />
+        </mxCell>
+        <mxCell id="A5" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#1f4e79;strokeWidth=2;fontFamily=Verdana;fontSize=14;fontStyle=1;align=center;verticalAlign=middle;" value="Предоставлять&#xa;аналитику&#xa;пользователю" vertex="1">
+          <mxGeometry height="160" width="220" x="1460" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="A5_num" parent="1" style="text;html=1;align=right;verticalAlign=bottom;fontFamily=Verdana;fontSize=14;fontStyle=1;fillColor=none;strokeColor=none;" value="A5" vertex="1">
+          <mxGeometry height="20" width="40" x="1630" y="630" as="geometry" />
+        </mxCell>
+        <mxCell id="C1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#7d6608;fontFamily=Verdana;fontSize=12;align=center;verticalAlign=middle;" value="Требования к&#xa;качеству данных" vertex="1">
+          <mxGeometry height="60" width="220" x="260" y="220" as="geometry" />
+        </mxCell>
+        <mxCell id="C2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#7d6608;fontFamily=Verdana;fontSize=12;align=center;verticalAlign=middle;" value="Регламент анализа" vertex="1">
+          <mxGeometry height="60" width="220" x="560" y="220" as="geometry" />
+        </mxCell>
+        <mxCell id="C3" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#7d6608;fontFamily=Verdana;fontSize=12;align=center;verticalAlign=middle;" value="Пороги значимости" vertex="1">
+          <mxGeometry height="60" width="220" x="860" y="220" as="geometry" />
+        </mxCell>
+        <mxCell id="C4" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#7d6608;fontFamily=Verdana;fontSize=12;align=center;verticalAlign=middle;" value="Параметры&#xa;моделей прогноза" vertex="1">
+          <mxGeometry height="60" width="220" x="1160" y="220" as="geometry" />
+        </mxCell>
+        <mxCell id="C5" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#7d6608;fontFamily=Verdana;fontSize=12;align=center;verticalAlign=middle;" value="Формат&#xa;ответов" vertex="1">
+          <mxGeometry height="60" width="220" x="1460" y="220" as="geometry" />
+        </mxCell>
+        <mxCell id="I1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#2d6a2d;fontFamily=Verdana;fontSize=12;align=center;verticalAlign=middle;" value="Данные&#xa;туристических агрегаторов" vertex="1">
+          <mxGeometry height="60" width="200" x="20" y="440" as="geometry" />
+        </mxCell>
+        <mxCell id="I2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#2d6a2d;fontFamily=Verdana;fontSize=12;align=center;verticalAlign=middle;" value="Афиша мероприятий&#xa;и Telegram" vertex="1">
+          <mxGeometry height="60" width="200" x="20" y="540" as="geometry" />
+        </mxCell>
+        <mxCell id="I3" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#2d6a2d;fontFamily=Verdana;fontSize=12;align=center;verticalAlign=middle;" value="Метеорологические&#xa;данные" vertex="1">
+          <mxGeometry height="60" width="200" x="20" y="640" as="geometry" />
+        </mxCell>
+        <mxCell id="I4" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#2d6a2d;fontFamily=Verdana;fontSize=12;align=center;verticalAlign=middle;" value="Запросы&#xa;пользователей" vertex="1">
+          <mxGeometry height="60" width="200" x="20" y="760" as="geometry" />
+        </mxCell>
+        <mxCell id="O1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#a33b3b;fontFamily=Verdana;fontSize=12;align=center;verticalAlign=middle;" value="Прогноз&#xa;загрузки" vertex="1">
+          <mxGeometry height="60" width="220" x="1720" y="460" as="geometry" />
+        </mxCell>
+        <mxCell id="O2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#a33b3b;fontFamily=Verdana;fontSize=12;align=center;verticalAlign=middle;" value="Аналитика&#xa;для отельеров" vertex="1">
+          <mxGeometry height="60" width="220" x="1720" y="540" as="geometry" />
+        </mxCell>
+        <mxCell id="O3" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#a33b3b;fontFamily=Verdana;fontSize=12;align=center;verticalAlign=middle;" value="Отчётность&#xa;для администрации" vertex="1">
+          <mxGeometry height="60" width="220" x="1720" y="620" as="geometry" />
+        </mxCell>
+        <mxCell id="M1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#673a93;fontFamily=Verdana;fontSize=12;align=center;verticalAlign=middle;" value="Подсистема&#xa;сбора данных" vertex="1">
+          <mxGeometry height="60" width="220" x="260" y="900" as="geometry" />
+        </mxCell>
+        <mxCell id="M2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#673a93;fontFamily=Verdana;fontSize=12;align=center;verticalAlign=middle;" value="Аналитический&#xa;модуль" vertex="1">
+          <mxGeometry height="60" width="220" x="560" y="900" as="geometry" />
+        </mxCell>
+        <mxCell id="M3" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#673a93;fontFamily=Verdana;fontSize=12;align=center;verticalAlign=middle;" value="Модуль анализа&#xa;влияния событий" vertex="1">
+          <mxGeometry height="60" width="220" x="860" y="900" as="geometry" />
+        </mxCell>
+        <mxCell id="M4" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#673a93;fontFamily=Verdana;fontSize=12;align=center;verticalAlign=middle;" value="Модуль&#xa;прогнозирования" vertex="1">
+          <mxGeometry height="60" width="220" x="1160" y="900" as="geometry" />
+        </mxCell>
+        <mxCell id="M5" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#673a93;fontFamily=Verdana;fontSize=12;align=center;verticalAlign=middle;" value="Веб-интерфейс&#xa;и интеллектуальный агент" vertex="1">
+          <mxGeometry height="60" width="220" x="1460" y="900" as="geometry" />
+        </mxCell>
+        <mxCell id="e_C1" parent="1" edge="1" source="C1" target="A1" style="endArrow=classic;html=1;rounded=0;edgeStyle=orthogonalEdgeStyle;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_C2" parent="1" edge="1" source="C2" target="A2" style="endArrow=classic;html=1;rounded=0;edgeStyle=orthogonalEdgeStyle;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_C3" parent="1" edge="1" source="C3" target="A3" style="endArrow=classic;html=1;rounded=0;edgeStyle=orthogonalEdgeStyle;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_C4" parent="1" edge="1" source="C4" target="A4" style="endArrow=classic;html=1;rounded=0;edgeStyle=orthogonalEdgeStyle;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_C5" parent="1" edge="1" source="C5" target="A5" style="endArrow=classic;html=1;rounded=0;edgeStyle=orthogonalEdgeStyle;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_M1" parent="1" edge="1" source="M1" target="A1" style="endArrow=classic;html=1;rounded=0;edgeStyle=orthogonalEdgeStyle;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_M2" parent="1" edge="1" source="M2" target="A2" style="endArrow=classic;html=1;rounded=0;edgeStyle=orthogonalEdgeStyle;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_M3" parent="1" edge="1" source="M3" target="A3" style="endArrow=classic;html=1;rounded=0;edgeStyle=orthogonalEdgeStyle;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_M4" parent="1" edge="1" source="M4" target="A4" style="endArrow=classic;html=1;rounded=0;edgeStyle=orthogonalEdgeStyle;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_M5" parent="1" edge="1" source="M5" target="A5" style="endArrow=classic;html=1;rounded=0;edgeStyle=orthogonalEdgeStyle;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_I1" parent="1" edge="1" source="I1" target="A1" style="endArrow=classic;html=1;rounded=0;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.2;entryDx=0;entryDy=0;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_I2" parent="1" edge="1" source="I2" target="A1" style="endArrow=classic;html=1;rounded=0;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_I3" parent="1" edge="1" source="I3" target="A1" style="endArrow=classic;html=1;rounded=0;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.8;entryDx=0;entryDy=0;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_I4" parent="1" edge="1" source="I4" target="A5" style="endArrow=classic;html=1;rounded=0;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.8;entryDx=0;entryDy=0;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="240" y="820" />
+              <mxPoint x="1440" y="820" />
+              <mxPoint x="1440" y="628" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_A1A2" parent="1" edge="1" source="A1" target="A2" style="endArrow=classic;html=1;rounded=0;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;fontFamily=Verdana;fontSize=11;" value="Чистые&#xa;данные">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_A2A3" parent="1" edge="1" source="A2" target="A3" style="endArrow=classic;html=1;rounded=0;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;fontFamily=Verdana;fontSize=11;" value="Метрики&#xa;и тренды">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_A3A4" parent="1" edge="1" source="A3" target="A4" style="endArrow=classic;html=1;rounded=0;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;fontFamily=Verdana;fontSize=11;" value="Влияние&#xa;событий">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_A4A5" parent="1" edge="1" source="A4" target="A5" style="endArrow=classic;html=1;rounded=0;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;fontFamily=Verdana;fontSize=11;" value="Прогнозы">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_O1" parent="1" edge="1" source="A5" target="O1" style="endArrow=classic;html=1;rounded=0;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.2;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_O2" parent="1" edge="1" source="A5" target="O2" style="endArrow=classic;html=1;rounded=0;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_O3" parent="1" edge="1" source="A5" target="O3" style="endArrow=classic;html=1;rounded=0;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.8;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="legend" parent="1" style="text;html=1;align=left;verticalAlign=middle;fontFamily=Verdana;fontSize=11;fillColor=none;strokeColor=none;" value="Цветовая семантика: синий — функциональный блок (A1–A5); жёлтый — управляющие воздействия (Controls); зелёный — входы (Inputs); красный — выходы (Outputs); фиолетовый — исполнители (Mechanisms)" vertex="1">
+          <mxGeometry height="40" width="1960" x="20" y="1020" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
