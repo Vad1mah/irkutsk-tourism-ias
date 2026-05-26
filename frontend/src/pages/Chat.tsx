@@ -86,12 +86,15 @@ function Chat() {
   const abortRef = useRef<AbortController | null>(null)
   const lastUrlContextRef = useRef<string | null>(null)
 
+  // SSE-стрим НЕ прерываем при unmount — пользователь может уйти на другую
+  // страницу пока агент пишет, и вернувшись увидит дописанный ответ.
+  // Каждый токен сохраняется в localStorage внутри for-await loop напрямую,
+  // поэтому при ремоните Chat подтянет последнее состояние через loadMessages().
   useEffect(() => {
     return () => {
       if (copyTimeoutRef.current) {
         clearTimeout(copyTimeoutRef.current)
       }
-      abortRef.current?.abort()
     }
   }, [])
 
@@ -117,7 +120,14 @@ function Chat() {
         for await (const event of api.queryStream(text, sessionId, controller.signal)) {
           if (event.type === 'token') {
             fullText += event.content
-            setMessages(prev => prev.map(m => m.id === msgId ? { ...m, text: fullText } : m))
+            // setMessages обновляет UI (если компонент mounted),
+            // а saveMessages пишет напрямую в localStorage — это гарантирует
+            // что накопленный ответ переживёт unmount страницы Chat.
+            setMessages(prev => {
+              const next = prev.map(m => m.id === msgId ? { ...m, text: fullText } : m)
+              saveMessages(next)
+              return next
+            })
           } else if (event.type === 'tool_start') {
             setStreamStatus(`Использую ${TOOL_LABELS[event.tool ?? ''] || event.tool}...`)
           } else if (event.type === 'tool_end') {
