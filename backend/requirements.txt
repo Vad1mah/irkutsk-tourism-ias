@@ -67,6 +67,10 @@ dateparser>=1.2.0  # Relative-date phrases в telegram-парсере («зав�
 # Caching
 redis>=5.0.0
 
+# YDB SDK с Yandex Cloud IAM (used by scripts/import_from_ydb_101hotels.py — backfill)
+# Extra `[yc]` тянет yandexcloud-protos для ServiceAccountCredentials
+ydb[yc]>=3.18.0
+
 # Testing
 pytest>=8.0.0
 pytest-asyncio>=0.24.0
