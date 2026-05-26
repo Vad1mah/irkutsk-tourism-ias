@@ -86,7 +86,10 @@ services:
     build:
       context: ./frontend
       args:
-        VITE_API_URL: ${VITE_API_URL:-/api}
+        # VITE_API_URL пустой по умолчанию — api/client.ts делает relative-fetch,
+        # nginx-proxy сам матчит /api/ и идёт на tourism-backend:8000.
+        # Дефолт "/api" дал бы двойной префикс /api/api/... и 404.
+        VITE_API_URL: ${VITE_API_URL:-}
         VITE_YANDEX_MAPS_API_KEY: ${VITE_YANDEX_MAPS_API_KEY:-}
     container_name: tourism-frontend
     ports:
