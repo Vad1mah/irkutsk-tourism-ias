@@ -40,6 +40,9 @@ RUN pip install --upgrade pip==24.3.1 && \
 COPY app/ /app/app/
 COPY alembic/ /app/alembic/
 COPY alembic.ini /app/alembic.ini
+COPY scripts/ /app/scripts/
+
+ENV PYTHONPATH=/app
 
 RUN useradd -r -u 1001 -s /bin/false appuser && \
     chown -R appuser:appuser /app
