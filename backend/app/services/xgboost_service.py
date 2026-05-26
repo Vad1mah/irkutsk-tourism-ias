@@ -24,7 +24,7 @@ from pathlib import Path
 import pickle as _legacy_serializer  # noqa: S403 (используется только для read старых артефактов)
 
 
-MODEL_VERSION = "v2"  # bump для инвалидации старых сериализованных моделей
+MODEL_VERSION = "v3"  # bump для инвалидации старых сериализованных моделей
 
 
 def _safe_district_key(district: str | None) -> str:

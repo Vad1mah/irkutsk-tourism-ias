@@ -105,11 +105,6 @@ class FeatureEngineeringService:
         is_hol_list = []
         days_to_list = []
         days_from_list = []
-        # Phase 8: Байкало-специфичные сезонные признаки
-        is_ice_list = []
-        is_rasputitsa_list = []
-        is_sagaalgan_list = []
-        is_baikal_day_list = []
 
         for ds in df["ds"]:
             d = ds.date() if hasattr(ds, "date") else ds
@@ -127,18 +122,10 @@ class FeatureEngineeringService:
             is_hol_list.append(is_hol)
             days_to_list.append(days_to)
             days_from_list.append(days_from)
-            is_ice_list.append(1 if holidays_service.is_ice_season(d) else 0)
-            is_rasputitsa_list.append(1 if holidays_service.is_rasputitsa(d) else 0)
-            is_sagaalgan_list.append(1 if holidays_service.is_sagaalgan(d) else 0)
-            is_baikal_day_list.append(1 if holidays_service.is_baikal_day(d) else 0)
 
         df["is_holiday"] = is_hol_list
         df["days_to_holiday"] = days_to_list
         df["days_from_holiday"] = days_from_list
-        df["is_ice_season"] = is_ice_list
-        df["is_rasputitsa"] = is_rasputitsa_list
-        df["is_sagaalgan"] = is_sagaalgan_list
-        df["is_baikal_day"] = is_baikal_day_list
 
         df["is_long_weekend"] = (
             (df["is_weekend"] == 1)

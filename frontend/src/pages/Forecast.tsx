@@ -5,7 +5,7 @@ import { api } from '../api/client'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
   LineChart, Line, Legend, CartesianGrid,
-  BarChart, Bar, ReferenceLine, ComposedChart
+  BarChart, Bar, ReferenceLine, ComposedChart, LabelList,
 } from 'recharts'
 import {
   TrendingUp, Calendar, Layers, BarChart3, Sparkles,
@@ -18,7 +18,7 @@ import { MethodologyTooltip } from '../components/MethodologyTooltip'
 import { exportChartPng } from '../utils/export'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { DEFAULT_DISTRICTS } from '../constants/districts'
-import { localizeFeature, describeFeature } from '../utils/localizeFeatures'
+import { localizeFeature, describeFeature, featureGroup } from '../utils/localizeFeatures'
 import { RECHARTS_TOOLTIP_PROPS, BAR_CURSOR_TRANSPARENT } from '../utils/chartTheme'
 
 type SeasonData = {
@@ -160,6 +160,7 @@ function Forecast() {
 
   const multiModelData = _buildMultiModelData(ensemblePoints, modelForecasts)
   const topFeatures = _getTopFeatures(featureImportance)
+  const featureGroupSummary = _getFeatureGroupSummary(featureImportance)
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -938,19 +939,35 @@ function Forecast() {
                     <Cpu className="w-5 h-5 text-[hsl(var(--warning))]" />
                     <CardTitle>На что больше всего смотрит модель</CardTitle>
                   </div>
-                  <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                    Чем длиннее столбик — тем сильнее этот признак влияет на прогноз. Наведите курсор, чтобы увидеть, что значит каждый признак.
+                  <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                    Чем длиннее столбик — тем сильнее признак влияет на прогноз. Бейдж справа показывает группу признака; описание — в подсказке при наведении.
                   </p>
                 </CardHeader>
                 <CardContent>
-                  <ResponsiveContainer width="100%" height={Math.max(280, topFeatures.length * 32)}>
-                    <BarChart data={topFeatures} layout="vertical" margin={{ left: 8, right: 16, top: 4, bottom: 4 }}>
-                      <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 10 }} />
+                  {/* Группы признаков (агрегированно) */}
+                  {featureGroupSummary.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-4 pb-3 border-b border-[hsl(var(--border))]">
+                      {featureGroupSummary.map(({ group, importance }) => (
+                        <span
+                          key={group}
+                          className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[hsl(var(--secondary))] border border-[hsl(var(--border))] text-xs"
+                          title={`Суммарная важность всех ${group.toLowerCase()} признаков`}
+                        >
+                          <span className="text-[hsl(var(--muted-foreground))]">{group}:</span>
+                          <span className="font-semibold tabular-nums">{(importance * 100).toFixed(1)}%</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <ResponsiveContainer width="100%" height={Math.max(320, topFeatures.length * 38)}>
+                    <BarChart data={topFeatures} layout="vertical" margin={{ left: 8, right: 80, top: 4, bottom: 4 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.3} horizontal={false} />
+                      <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 11 }} tickFormatter={(v) => `${(v*100).toFixed(0)}%`} />
                       <YAxis
                         dataKey="displayName"
                         type="category"
-                        width={200}
-                        tick={{ fontSize: 12 }}
+                        width={220}
+                        tick={{ fontSize: 13 }}
                         axisLine={false}
                         tickLine={false}
                         interval={0}
@@ -959,25 +976,36 @@ function Forecast() {
                         cursor={BAR_CURSOR_TRANSPARENT}
                         content={({ active, payload }) => {
                           if (!active || !payload?.length) return null
-                          const item = payload[0].payload as { displayName: string; description: string; importance: number }
+                          const item = payload[0].payload as { displayName: string; group: string; description: string; importance: number }
                           return (
                             <div style={RECHARTS_TOOLTIP_PROPS.contentStyle as React.CSSProperties}>
-                              <div style={{ ...(RECHARTS_TOOLTIP_PROPS.labelStyle as React.CSSProperties), fontWeight: 600 }}>
-                                {item.displayName}
+                              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                                <span style={{ ...(RECHARTS_TOOLTIP_PROPS.labelStyle as React.CSSProperties), fontWeight: 600 }}>
+                                  {item.displayName}
+                                </span>
+                                <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 4, background: 'hsl(var(--secondary))', opacity: 0.85 }}>
+                                  {item.group}
+                                </span>
                               </div>
                               {item.description && (
-                                <div style={{ fontSize: 12, opacity: 0.85, marginTop: 4, maxWidth: 280, lineHeight: 1.4 }}>
+                                <div style={{ fontSize: 12, opacity: 0.85, marginTop: 6, maxWidth: 320, lineHeight: 1.4 }}>
                                   {item.description}
                                 </div>
                               )}
-                              <div style={{ fontSize: 12, marginTop: 4, opacity: 0.7 }}>
-                                Важность: {item.importance.toFixed(4)}
+                              <div style={{ fontSize: 12, marginTop: 6, opacity: 0.7 }}>
+                                Важность: {(item.importance * 100).toFixed(2)}%
                               </div>
                             </div>
                           )
                         }}
                       />
-                      <Bar dataKey="importance" fill="hsl(var(--warning))" radius={[0, 4, 4, 0]} />
+                      <Bar dataKey="importance" fill="hsl(var(--warning))" radius={[0, 4, 4, 0]}>
+                        <LabelList
+                          dataKey="group"
+                          position="right"
+                          style={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                        />
+                      </Bar>
                     </BarChart>
                   </ResponsiveContainer>
                 </CardContent>
@@ -1321,11 +1349,24 @@ function _getTopFeatures(fi: Record<string, Record<string, number>>) {
     .map(([name, importance]) => ({
       name,
       displayName: localizeFeature(name),
+      group: featureGroup(name),
       description: describeFeature(name),
       importance: Number(importance),
     }))
     .sort((a, b) => b.importance - a.importance)
     .slice(0, 10)
+}
+
+function _getFeatureGroupSummary(fi: Record<string, Record<string, number>>) {
+  const xgbFeatures = fi.xgboost || fi.XGBoost || {}
+  const groups: Record<string, number> = {}
+  for (const [name, importance] of Object.entries(xgbFeatures)) {
+    const g = featureGroup(name)
+    groups[g] = (groups[g] || 0) + Number(importance)
+  }
+  return Object.entries(groups)
+    .map(([group, importance]) => ({ group, importance }))
+    .sort((a, b) => b.importance - a.importance)
 }
 
 function _getSeasonChartData(months: SeasonData[]) {

@@ -1,35 +1,6 @@
-"""Сервис для работы с праздниками России + Байкало-специфичные даты."""
+"""Сервис для работы с праздниками России."""
 import holidays
 from datetime import date, timedelta
-
-
-# Phase 8: Сагаалган (бурятский Новый год по лунному календарю).
-# Фиксированные даты для 2025-2028 (источник: календарь буддийского времени).
-# Главный driver зимнего туризма в регион — большой приток гостей со всей Бурятии и Иркутской области.
-SAGAALGAN_DATES: dict[int, date] = {
-    2024: date(2024, 2, 10),
-    2025: date(2025, 2, 28),
-    2026: date(2026, 2, 17),
-    2027: date(2027, 2, 7),
-    2028: date(2028, 2, 25),
-}
-
-# Phase 8: ледовый сезон Байкала — наиболее популярная фотогеничная фаза туризма.
-# Лёд стабилизируется ~середина января и стоит до конца марта.
-ICE_SEASON_START = (1, 15)  # (month, day)
-ICE_SEASON_END = (3, 31)
-
-# Phase 8: распутица на Ольхоне — мост закрыт, добираться можно только по льду или паромом.
-# Туризм в Ольхонском районе в этот период падает на 60-80%.
-RASPUTITSA_START = (4, 15)
-RASPUTITSA_END = (6, 10)
-
-
-def _date_in_seasonal_range(d: date, start: tuple[int, int], end: tuple[int, int]) -> bool:
-    """True если d попадает в сезонный диапазон (без учёта года)."""
-    s = date(d.year, start[0], start[1])
-    e = date(d.year, end[0], end[1])
-    return s <= d <= e
 
 
 class HolidaysService:
@@ -55,34 +26,6 @@ class HolidaysService:
             (date(2025, 5, 26), date(2025, 8, 31), "Летние каникулы"),
         ]
 
-    # ---------------------------------------------------------------
-    # Phase 8: Байкало-специфичные сезонные признаки
-    # ---------------------------------------------------------------
-
-    def is_sagaalgan(self, d: date, window_days: int = 3) -> bool:
-        """True если d в окне ±window_days вокруг Сагаалгана."""
-        sag = SAGAALGAN_DATES.get(d.year)
-        if not sag:
-            return False
-        return abs((d - sag).days) <= window_days
-
-    def is_ice_season(self, d: date) -> bool:
-        """True если Байкал в ледовой фазе (15.01 — 31.03). Главный driver зимнего туризма."""
-        return _date_in_seasonal_range(d, ICE_SEASON_START, ICE_SEASON_END)
-
-    def is_rasputitsa(self, d: date) -> bool:
-        """True если Ольхонская распутица (15.04 — 10.06). Туризм на Ольхоне падает на 60-80%."""
-        return _date_in_seasonal_range(d, RASPUTITSA_START, RASPUTITSA_END)
-
-    def is_baikal_day(self, d: date) -> bool:
-        """День Байкала — первое воскресенье сентября."""
-        if d.month != 9:
-            return False
-        # Первое воскресенье сентября: ищем самый ранний воскресный день
-        first = date(d.year, 9, 1)
-        days_to_sunday = (6 - first.weekday()) % 7  # 6=воскресенье
-        return d == first + timedelta(days=days_to_sunday)
-    
     def _get_holidays_for_year(self, year: int) -> holidays.Russia:
         """Получить праздники для года (с кэшированием)."""
         if year not in self._holidays:

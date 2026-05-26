@@ -186,6 +186,39 @@ export const FEATURE_INFO: Record<string, FeatureInfo> = {
   },
 }
 
+/**
+ * Карта группировки признаков для свёрнутого вида.
+ * Группы соответствуют разделу про FeatureEngineering в Приложении Г ВКР.
+ */
+export const FEATURE_GROUPS: Record<string, string> = {
+  // Лаги
+  lag_1: 'Лаговые', lag_7: 'Лаговые', lag_14: 'Лаговые', lag_30: 'Лаговые',
+  lag_60: 'Лаговые', lag_90: 'Лаговые', lag_180: 'Лаговые', lag_365: 'Лаговые',
+  diff_1: 'Лаговые', diff_7: 'Лаговые',
+  // Скользящие статистики
+  rolling_min_7: 'Скользящие', rolling_max_7: 'Скользящие', rolling_mean_7: 'Скользящие',
+  rolling_std_7: 'Скользящие', rolling_mean_30: 'Скользящие',
+  // Календарные
+  day_of_week: 'Календарные', day_of_month: 'Календарные', month: 'Календарные',
+  quarter: 'Календарные', week_of_year: 'Календарные', is_month_start: 'Календарные',
+  is_month_end: 'Календарные', time_index: 'Календарные', trend: 'Календарные',
+  // Праздничные
+  is_holiday: 'Праздничные', holiday_indicator: 'Праздничные', is_weekend: 'Праздничные',
+  is_long_weekend: 'Праздничные', days_to_holiday: 'Праздничные', days_from_holiday: 'Праздничные',
+  season: 'Праздничные',
+  // Погодные
+  temperature: 'Погодные', temperature_max: 'Погодные', temperature_min: 'Погодные',
+  temp_deviation: 'Погодные', precipitation: 'Погодные', is_good_weather: 'Погодные',
+  // Событийные
+  events_count: 'Событийные', events_week: 'Событийные', has_major_event: 'Событийные',
+  // Ценовые
+  price: 'Ценовые', price_lag_7: 'Ценовые', price_trend_7: 'Ценовые', price_rolling_mean_7: 'Ценовые',
+}
+
+export function featureGroup(name: string): string {
+  return FEATURE_GROUPS[name] ?? 'Прочие'
+}
+
 export function localizeFeature(name: string): string {
   return FEATURE_INFO[name]?.label ?? name
 }
