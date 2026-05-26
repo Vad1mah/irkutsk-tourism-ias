@@ -214,7 +214,7 @@ function Layout() {
             aria-label="Раздел аналитики"
           >
             <div className="h-px flex-1 bg-[hsl(var(--border))]" />
-            <span className="text-[10px] font-medium uppercase tracking-wider text-[hsl(var(--muted-foreground))] shrink-0">
+            <span className="text-xs font-medium uppercase tracking-wider text-[hsl(var(--muted-foreground))] shrink-0">
               Аналитика
             </span>
             <div className="h-px flex-1 bg-[hsl(var(--border))]" />
@@ -226,7 +226,7 @@ function Layout() {
             aria-label="Раздел системы"
           >
             <div className="h-px flex-1 bg-[hsl(var(--border))]" />
-            <span className="text-[10px] font-medium uppercase tracking-wider text-[hsl(var(--muted-foreground))] shrink-0">
+            <span className="text-xs font-medium uppercase tracking-wider text-[hsl(var(--muted-foreground))] shrink-0">
               Система
             </span>
             <div className="h-px flex-1 bg-[hsl(var(--border))]" />

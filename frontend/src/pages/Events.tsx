@@ -893,7 +893,7 @@ function EventModal({
             <Info size={12} />
             Источник: {SOURCE_LABELS[event.source_id] || event.source_id}
             {event.also_at && event.also_at.length > 0 && (
-              <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[hsl(var(--accent)/0.15)] text-[hsl(var(--accent))] text-[10px]">
+              <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[hsl(var(--accent)/0.15)] text-[hsl(var(--accent))] text-xs">
                 также: {event.also_at.map(s => SOURCE_LABELS[s] || s.replace('telegram_', 'tg/')).join(', ')}
               </span>
             )}

@@ -154,10 +154,14 @@ function Analytics() {
       {hasData && (
         <>
           {/* Tab nav */}
-          <div className="flex gap-2 border-b border-[hsl(var(--border))] mb-6">
+          <div role="tablist" aria-label="Разделы аналитики" className="flex gap-2 border-b border-[hsl(var(--border))] mb-6">
             {(['regions', 'seasonality', 'events', 'segments'] as Tab[]).map(t => (
               <button
                 key={t}
+                role="tab"
+                aria-selected={activeTab === t}
+                aria-controls={`tabpanel-${t}`}
+                id={`tab-${t}`}
                 onClick={() => setActiveTab(t)}
                 className={`px-4 py-2 text-sm font-medium transition-colors ${
                   activeTab === t
@@ -1025,13 +1029,13 @@ function WeekdayHeatmapComponent({ heatmap }: { heatmap: { data: WeekdayHeatmapC
         <div className="grid grid-cols-[40px_repeat(12,minmax(38px,56px))] gap-1.5">
           <div />
           {heatmap.months.map(m => (
-            <div key={m} className="text-[10px] text-center text-[hsl(var(--muted-foreground))] font-medium">{m}</div>
+            <div key={m} className="text-xs text-center text-[hsl(var(--muted-foreground))] font-medium">{m}</div>
           ))}
           {heatmap.weekdays.map((wd, wi) => {
             const weekdayNum = wi + 1
             return (
               <Fragment key={`row-${weekdayNum}`}>
-                <div className="text-[10px] flex items-center justify-end pr-1 text-[hsl(var(--muted-foreground))] font-medium">
+                <div className="text-xs flex items-center justify-end pr-1 text-[hsl(var(--muted-foreground))] font-medium">
                   {wd}
                 </div>
                 {heatmap.months.map((_, mi) => {
@@ -1079,7 +1083,7 @@ function WeekdayHeatmapComponent({ heatmap }: { heatmap: { data: WeekdayHeatmapC
                       title={`${heatmap.weekdays[wi]}, ${heatmap.months[mi]}: ${occ}% (n=${samples})`}
                     >
                       {occ > 0 && (
-                        <span className="absolute inset-0 flex items-center justify-center text-[9px] font-semibold text-[hsl(var(--foreground))]/80">
+                        <span className="absolute inset-0 flex items-center justify-center text-[11px] font-semibold text-[hsl(var(--foreground))]/80">
                           {Math.round(occ)}
                         </span>
                       )}

@@ -356,7 +356,7 @@ function Home() {
               {upcomingImpact.map((e, i) => (
                 <div key={i} className="flex items-center gap-3 p-2 rounded-lg bg-[hsl(var(--secondary))/0.4]">
                   <div className="w-9 h-9 rounded-lg bg-[hsl(var(--accent)/0.1)] flex items-center justify-center flex-shrink-0">
-                    <span className="text-[10px] text-[hsl(var(--accent))] font-bold">{e.date.slice(5)}</span>
+                    <span className="text-xs text-[hsl(var(--accent))] font-bold">{e.date.slice(5)}</span>
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{e.event}</p>
@@ -369,7 +369,7 @@ function Home() {
                       </Badge>
                       <MethodologyTooltip text="На сколько процентов загрузка в день события отличается от обычной. Сравниваем с такими же днями недели за 3 недели до и после события, исключая дни других мероприятий." />
                     </span>
-                    <span className={`text-[10px] font-medium flex items-center gap-1 ${e.confidence === 'high' ? 'text-[hsl(var(--success))]' : e.confidence === 'medium' ? 'text-[hsl(var(--accent))]' : 'text-[hsl(var(--muted-foreground))]'}`}>
+                    <span className={`text-xs font-medium flex items-center gap-1 ${e.confidence === 'high' ? 'text-[hsl(var(--success))]' : e.confidence === 'medium' ? 'text-[hsl(var(--accent))]' : 'text-[hsl(var(--muted-foreground))]'}`}>
                       {localizeConfidence(e.confidence)}
                       <MethodologyTooltip text="Насколько надёжен расчёт. Высокая — нашли 5 и более похожих дней для сравнения; средняя — 2-4 дня; низкая — только 1 день, оценка ориентировочная." />
                     </span>

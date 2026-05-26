@@ -513,12 +513,12 @@ function HotelDetail() {
                     <div className="text-center">
                       <p className="text-xs text-[hsl(var(--muted-foreground))] mb-1">RMSE</p>
                       <p className="text-xl font-bold tabular-nums">{validationMutation.data.rmse?.toFixed(1)}</p>
-                      <p className="text-[10px] text-[hsl(var(--muted-foreground))]">п.п.</p>
+                      <p className="text-xs text-[hsl(var(--muted-foreground))]">п.п.</p>
                     </div>
                     <div className="text-center">
                       <p className="text-xs text-[hsl(var(--muted-foreground))] mb-1">MAE</p>
                       <p className="text-xl font-bold tabular-nums">{validationMutation.data.mae?.toFixed(1)}</p>
-                      <p className="text-[10px] text-[hsl(var(--muted-foreground))]">п.п.</p>
+                      <p className="text-xs text-[hsl(var(--muted-foreground))]">п.п.</p>
                     </div>
                     <div className="text-center">
                       <p className="text-xs text-[hsl(var(--muted-foreground))] mb-1">MAPE</p>

@@ -94,13 +94,13 @@ body {
   color-scheme: light;
 }
 
-input[type="date"],
-input[type="datetime-local"],
-input[type="time"],
-input[type="month"],
-input[type="week"] {
-  color-scheme: inherit;
-}
+/* Разбито на отдельные правила — Tailwind v4/lightningcss иногда
+   агрессивно оптимизирует multi-selector и роняет `input[type="date"]`. */
+input[type="date"] { color-scheme: inherit; }
+input[type="datetime-local"] { color-scheme: inherit; }
+input[type="time"] { color-scheme: inherit; }
+input[type="month"] { color-scheme: inherit; }
+input[type="week"] { color-scheme: inherit; }
 
 /* Принудительная белая иконка picker'а в тёмной теме —
    на случай если color-scheme не сработал (например в Chromium на Linux

@@ -43,6 +43,11 @@ function _hintFor(h: HotelPin): string {
   return parts.join(' • ')
 }
 
+function _isDarkTheme(): boolean {
+  if (typeof document === 'undefined') return true
+  return document.documentElement.classList.contains('dark')
+}
+
 function _balloonBody(h: HotelPin): string {
   const rows: string[] = []
   if (h.district || h.city) rows.push(`${h.city ?? ''}${h.city && h.district ? ', ' : ''}${h.district ?? ''}`)
@@ -54,10 +59,13 @@ function _balloonBody(h: HotelPin): string {
   if (h.min_price != null) rows.push(`Мин. цена: <b>${h.min_price.toLocaleString('ru-RU')} ₽</b>`)
   if (h.max_capacity != null) rows.push(`Вместимость: до ${h.max_capacity} чел.`)
   if (h.rating != null) rows.push(`Рейтинг: ${h.rating.toFixed(1)} ★`)
+  const dark = _isDarkTheme()
+  const bg = dark ? '#1a1d2e' : '#ffffff'
+  const fg = dark ? '#e2e8f0' : '#0f172a'
   return `
-    <div style="font-size:12px;line-height:1.6">
+    <div style="font-size:12px;line-height:1.6;background:${bg};color:${fg};padding:6px 8px;margin:-8px -10px -10px;border-radius:4px">
       ${rows.map(r => `<div>${r}</div>`).join('')}
-      <a href="/hotels/${encodeURIComponent(h.id)}" style="color:#3b82f6;display:inline-block;margin-top:6px">Подробнее →</a>
+      <a href="/hotels/${encodeURIComponent(h.id)}" style="color:#60a5fa;display:inline-block;margin-top:6px">Подробнее →</a>
     </div>
   `
 }

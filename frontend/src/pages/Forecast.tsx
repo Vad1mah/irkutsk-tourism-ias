@@ -563,7 +563,7 @@ function Forecast() {
                       tick={{ fontSize: 11 }}
                       axisLine={false}
                       tickLine={false}
-                      width={45}
+                      width={50}
                     />
                     <Tooltip
                       {...RECHARTS_TOOLTIP_PROPS}
@@ -823,19 +823,19 @@ function Forecast() {
                           <th className="text-left py-2 px-2 text-[hsl(var(--muted-foreground))]">Модель</th>
                           <th className="text-right py-2 px-2 align-bottom">
                             <span className="block text-[hsl(var(--foreground))]">RMSE</span>
-                            <span className="block text-[10px] font-normal font-sans text-[hsl(var(--muted-foreground))] leading-tight mt-0.5 max-w-[9rem] ml-auto">
+                            <span className="block text-xs font-normal font-sans text-[hsl(var(--muted-foreground))] leading-tight mt-0.5 max-w-[9rem] ml-auto">
                               Средняя ошибка прогноза в п.п.
                             </span>
                           </th>
                           <th className="text-right py-2 px-2 align-bottom">
                             <span className="block text-[hsl(var(--foreground))]">MAE</span>
-                            <span className="block text-[10px] font-normal font-sans text-[hsl(var(--muted-foreground))] leading-tight mt-0.5 max-w-[9rem] ml-auto">
+                            <span className="block text-xs font-normal font-sans text-[hsl(var(--muted-foreground))] leading-tight mt-0.5 max-w-[9rem] ml-auto">
                               Среднее отклонение от реальных значений
                             </span>
                           </th>
                           <th className="text-right py-2 px-2 align-bottom">
                             <span className="block text-[hsl(var(--foreground))]">R²</span>
-                            <span className="block text-[10px] font-normal font-sans text-[hsl(var(--muted-foreground))] leading-tight mt-0.5 max-w-[9rem] ml-auto">
+                            <span className="block text-xs font-normal font-sans text-[hsl(var(--muted-foreground))] leading-tight mt-0.5 max-w-[9rem] ml-auto">
                               Качество модели (1.0 = идеально)
                             </span>
                           </th>
@@ -860,7 +860,7 @@ function Forecast() {
                                 <td className="text-right py-2 px-2 font-mono">
                                   {m.rmse?.toFixed(2)}
                                   {m.rmse_std !== undefined && (
-                                    <span className="ml-1 text-[10px] text-[hsl(var(--muted-foreground))]">±{m.rmse_std.toFixed(2)}</span>
+                                    <span className="ml-1 text-xs text-[hsl(var(--muted-foreground))]">±{m.rmse_std.toFixed(2)}</span>
                                   )}
                                 </td>
                                 <td className="text-right py-2 px-2 font-mono">{m.mae?.toFixed(2)}</td>
@@ -885,7 +885,7 @@ function Forecast() {
                       </div>
                     )}
                     {Object.values(metrics).some(m => typeof m === 'object' && m !== null && 'fold_count' in m) && (
-                      <p className="mt-2 text-[10px] text-[hsl(var(--muted-foreground))] italic">
+                      <p className="mt-2 text-xs text-[hsl(var(--muted-foreground))] italic">
                         Метрики получены через walk-forward CV (катящееся окно с шагом 14 дней). ± показывает разброс RMSE между fold'ами — низкое значение означает стабильное поведение модели.
                       </p>
                     )}

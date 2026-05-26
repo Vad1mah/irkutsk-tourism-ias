@@ -168,7 +168,7 @@ function DistrictMultiSelect({ options, selected, onToggle, onClear }: DistrictM
                   {checked && <Check size={10} className="text-white" strokeWidth={3} />}
                 </span>
                 <span className="flex-1 truncate">{opt.name.replace(' район', '')}</span>
-                <span className="text-[10px] text-[hsl(var(--muted-foreground))] tabular-nums">{opt.hotels}</span>
+                <span className="text-xs text-[hsl(var(--muted-foreground))] tabular-nums">{opt.hotels}</span>
               </button>
             )
           })}
@@ -422,8 +422,8 @@ function MapPage() {
           по hotel_statistics, и пустой день виден честно (а не подменой
           на ближайший предшествующий). */}
       {hotelsMap && hotelsMap.total_hotels === 0 && focusDate !== isoToday() && (
-        <div className="px-3 py-2 rounded-lg border border-amber-500/40 bg-amber-500/10 text-[11px] text-amber-200 flex items-center gap-2">
-          <Calendar size={12} />
+        <div className="px-3 py-2 rounded-lg border border-[hsl(var(--warning)/0.4)] bg-[hsl(var(--warning)/0.1)] text-sm text-[hsl(var(--warning-foreground,var(--foreground)))] flex items-center gap-2">
+          <Calendar size={14} />
           <span>За <strong>{fmtDateRu(focusDate)}</strong> нет данных от парсеров. Выберите другую дату или нажмите «сегодня».</span>
         </div>
       )}
@@ -600,7 +600,7 @@ function MapPage() {
                 <p className="text-[11px] text-[hsl(var(--muted-foreground))] italic leading-tight flex-shrink-0 mt-auto">
                   Графики: <strong className="text-[hsl(var(--foreground))] not-italic">{queryDistrictsLabel}</strong>
                   {queryDistricts.length > 1 && (
-                    <span className="block text-[10px] mt-0.5 not-italic">
+                    <span className="block text-xs mt-0.5 not-italic">
                       Загрузка/цена усреднены, номера/вместимость суммированы по выбранным районам
                     </span>
                   )}
@@ -622,7 +622,7 @@ function MapPage() {
                   <CardTitle className="text-sm">Загрузка по районам</CardTitle>
                   <MethodologyTooltip text="Средняя загрузка по району за выбранный период (фильтр «Период»). Цвет — уровень занятости. Невыбранные блёкнут." />
                 </div>
-                <span className="text-[10px] text-[hsl(var(--muted-foreground))]">
+                <span className="text-xs text-[hsl(var(--muted-foreground))]">
                   {fmtDateRu(periodRange.from)}–{fmtDateRu(periodRange.to)}
                 </span>
               </div>
@@ -667,7 +667,7 @@ function MapPage() {
                 <CardTitle className="text-sm">Загрузка номерного фонда</CardTitle>
                 <MethodologyTooltip text="Левая ось — загрузка, %. Правая ось — суммарное количество номеров и максимальная вместимость по выбранному району. Окно — выбранный период." />
               </div>
-              <span className="text-[10px] text-[hsl(var(--muted-foreground))]">
+              <span className="text-xs text-[hsl(var(--muted-foreground))]">
                 {queryDistrictsLabel} · {fmtDateRu(periodRange.from)}–{fmtDateRu(periodRange.to)}
               </span>
             </div>
@@ -703,7 +703,7 @@ function MapPage() {
                 <CardTitle className="text-sm">Цена и загрузка за сезон ({SEASON_LABELS[season]})</CardTitle>
                 <MethodologyTooltip text="Левая ось — средняя минимальная цена номера, ₽. Правая ось — загрузка, %. Окно — выбранный сезон в текущем году." />
               </div>
-              <span className="text-[10px] text-[hsl(var(--muted-foreground))]">
+              <span className="text-xs text-[hsl(var(--muted-foreground))]">
                 {queryDistrictsLabel}{seasonRange && ` · ${fmtDateRu(seasonRange.from)}–${fmtDateRu(seasonRange.to)}`}
               </span>
             </div>
@@ -738,7 +738,7 @@ function MapPage() {
                 <CardTitle className="text-sm">Цена и загрузка за период</CardTitle>
                 <MethodologyTooltip text="Окно — последние N дней (фильтр «Период»). Столбцы — цена, линия — загрузка." />
               </div>
-              <span className="text-[10px] text-[hsl(var(--muted-foreground))]">
+              <span className="text-xs text-[hsl(var(--muted-foreground))]">
                 {queryDistrictsLabel} · {fmtDateRu(periodRange.from)}–{fmtDateRu(periodRange.to)}
               </span>
             </div>
