@@ -14,6 +14,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt .
 
+# CPU-only torch (без CUDA/cuDNN, экономит ~2.5 GB) — neuralprophet тянет torch как зависимость
+ENV PIP_EXTRA_INDEX_URL=https://download.pytorch.org/whl/cpu
+
 RUN pip install --upgrade pip==24.3.1 wheel==0.45.1 && \
     pip wheel --no-cache-dir --wheel-dir=/wheels -r requirements.txt
 
