@@ -83,7 +83,11 @@ services:
         max-file: "3"
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-/api}
+        VITE_YANDEX_MAPS_API_KEY: ${VITE_YANDEX_MAPS_API_KEY:-}
     container_name: tourism-frontend
     ports:
       - "127.0.0.1:80:8080"
