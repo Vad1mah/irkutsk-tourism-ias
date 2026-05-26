@@ -21,7 +21,8 @@ ENV PIP_INDEX_URL=https://download.pytorch.org/whl/cpu
 ENV PIP_EXTRA_INDEX_URL=https://pypi.org/simple
 
 RUN pip install --upgrade pip==24.3.1 wheel==0.45.1 && \
-    pip wheel --no-cache-dir --wheel-dir=/wheels -r requirements.txt
+    pip wheel --no-cache-dir --wheel-dir=/wheels -r requirements.txt && \
+    rm -f /wheels/nvidia_*.whl /wheels/triton*.whl
 
 # =============================================================================
 # Stage 2: runtime — production-образ без компилятора
