@@ -845,7 +845,7 @@ function Forecast() {
                         {['prophet', 'neuralprophet', 'xgboost']
                           .filter(m => metrics[m] && typeof metrics[m] === 'object')
                           .map(model => {
-                            const m = metrics[model] as { rmse: number; mae: number; r2: number }
+                            const m = metrics[model] as { rmse: number; mae: number; r2: number; rmse_std?: number; fold_count?: number }
                             const bestModel = compareData?.best_model ?? (metrics as Record<string, unknown>).best_model as string | undefined
                             const isBest = model === bestModel
                             return (
@@ -857,14 +857,38 @@ function Forecast() {
                                     {isBest && <Badge variant="success" size="sm">лучшая</Badge>}
                                   </div>
                                 </td>
-                                <td className="text-right py-2 px-2 font-mono">{m.rmse?.toFixed(2)}</td>
+                                <td className="text-right py-2 px-2 font-mono">
+                                  {m.rmse?.toFixed(2)}
+                                  {m.rmse_std !== undefined && (
+                                    <span className="ml-1 text-[10px] text-[hsl(var(--muted-foreground))]">±{m.rmse_std.toFixed(2)}</span>
+                                  )}
+                                </td>
                                 <td className="text-right py-2 px-2 font-mono">{m.mae?.toFixed(2)}</td>
-                                <td className="text-right py-2 px-2 font-mono">{m.r2?.toFixed(3)}</td>
+                                <td className={`text-right py-2 px-2 font-mono ${m.r2 < 0 ? 'text-[hsl(var(--destructive))]' : ''}`}>
+                                  {m.r2?.toFixed(3)}
+                                </td>
                               </tr>
                             )
                           })}
                       </tbody>
                     </table>
+                    {/* Phase 9: warning при R²<0 у любой модели */}
+                    {Object.values(metrics).some(m => typeof m === 'object' && m !== null && 'r2' in m && (m as {r2:number}).r2 < 0) && (
+                      <div className="mt-3 p-3 rounded-lg border border-[hsl(var(--warning)/0.4)] bg-[hsl(var(--warning)/0.08)] text-xs">
+                        <p className="font-semibold text-[hsl(var(--warning))] mb-1">⚠ R² отрицательный у одной или нескольких моделей</p>
+                        <p className="text-[hsl(var(--muted-foreground))] leading-relaxed">
+                          На этом горизонте модель работает хуже простого предсказания «всегда выводить среднее».
+                          Это нормально для долгосрочных прогнозов (≥30 дней) на ограниченной истории — мы располагаем
+                          ~14 месяцами данных с gap-периодом летом 2025. Используйте ensemble для горизонтов ≤7-14 дней,
+                          где он стабильно положителен.
+                        </p>
+                      </div>
+                    )}
+                    {Object.values(metrics).some(m => typeof m === 'object' && m !== null && 'fold_count' in m) && (
+                      <p className="mt-2 text-[10px] text-[hsl(var(--muted-foreground))] italic">
+                        Метрики получены через walk-forward CV (катящееся окно с шагом 14 дней). ± показывает разброс RMSE между fold'ами — низкое значение означает стабильное поведение модели.
+                      </p>
+                    )}
                   </div>
 
                   <div className="mt-5 grid md:grid-cols-3 gap-3 text-xs">

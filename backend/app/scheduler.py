@@ -15,12 +15,44 @@
 import asyncio
 import logging
 import sys
+import traceback
 from datetime import datetime
 from pathlib import Path
+from typing import Awaitable, Callable, TypeVar
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
+
+T = TypeVar("T")
+
+
+async def _run_with_timeout(
+    coro_factory: Callable[[], Awaitable[T]],
+    *,
+    timeout_s: int,
+    task_label: str,
+    logger_: logging.Logger,
+) -> T | None:
+    """Запустить корутину с таймаутом. При срабатывании — лог + traceback, без re-raise.
+
+    Возвращает результат корутины или None при timeout/exception.
+    Все сценарии: corо завершилась → результат; timeout → None + WARNING; exception → None + ERROR.
+    """
+    try:
+        return await asyncio.wait_for(coro_factory(), timeout=timeout_s)
+    except asyncio.TimeoutError:
+        logger_.error(
+            f"[{task_label}] таймаут {timeout_s}s превышен — задача прервана. "
+            f"Это блокировало бы расписание до следующего интервала. "
+            f"Проверьте сетевые таймауты в парсере / медленные внешние API."
+        )
+        return None
+    except Exception:
+        logger_.error(
+            f"[{task_label}] неожиданная ошибка:\n{traceback.format_exc()}"
+        )
+        return None
 
 # scripts/ — не пакет (нет __init__.py), но в нём лежит reclassify_events
 # с async main(). Делаем директорию backend/ доступной для импорта пакета scripts.
@@ -185,6 +217,25 @@ class DataCollectorScheduler:
             )
             self.stats["errors"] = self.stats["errors"][-50:]
 
+    def _wrap_with_timeout(
+        self,
+        fn: Callable[[], Awaitable[T]],
+        *,
+        task_label: str,
+        timeout_s: int,
+    ) -> Callable[[], Awaitable[T | None]]:
+        """Создаёт безопасную обёртку для APScheduler.
+
+        Если job зависнет — корутина прервётся через timeout_s, scheduler не блокирует
+        следующие интервалы. Ошибка логируется, но не сваливается наружу.
+        """
+        async def wrapper() -> T | None:
+            return await _run_with_timeout(
+                fn, timeout_s=timeout_s, task_label=task_label, logger_=logger
+            )
+        wrapper.__name__ = f"timeout_wrapper_{task_label}"
+        return wrapper
+
     def setup_jobs(self):
         """Настроить расписание задач."""
         from app.constants import (
@@ -192,42 +243,67 @@ class DataCollectorScheduler:
             SCHEDULER_HOTELS_HOURS,
             SCHEDULER_WEATHER_HOURS,
             SCHEDULER_TELEGRAM_HOURS,
+            SCHEDULER_EVENTS_TIMEOUT_S,
+            SCHEDULER_HOTELS_TIMEOUT_S,
+            SCHEDULER_WEATHER_TIMEOUT_S,
+            SCHEDULER_TELEGRAM_TIMEOUT_S,
+            SCHEDULER_RECLASSIFY_TIMEOUT_S,
         )
 
         self.scheduler.add_job(
-            self.collect_events,
+            self._wrap_with_timeout(
+                self.collect_events, task_label="events", timeout_s=SCHEDULER_EVENTS_TIMEOUT_S
+            ),
             IntervalTrigger(hours=SCHEDULER_EVENTS_HOURS),
             id="collect_events",
             name="Сбор событий",
             replace_existing=True,
+            max_instances=1,
+            coalesce=True,
         )
 
         self.scheduler.add_job(
-            self.collect_hotels,
+            self._wrap_with_timeout(
+                self.collect_hotels, task_label="hotels", timeout_s=SCHEDULER_HOTELS_TIMEOUT_S
+            ),
             IntervalTrigger(hours=SCHEDULER_HOTELS_HOURS),
             id="collect_hotels",
             name="Сбор отелей",
             replace_existing=True,
+            max_instances=1,
+            coalesce=True,
         )
 
         self.scheduler.add_job(
-            self.collect_weather,
+            self._wrap_with_timeout(
+                self.collect_weather, task_label="weather", timeout_s=SCHEDULER_WEATHER_TIMEOUT_S
+            ),
             IntervalTrigger(hours=SCHEDULER_WEATHER_HOURS),
             id="collect_weather",
             name="Сбор погоды",
             replace_existing=True,
+            max_instances=1,
+            coalesce=True,
         )
 
         self.scheduler.add_job(
-            self.collect_telegram,
+            self._wrap_with_timeout(
+                self.collect_telegram, task_label="telegram", timeout_s=SCHEDULER_TELEGRAM_TIMEOUT_S
+            ),
             IntervalTrigger(hours=SCHEDULER_TELEGRAM_HOURS),
             id="collect_telegram",
             name="Сбор Telegram",
             replace_existing=True,
+            max_instances=1,
+            coalesce=True,
         )
 
         self.scheduler.add_job(
-            self._reclassify_events,
+            self._wrap_with_timeout(
+                self._reclassify_events,
+                task_label="reclassify_events",
+                timeout_s=SCHEDULER_RECLASSIFY_TIMEOUT_S,
+            ),
             CronTrigger(hour='*/6', minute=15),  # 0:15, 6:15, 12:15, 18:15
             id="reclassify_events",
             name="Реклассификация событий event_type='event' через Mistral",
@@ -235,7 +311,13 @@ class DataCollectorScheduler:
             max_instances=1,
         )
 
-        logger.info("Расписание задач настроено")
+        logger.info(
+            "Расписание задач настроено (job timeouts: events=%ds, hotels=%ds, weather=%ds, telegram=%ds)",
+            SCHEDULER_EVENTS_TIMEOUT_S,
+            SCHEDULER_HOTELS_TIMEOUT_S,
+            SCHEDULER_WEATHER_TIMEOUT_S,
+            SCHEDULER_TELEGRAM_TIMEOUT_S,
+        )
 
     async def run_initial_collection(self):
         """Запустить начальный сбор данных."""

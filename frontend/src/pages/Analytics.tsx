@@ -40,11 +40,17 @@ function Analytics() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [selectedDistrict, setSelectedDistrict] = useState(searchParams.get('district') || DEFAULT_DISTRICT)
-  const [activeTab, setActiveTab] = useState<Tab>('regions')
+  const initialTab = (searchParams.get('tab') as Tab) ?? 'regions'
+  const validTabs: Tab[] = ['regions', 'seasonality', 'events', 'segments']
+  const [activeTab, setActiveTab] = useState<Tab>(
+    validTabs.includes(initialTab) ? initialTab : 'regions'
+  )
 
   useEffect(() => {
-    setSearchParams({ district: selectedDistrict }, { replace: true })
-  }, [selectedDistrict, setSearchParams])
+    const next: Record<string, string> = { district: selectedDistrict }
+    if (activeTab !== 'regions') next.tab = activeTab
+    setSearchParams(next, { replace: true })
+  }, [selectedDistrict, activeTab, setSearchParams])
 
   const { data: revenueSummary, isLoading: loadRev, isError: errRev, refetch: refetchRev } = useQuery({
     queryKey: ['revenue-summary'],

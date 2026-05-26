@@ -55,6 +55,12 @@ def _is_outside_region(location) -> bool:
 
 _TITLE_NORMALIZE_RE = re.compile(r"[^\w\s]", flags=re.UNICODE)
 
+# Phase 4: fuzzy-match порог для cross-source дедупа.
+# token_set_ratio > _FUZZY_THRESHOLD → события считаются дубликатами.
+# 88 выбран эмпирически: «Маштаков. Концерт» vs «Концерт Маштакова» = 95,
+# но «Концерт» vs «Концерт Группы Х» = 75 (не сольются).
+_FUZZY_THRESHOLD = 88
+
 
 def _normalize_title_for_dedup(title: str) -> str:
     """Ключ дедупа: lowercase, без пунктуации, схлопнутые пробелы, до 60 симв."""
@@ -62,6 +68,24 @@ def _normalize_title_for_dedup(title: str) -> str:
         return ""
     cleaned = _TITLE_NORMALIZE_RE.sub(" ", title.lower())
     return " ".join(cleaned.split())[:60]
+
+
+def _location_district(row: dict) -> str:
+    """Маппит location/address события → район через CITY_TO_DISTRICT (substring-match).
+
+    Возвращает имя района (например 'Иркутский') если матч найден, иначе '' (общерегиональное).
+    Используется как часть ключа дедупа: события «Концерт в Иркутске» и «Концерт в Листвянке»
+    в один день не сливаются, потому что относятся к разным районам.
+    """
+    from app.constants import CITY_TO_DISTRICT
+
+    text = ((row.get("location") or "") + " " + (row.get("address") or "")).lower()
+    if not text.strip():
+        return ""
+    for city, district in CITY_TO_DISTRICT.items():
+        if city in text:
+            return district
+    return ""
 
 
 def _completeness_score(row: dict) -> int:
@@ -74,31 +98,97 @@ def _completeness_score(row: dict) -> int:
     return score
 
 
-def _dedup_events(rows: list[dict]) -> list[dict]:
-    """Cross-source дедуп на чтении. Группирует по (нормализованный title, date_start),
-    в каждой группе берёт самую полную запись и склеивает source_id остальных в also_at."""
-    groups: dict[tuple[str, Any], list[dict]] = {}
-    for row in rows:
-        key = (_normalize_title_for_dedup(row.get("title", "")), row.get("date_start"))
-        if not key[0]:
-            groups.setdefault(("__no_key__", row.get("event_id")), []).append(row)
+def _merge_group(group: list[dict]) -> dict:
+    """Берём самую полную запись группы, склеиваем чужие source_id в also_at."""
+    primary = max(group, key=_completeness_score)
+    primary_source = primary.get("source_id")
+    also = sorted({
+        r.get("source_id") for r in group
+        if r.get("source_id") and r.get("source_id") != primary_source
+    })
+    return {**primary, "also_at": list(also)}
+
+
+def _fuzzy_merge_within_bucket(bucket: list[dict]) -> list[dict]:
+    """Внутри (date, district)-bucket'а склеить события с похожими title через rapidfuzz.
+
+    Алгоритм: жадный single-linkage. Каждое событие либо присоединяется к существующему
+    кластеру (если token_set_ratio с любым его членом > _FUZZY_THRESHOLD), либо создаёт новый.
+    Стабильность: ratio симметричный, кластеры не зависят от порядка обхода в > 95% случаев.
+    """
+    if len(bucket) <= 1:
+        return bucket
+
+    try:
+        from rapidfuzz import fuzz
+    except ImportError:
+        # rapidfuzz не установлен → fallback на exact dedup
+        return bucket
+
+    clusters: list[list[dict]] = []
+    for event in bucket:
+        title_norm = _normalize_title_for_dedup(event.get("title", ""))
+        if not title_norm:
+            clusters.append([event])
             continue
+        placed = False
+        for cluster in clusters:
+            for member in cluster:
+                member_norm = _normalize_title_for_dedup(member.get("title", ""))
+                if member_norm and fuzz.token_set_ratio(title_norm, member_norm) > _FUZZY_THRESHOLD:
+                    cluster.append(event)
+                    placed = True
+                    break
+            if placed:
+                break
+        if not placed:
+            clusters.append([event])
+
+    return [_merge_group(c) for c in clusters]
+
+
+def _dedup_events(rows: list[dict]) -> list[dict]:
+    """Cross-source дедуп на чтении.
+
+    Двухпроходный алгоритм:
+    1. Exact-match по ключу (нормализованный title, date_start, district) → группы.
+       District в ключе предотвращает слияние одноимённых событий в разных районах
+       («Концерт в Иркутске» vs «Концерт в Листвянке» в один день — разные события).
+    2. Внутри каждого (date, district)-bucket'а — fuzzy-pass через rapidfuzz
+       token_set_ratio > 88: ловит «Маштаков» vs «Концерт Маштакова»,
+       которые exact-match не поймал.
+    """
+    # Фаза 1: exact-match группировка
+    groups: dict[tuple[str, Any, str], list[dict]] = {}
+    keyless: list[dict] = []
+    for row in rows:
+        title_key = _normalize_title_for_dedup(row.get("title", ""))
+        if not title_key:
+            keyless.append(row)
+            continue
+        district = _location_district(row)
+        key = (title_key, row.get("date_start"), district)
         groups.setdefault(key, []).append(row)
 
-    merged: list[dict] = []
+    exact_merged: list[dict] = []
     for group in groups.values():
         if len(group) == 1:
-            merged.append(group[0])
-            continue
-        primary = max(group, key=_completeness_score)
-        primary_source = primary.get("source_id")
-        also = sorted({
-            r.get("source_id") for r in group
-            if r.get("source_id") and r.get("source_id") != primary_source
-        })
-        primary = {**primary, "also_at": list(also)}
-        merged.append(primary)
-    return merged
+            exact_merged.append(group[0])
+        else:
+            exact_merged.append(_merge_group(group))
+
+    # Фаза 2: fuzzy-pass внутри (date, district)-bucket'ов
+    fuzzy_buckets: dict[tuple[Any, str], list[dict]] = {}
+    for row in exact_merged:
+        bucket_key = (row.get("date_start"), _location_district(row))
+        fuzzy_buckets.setdefault(bucket_key, []).append(row)
+
+    final: list[dict] = []
+    for bucket in fuzzy_buckets.values():
+        final.extend(_fuzzy_merge_within_bucket(bucket))
+
+    final.extend(keyless)
+    return final
 
 
 @router.get("", response_model=list[Event])

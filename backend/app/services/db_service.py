@@ -168,22 +168,132 @@ class DBService:
     async def create_events_table(self) -> bool:
         return True
 
+    async def get_events_by_district(
+        self,
+        district: str,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        limit: int = 500,
+    ) -> list[dict]:
+        """Получить события, привязанные к району через CITY_TO_DISTRICT (substring-match).
+
+        Логика:
+        1. Находим все города этого района из CITY_TO_DISTRICT.
+        2. Берём события, где location/address содержит подстроку города → флаг geo_inferred=True.
+        3. Берём события без location/address → флаг geo_inferred=False (общерегиональные).
+        4. Объединяем оба списка в одном вызове.
+
+        Returns:
+            list[dict] — те же поля что get_events + `geo_inferred: bool`.
+        """
+        from app.constants import CITY_TO_DISTRICT
+
+        cities = [c for c, d in CITY_TO_DISTRICT.items() if d == district]
+        if not cities:
+            logger.warning("get_events_by_district: район %r не имеет городов в CITY_TO_DISTRICT", district)
+            return []
+
+        # Подстроки: и сам район, и каждый город (lowercase для ILIKE)
+        patterns = [f"%{district.lower()}%"] + [f"%{c.lower()}%" for c in cities]
+
+        async with async_session() as s:
+            q_text = """
+                SELECT
+                    event_id, title, description, date_start, date_end,
+                    event_type, location, source_id, url, time_start,
+                    price_min, price_max, image_url, address, age_restriction,
+                    CASE
+                        WHEN location IS NULL AND address IS NULL THEN false
+                        ELSE true
+                    END AS has_geo
+                FROM events
+                WHERE 1=1
+            """
+            params: dict = {}
+            if date_from:
+                q_text += " AND date_start >= :date_from"
+                params["date_from"] = date_from
+            if date_to:
+                q_text += " AND date_start <= :date_to"
+                params["date_to"] = date_to
+            q_text += """
+                AND (
+                    location IS NULL AND address IS NULL
+                    OR EXISTS (
+                        SELECT 1 FROM unnest(CAST(:patterns AS text[])) AS p
+                        WHERE LOWER(COALESCE(location, '')) LIKE p
+                           OR LOWER(COALESCE(address, '')) LIKE p
+                    )
+                )
+                ORDER BY ABS(date_start - CURRENT_DATE)
+                LIMIT :limit
+            """
+            params["patterns"] = patterns
+            params["limit"] = limit
+            result = await s.execute(text(q_text), params)
+            rows = result.mappings().all()
+
+        out: list[dict] = []
+        for r in rows:
+            loc = (r["location"] or "").lower()
+            addr = (r["address"] or "").lower()
+            district_lower = district.lower()
+            geo_inferred = False
+            if r["has_geo"]:
+                # True если location/address содержит подстроку района или одного из его городов
+                for pattern in [district_lower] + [c.lower() for c in cities]:
+                    if pattern in loc or pattern in addr:
+                        geo_inferred = True
+                        break
+            out.append({
+                "event_id": r["event_id"],
+                "title": r["title"],
+                "description": (r["description"] or "")[:300] if r["description"] else None,
+                "date_start": r["date_start"],
+                "date_end": r["date_end"],
+                "event_type": r["event_type"],
+                "location": r["location"],
+                "source_id": r["source_id"],
+                "url": r["url"],
+                "time_start": r["time_start"],
+                "price_min": r["price_min"],
+                "price_max": r["price_max"],
+                "image_url": r["image_url"],
+                "address": r["address"],
+                "age_restriction": r["age_restriction"],
+                "geo_inferred": geo_inferred,
+            })
+        return out
+
     async def get_occupancy_by_district(
         self,
         district: str,
         date_from: date | None = None,
         date_to: date | None = None,
     ) -> list[dict]:
+        """Средняя занятость по району на каждый день.
+
+        Phase 6: weighted occupancy = 100 * SUM(rooms - free) / SUM(rooms).
+        Старая семантика была AVG((100 - available_percent)) — равные веса для каждого отеля,
+        что искажает картину в гетерогенных районах (1 хостел на 5 мест vs 1 база на 80 мест).
+        Новая — взвешена по физическому inventory'ю, что соответствует STR-методологии.
+
+        Дополнительно: clip percent в [0, 100] перед расчётом (защита от outliers парсера,
+        когда available_rooms_percent может выйти за границы из-за rooms_num != sum(rooms.free)).
+        """
         async with async_session() as s:
             q_text = """
-                SELECT hs.date,
-                       AVG(100.0 - hs.available_rooms_percent) AS avg_occupancy,
-                       AVG(hs.min_price) FILTER (WHERE hs.min_price > 0) AS avg_price,
-                       SUM(hs.rooms_num) AS total_rooms,
-                       SUM(hs.max_capacity) AS total_capacity
-                FROM hotel_statistics hs
-                JOIN hotels h ON h.id = hs.id
-                WHERE h.district = :district
+                WITH clean AS (
+                    SELECT
+                        hs.date,
+                        hs.rooms_num,
+                        LEAST(100.0, GREATEST(0.0, COALESCE(hs.available_rooms_percent, 0))) AS available_pct,
+                        hs.min_price,
+                        hs.max_capacity
+                    FROM hotel_statistics hs
+                    JOIN hotels h ON h.id = hs.id
+                    WHERE h.district = :district
+                      AND hs.rooms_num > 0
             """
             params: dict = {"district": district}
             if date_from:
@@ -192,7 +302,21 @@ class DBService:
             if date_to:
                 q_text += " AND hs.date <= :date_to"
                 params["date_to"] = date_to
-            q_text += " GROUP BY hs.date ORDER BY hs.date"
+            q_text += """
+                )
+                SELECT
+                    date,
+                    -- Weighted occupancy: SUM(occupied_rooms) / SUM(total_rooms) * 100
+                    -- occupied_rooms = rooms_num * (1 - available_pct/100) = rooms_num - rooms_num*available_pct/100
+                    100.0 * SUM(rooms_num - rooms_num * available_pct / 100.0)
+                        / NULLIF(SUM(rooms_num), 0) AS avg_occupancy,
+                    AVG(min_price) FILTER (WHERE min_price > 0) AS avg_price,
+                    SUM(rooms_num) AS total_rooms,
+                    SUM(max_capacity) AS total_capacity
+                FROM clean
+                GROUP BY date
+                ORDER BY date
+            """
             result = await s.execute(text(q_text), params)
             return [
                 {
@@ -207,24 +331,37 @@ class DBService:
             ]
 
     async def get_monthly_statistics(self, year: int | None = None) -> list[dict]:
+        """Месячная агрегация. Phase 6: weighted occupancy (как в get_occupancy_by_district)."""
         async with async_session() as s:
             q_text = """
-                SELECT
-                    EXTRACT(YEAR FROM date)::int AS year,
-                    EXTRACT(MONTH FROM date)::int AS month,
-                    AVG(100.0 - available_rooms_percent) AS avg_occupancy,
-                    AVG(min_price) AS avg_price,
-                    SUM(rooms_num) AS total_rooms,
-                    SUM(free_rooms_amount) AS free_rooms,
-                    COUNT(*) AS records_count
-                FROM hotel_statistics
-                WHERE date IS NOT NULL
+                WITH clean AS (
+                    SELECT
+                        date,
+                        rooms_num,
+                        free_rooms_amount,
+                        LEAST(100.0, GREATEST(0.0, COALESCE(available_rooms_percent, 0))) AS available_pct,
+                        min_price
+                    FROM hotel_statistics
+                    WHERE date IS NOT NULL AND rooms_num > 0
             """
             params: dict = {}
             if year:
                 q_text += " AND EXTRACT(YEAR FROM date) = :year"
                 params["year"] = year
-            q_text += " GROUP BY 1, 2 ORDER BY 1, 2"
+            q_text += """
+                )
+                SELECT
+                    EXTRACT(YEAR FROM date)::int AS year,
+                    EXTRACT(MONTH FROM date)::int AS month,
+                    100.0 * SUM(rooms_num - rooms_num * available_pct / 100.0)
+                        / NULLIF(SUM(rooms_num), 0) AS avg_occupancy,
+                    AVG(min_price) FILTER (WHERE min_price > 0) AS avg_price,
+                    SUM(rooms_num) AS total_rooms,
+                    SUM(free_rooms_amount) AS free_rooms,
+                    COUNT(*) AS records_count
+                FROM clean
+                GROUP BY 1, 2 ORDER BY 1, 2
+            """
             result = await s.execute(text(q_text), params)
             return [
                 {
@@ -1065,6 +1202,8 @@ class DBService:
     ) -> dict[date, float]:
         """Возвращает {date -> predicted_occupancy} из таблицы forecasts (model='ensemble').
 
+        Backward-compat: тонкий wrapper над get_saved_forecasts_with_ci, отдаёт только occupancy.
+
         Args:
             district: Название района.
             dates: Список дат для выборки.
@@ -1072,16 +1211,31 @@ class DBService:
         Returns:
             Словарь {дата: прогнозная загруженность}.
         """
+        full = await self.get_saved_forecasts_with_ci(district=district, dates=dates)
+        return {d: rec["occupancy"] for d, rec in full.items() if rec.get("occupancy") is not None}
+
+    async def get_saved_forecasts_with_ci(
+        self, *, district: str, dates: list[date]
+    ) -> dict[date, dict]:
+        """Возвращает {date -> {occupancy, lower, upper}} для ci_coverage расчёта (Phase 8)."""
         if not self.is_connected or not dates:
             return {}
         async with async_session() as s:
             rows = (await s.execute(
-                select(Forecast.forecast_date, Forecast.predicted_occupancy)
+                select(
+                    Forecast.forecast_date,
+                    Forecast.predicted_occupancy,
+                    Forecast.confidence_lower,
+                    Forecast.confidence_upper,
+                )
                 .where(Forecast.district == district)
                 .where(Forecast.forecast_date.in_(dates))
                 .where(Forecast.model == "ensemble")
             )).all()
-            return {r[0]: r[1] for r in rows if r[1] is not None}
+            return {
+                r[0]: {"occupancy": r[1], "lower": r[2], "upper": r[3]}
+                for r in rows
+            }
 
     async def get_hotels_count(self) -> int:
         """Количество отелей в базе данных."""

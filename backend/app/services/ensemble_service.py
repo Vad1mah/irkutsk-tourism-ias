@@ -7,6 +7,7 @@
 """
 import asyncio
 import time
+from collections import defaultdict
 import numpy as np
 from datetime import date
 import logging
@@ -78,6 +79,7 @@ class EnsembleService:
                 return await xgboost_service.forecast_occupancy_async(
                     history=history, days_ahead=days_ahead,
                     weather_data=weather_data, events_data=events_data,
+                    district=district,  # Phase 7: per-district model isolation
                 )
             except Exception as e:
                 logger.error(f"XGBoost error: {e}")
@@ -315,6 +317,10 @@ class EnsembleService:
     # Model comparison
     # ------------------------------------------------------------------
 
+    # Phase 6: walk-forward CV параметры
+    CV_FOLDS: int = 5
+    CV_STEP_DAYS: int = 14  # шаг сдвига между fold'ами
+
     def compare_models(
         self,
         history: list[dict],
@@ -322,44 +328,115 @@ class EnsembleService:
         events_data: list[dict] | None = None,
         test_days: int = 14,
     ) -> dict:
-        """Сравнивает модели на тестовом периоде. Возвращает RMSE, MAE, R2."""
+        """Сравнение моделей через walk-forward CV (5 fold'ов, step=14d).
+
+        Phase 6: вместо одной фиксированной hold-out оценки (last 14 days) — катящееся окно:
+        fold 0 берёт train=[:N-5*14], test=[N-5*14 : N-4*14], ..., fold 4 = последние 14 дней.
+        Это даёт честную картину стабильности модели: помимо mean RMSE возвращаем `rmse_std`.
+
+        Возвращает dict:
+            {
+              "prophet":   {"rmse": ..., "mae": ..., "r2": ..., "rmse_std": ..., "fold_count": N, "points": ...},
+              "neuralprophet": {...},
+              "xgboost":   {...},
+              "ensemble":  {...},
+              "best_model": "prophet" | "neuralprophet" | "xgboost",
+              "cv_strategy": "walk_forward_5fold",
+            }
+
+        Fallback: если данных мало для 5 fold (< test_days + 30 + 4*CV_STEP_DAYS = ~116) —
+        автоматически снижается на меньшее число fold'ов или одиночный hold-out.
+        """
+        # Минимально требуется test_days + 30 (для XGBoost warm-up) + (folds-1)*step для смещения
+        min_for_full_cv = test_days + 30 + (self.CV_FOLDS - 1) * self.CV_STEP_DAYS
         if len(history) < test_days + 30:
             return {"error": "Недостаточно данных"}
 
-        train = history[:-test_days]
-        test = history[-test_days:]
-        actuals = {h["date"]: h["occupancy"] for h in test}
+        # Адаптивно: сколько fold реально влезает
+        if len(history) >= min_for_full_cv:
+            cv_folds = self.CV_FOLDS
+        else:
+            cv_folds = max(1, (len(history) - test_days - 30) // self.CV_STEP_DAYS + 1)
+            logger.info(
+                "compare_models: данных %d точек, walk-forward сокращён до %d fold'ов "
+                "(полный CV требует ≥%d)",
+                len(history), cv_folds, min_for_full_cv,
+            )
+
+        # Per-model per-fold метрики
+        rmse_per_model: dict[str, list[float]] = defaultdict(list)
+        mae_per_model: dict[str, list[float]] = defaultdict(list)
+        r2_per_model: dict[str, list[float]] = defaultdict(list)
+        points_per_model: dict[str, int] = defaultdict(int)
 
         self._calibrating = True
         try:
-            forecasts_all = self.forecast_ensemble(
-                history=train, days_ahead=test_days,
-                weather_data=weather_data, events_data=events_data,
-                method="weighted_average",
-            )
+            for fold_idx in range(cv_folds):
+                # Сдвиг тестового окна: fold 0 — самый старый, последний — самые свежие 14 дней
+                folds_from_end = cv_folds - fold_idx  # 5, 4, 3, 2, 1 для cv_folds=5
+                end_train_idx = len(history) - folds_from_end * self.CV_STEP_DAYS
+                if end_train_idx < 30:
+                    logger.warning(
+                        "compare_models fold %d: train slice %d < 30, пропуск",
+                        fold_idx, end_train_idx,
+                    )
+                    continue
+                train_slice = history[:end_train_idx]
+                test_slice = history[end_train_idx:end_train_idx + test_days]
+                if len(test_slice) < 3:
+                    continue
+                actuals = {h["date"]: h["occupancy"] for h in test_slice}
+
+                fold_forecasts = self.forecast_ensemble(
+                    history=train_slice, days_ahead=test_days,
+                    weather_data=weather_data, events_data=events_data,
+                    method="weighted_average",
+                )
+                # Per-model метрики
+                for name, fcs in fold_forecasts["models"].items():
+                    m = self._compute_metrics(fcs, actuals)
+                    if m:
+                        rmse_per_model[name].append(m["rmse"])
+                        mae_per_model[name].append(m["mae"])
+                        r2_per_model[name].append(m["r2"])
+                        points_per_model[name] += m["points"]
+                # Ensemble
+                m_ens = self._compute_metrics(fold_forecasts["ensemble"], actuals)
+                if m_ens:
+                    rmse_per_model["ensemble"].append(m_ens["rmse"])
+                    mae_per_model["ensemble"].append(m_ens["mae"])
+                    r2_per_model["ensemble"].append(m_ens["r2"])
+                    points_per_model["ensemble"] += m_ens["points"]
+
+                logger.info(
+                    "compare_models fold %d/%d: train[0:%d], test[%d:%d], rmse=%s",
+                    fold_idx + 1, cv_folds, end_train_idx, end_train_idx, end_train_idx + test_days,
+                    {n: round(rmse_per_model[n][-1], 2) for n in rmse_per_model if rmse_per_model[n]},
+                )
         finally:
             self._calibrating = False
 
-        results = {}
-
-        for name, forecasts in forecasts_all["models"].items():
-            if forecasts:
-                fc_dates = [str(fp.date) for fp in forecasts[:3]]
-                ac_sample = list({str(k): v for k, v in actuals.items()}.keys())[:3]
-                logger.info(f"compare_models {name}: {len(forecasts)} pts, fc_dates={fc_dates}, ac_sample={ac_sample}")
-            m = self._compute_metrics(forecasts, actuals)
-            if m:
-                results[name] = m
-
-        # Метрики ensemble
-        m = self._compute_metrics(forecasts_all["ensemble"], actuals)
-        if m:
-            results["ensemble"] = m
+        # Агрегация: mean + std по fold'ам
+        results: dict = {"cv_strategy": f"walk_forward_{cv_folds}fold"}
+        for name, rmses in rmse_per_model.items():
+            if not rmses:
+                continue
+            results[name] = {
+                "rmse": round(float(np.mean(rmses)), 2),
+                "rmse_std": round(float(np.std(rmses)), 2),
+                "mae": round(float(np.mean(mae_per_model[name])), 2),
+                "r2": round(float(np.mean(r2_per_model[name])), 3),
+                "fold_count": len(rmses),
+                "points": points_per_model[name],
+            }
 
         if results:
-            model_names = [k for k in results if k != "ensemble"]
+            model_names = [k for k in results if k not in ("ensemble", "cv_strategy", "best_model")]
             if model_names:
-                results["best_model"] = min(model_names, key=lambda k: results[k].get("rmse", 999))
+                results["best_model"] = min(
+                    model_names,
+                    key=lambda k: results[k].get("rmse", 999.0) if isinstance(results.get(k), dict) else 999.0,
+                )
 
         self._last_metrics = results
         return results

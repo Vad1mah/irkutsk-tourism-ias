@@ -60,6 +60,10 @@ langchain-mistralai>=0.2.0  # Нативная интеграция Mistral с t
 langgraph>=0.2.0
 langchain-core>=0.3.0
 
+# Text processing
+rapidfuzz>=3.6.0  # Fuzzy dedup для событий (token_set_ratio для cross-source merge)
+dateparser>=1.2.0  # Relative-date phrases в telegram-парсере («завтра», «в выходные»)
+
 # Caching
 redis>=5.0.0
 

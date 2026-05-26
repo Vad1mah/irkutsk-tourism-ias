@@ -94,26 +94,32 @@ class WeatherService:
         self,
         date_from: date,
         date_to: date,
+        lat: float | None = None,
+        lon: float | None = None,
     ) -> list[dict]:
         """
         Получить исторические данные о погоде.
-        
+
         Args:
             date_from: Начальная дата
             date_to: Конечная дата
-            
+            lat: Широта (None = дефолт Иркутск)
+            lon: Долгота (None = дефолт Иркутск)
+
         Returns:
             Список с погодой по дням:
             [{"date": "2025-01-01", "temperature": -15.2, "precipitation": 0.5}, ...]
         """
-        cache_key = f"hist_{date_from}_{date_to}"
+        use_lat = lat if lat is not None else self.lat
+        use_lon = lon if lon is not None else self.lon
+        cache_key = f"hist_{date_from}_{date_to}_{use_lat:.2f}_{use_lon:.2f}"
         cached = self._get_cached(cache_key)
         if cached:
             return cached
 
         params = {
-            "latitude": self.lat,
-            "longitude": self.lon,
+            "latitude": use_lat,
+            "longitude": use_lon,
             "start_date": str(date_from),
             "end_date": str(date_to),
             "daily": "temperature_2m_max,temperature_2m_min,temperature_2m_mean,precipitation_sum,wind_speed_10m_max,weathercode",
@@ -230,7 +236,7 @@ class WeatherService:
         if past_dates:
             min_date = min(past_dates)
             max_date = max(past_dates)
-            historical = await self.get_historical_weather(min_date, max_date)
+            historical = await self.get_historical_weather(min_date, max_date, lat=lat, lon=lon)
             for w in historical:
                 d = date.fromisoformat(w["date"]) if isinstance(w["date"], str) else w["date"]
                 result[d] = w

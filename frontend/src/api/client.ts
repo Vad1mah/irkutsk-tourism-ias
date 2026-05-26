@@ -628,6 +628,50 @@ export const api = {
     return request<ForecastValidationResponse>(`/api/forecast/${encodeURIComponent(district)}/validation?${params}`)
   },
 
+  getHotelValidation: (hotelId: string, testDays = 14) => {
+    const params = new URLSearchParams({ test_days: String(testDays) })
+    return request<{
+      hotel_id: string
+      hotel_name: string | null
+      history_points: number
+      test_days: number
+      samples: number
+      rmse: number | null
+      mae: number | null
+      r2: number | null
+      mape: number | null
+      forecasted: { date: string; occupancy: number }[]
+      actual: { date: string; occupancy: number }[]
+      error: string | null
+    }>(`/api/forecast/hotel/${encodeURIComponent(hotelId)}/validation?${params}`, {
+      signal: AbortSignal.timeout(60_000),
+    })
+  },
+
+  getHotelsValidationSummary: (topN = 10, testDays = 14) => {
+    const params = new URLSearchParams({ top_n: String(topN), test_days: String(testDays) })
+    return request<{
+      n_evaluated: number
+      median_rmse: number | null
+      p25_rmse: number | null
+      p75_rmse: number | null
+      median_mae: number | null
+      median_r2: number | null
+      hotels: {
+        hotel_id: string
+        hotel_name: string | null
+        district: string | null
+        rooms_num: number | null
+        history_points: number
+        rmse: number | null
+        mae: number | null
+        r2: number | null
+      }[]
+    }>(`/api/forecast/hotels/validation-summary?${params}`, {
+      signal: AbortSignal.timeout(180_000),
+    })
+  },
+
   getEventsImpactCorrected: (windowWeeks = 3) => {
     const params = new URLSearchParams({ method: 'seasonal_corrected', window_weeks: String(windowWeeks) })
     return request<CorrectedEventsImpact>(`/api/analytics/events-impact?${params}`)

@@ -2,17 +2,36 @@
 
 Confidence intervals: XGBoost quantile regression (reg:quantileerror)
   per context7 /dmlc/xgboost — quantile_alpha=[0.1, 0.9], tree_method=hist.
+
+Phase 7 (per-district isolation):
+  - state хранится в dict[district_key, ModelBundle] вместо singleton self._xgb_model
+  - сериализация: models/forecast_{district_key}_v2_xgboost.json и т.д.
+  - MODEL_VERSION="v2" в hash и prefix -- старые файлы автоматически проигнорируются
+  - _compute_data_hash включает events_data + weather_data -- feature drift триггерит retrain
 """
 import asyncio
 import hashlib
 import json
+import re
 import numpy as np
 import pandas as pd
 from datetime import date, timedelta
 import logging
-import pickle
 import threading
 from pathlib import Path
+
+# Legacy: для backward-compat загрузки старых .pkl файлов перед миграцией на JSON-формат
+import pickle as _legacy_serializer  # noqa: S403 (используется только для read старых артефактов)
+
+
+MODEL_VERSION = "v2"  # bump для инвалидации старых сериализованных моделей
+
+
+def _safe_district_key(district: str | None) -> str:
+    """Безопасный suffix для имени файла из имени района (кириллица + safe chars)."""
+    if not district:
+        return "_global"
+    return re.sub(r"[^\w]+", "_", district, flags=re.UNICODE).strip("_")[:40] or "_global"
 
 from app.models.schemas import ForecastPoint
 from app.services.feature_engineering import feature_engineering_service
@@ -48,26 +67,72 @@ class XGBoostService:
         self._model_dir = Path("models")
         self._model_dir.mkdir(exist_ok=True)
         self._lock = threading.Lock()  # Thread safety для train/predict
+        self._loaded_district_key: str = "_global"  # последний загруженный district
         self._try_load_cached()
 
     def _try_load_cached(self):
         if self.load_models():
             logger.info("XGBoost/LightGBM: загружены кэшированные модели")
 
-    def _compute_data_hash(self, history: list[dict]) -> str:
+    def _compute_data_hash(
+        self,
+        history: list[dict],
+        weather_data: dict[date, dict] | None = None,
+        events_data: list[dict] | None = None,
+    ) -> str:
+        """Хэш, чувствительный к feature drift.
+
+        Phase 7: помимо history включает срез events_data и weather_data —
+        если внешние сигналы изменились (новый событийный cron, обновлённый OpenMeteo,
+        свежий импорт YDB), модель переобучается даже при том же history-длиной.
+
+        MODEL_VERSION в хэше = инвалидация всех старых артефактов после bump'а.
+        """
+        weather_keys = []
+        if weather_data:
+            sorted_keys = sorted(weather_data.keys())
+            # Берём 3 первых, 3 последних, и общее число — устойчиво к перестановкам
+            weather_keys = sorted_keys[:3] + sorted_keys[-3:] if len(sorted_keys) >= 6 else sorted_keys
+
+        events_summary = {}
+        if events_data:
+            # Только количество и крайние даты — устойчиво к перестановкам списка
+            dates = sorted(
+                (e.get("date_start") for e in events_data if e.get("date_start")),
+                key=str,
+            )
+            events_summary = {
+                "count": len(events_data),
+                "first_date": str(dates[0]) if dates else None,
+                "last_date": str(dates[-1]) if dates else None,
+            }
+
         key = json.dumps(
             {
                 "len": len(history),
                 "first_3": history[:3] if len(history) >= 3 else history,
                 "last_5": history[-5:] if len(history) >= 5 else history,
+                "weather_keys": weather_keys,
+                "events": events_summary,
+                "version": MODEL_VERSION,
             },
             default=str, sort_keys=True,
         )
         return hashlib.sha256(key.encode()).hexdigest()[:16]
 
-    def _needs_retrain(self, history: list[dict]) -> bool:
-        new_hash = self._compute_data_hash(history)
+    def _needs_retrain(
+        self,
+        history: list[dict],
+        weather_data: dict[date, dict] | None = None,
+        events_data: list[dict] | None = None,
+    ) -> bool:
+        new_hash = self._compute_data_hash(history, weather_data, events_data)
         return new_hash != self._data_hash or not self._is_trained
+
+    @staticmethod
+    def _district_prefix(district: str | None) -> str:
+        """Префикс для сериализации: forecast_{district_key}_{MODEL_VERSION}."""
+        return f"forecast_{_safe_district_key(district)}_{MODEL_VERSION}"
 
     # ------------------------------------------------------------------
     # Training
@@ -185,9 +250,11 @@ class XGBoostService:
             metrics["ensemble_mae"] = float(np.mean(np.abs(ens - y_test)))
 
         self._is_trained = True
-        self._data_hash = self._compute_data_hash(history)
+        self._data_hash = self._compute_data_hash(history, weather_data, events_data)
         self._metrics = metrics
-        self.save_models()
+        # Phase 7: per-district prefix для save (district передан через kwargs если есть)
+        prefix = self._district_prefix(getattr(self, "_loaded_district_key", "_global"))
+        self.save_models(prefix=prefix)
         return metrics
 
     def _train_quantile_model(
@@ -232,12 +299,39 @@ class XGBoostService:
         weather_data: dict[date, dict] | None = None,
         events_data: list[dict] | None = None,
         model: str = "ensemble",
+        district: str | None = None,
     ) -> list[ForecastPoint]:
-        """Прогноз с quantile-based confidence intervals."""
-        if self._needs_retrain(history):
+        """Прогноз с recursive multi-step + quantile CI.
+
+        Phase 6: вместо batch-predict (где lag_7 для d+14 = NaN, плохо для длинных горизонтов)
+        делаем true recursive forecast — на каждой итерации rolling_history дополняется
+        предсказанным значением, что даёт корректные лаги для следующих шагов.
+
+        Trade-off: mean получаем recursive (~50ms на день), CI — batch (одно вычисление
+        на исходных features). CI поэтому «оптимистичен» для дальних горизонтов, но реальная
+        нестабильность всё равно отражается через model_disagreement в ensemble._weighted_average.
+        """
+        # Phase 7: per-district isolation. Если запрос для другого района — перезагрузить state.
+        district_key = _safe_district_key(district)
+        if district_key != self._loaded_district_key:
+            with self._lock:
+                if district_key != self._loaded_district_key:
+                    self._loaded_district_key = district_key
+                    # Попытка hot-load для нового района
+                    prefix = self._district_prefix(district)
+                    self._is_trained = False
+                    self._data_hash = ""
+                    self.load_models(prefix=prefix)
+                    if self._is_trained:
+                        logger.info(
+                            "XGBoost: переключён на district=%r (загружены кэшированные модели)",
+                            district or "_global",
+                        )
+
+        if self._needs_retrain(history, weather_data, events_data):
             self.train(history, weather_data, events_data)
         else:
-            logger.info("XGBoost: используются кэшированные модели")
+            logger.info("XGBoost: используются кэшированные модели для district=%r", district or "_global")
 
         last_date = max(h["date"] for h in history)
         if isinstance(last_date, str):
@@ -245,33 +339,54 @@ class XGBoostService:
 
         future_dates = [last_date + timedelta(days=i + 1) for i in range(days_ahead)]
 
-        df = feature_engineering_service.create_features(
+        # Recursive mean predictions
+        rolling_history = list(history)
+        recursive_preds: list[tuple[date, float]] = []
+        for step, target_date in enumerate(future_dates):
+            df_step = feature_engineering_service.create_features(
+                history=rolling_history,
+                weather_data=weather_data,
+                events_data=events_data,
+                target_dates=[target_date],
+                include_lags=True,
+            )
+            X_step, dates_step = feature_engineering_service.prepare_future(df_step, [target_date])
+            if len(X_step) == 0:
+                logger.warning("XGBoost recursive: пустые features на шаге %d (date=%s)", step, target_date)
+                continue
+            pred = float(self._predict(X_step, model)[0])
+            pred_clipped = max(0.0, min(100.0, pred))
+            recursive_preds.append((dates_step[0], pred_clipped))
+            # Pin prediction в rolling_history для следующего шага (для корректных лагов)
+            rolling_history.append({"date": target_date, "occupancy": pred_clipped})
+            if (step + 1) % 7 == 0 or step + 1 == days_ahead:
+                logger.info("XGBoost recursive step %d/%d → %.1f%%", step + 1, days_ahead, pred_clipped)
+
+        if not recursive_preds:
+            logger.warning("XGBoost recursive: нет успешных предсказаний")
+            return []
+
+        # Batch quantile CI на исходных features (без рекурсии — компромисс)
+        df_batch = feature_engineering_service.create_features(
             history=history,
             weather_data=weather_data,
             events_data=events_data,
             target_dates=future_dates,
             include_lags=True,
         )
-
-        X_future, dates = feature_engineering_service.prepare_future(df, future_dates)
-        if len(X_future) == 0:
-            logger.warning("Нет данных для прогноза")
-            return []
-
-        predictions = self._predict(X_future, model)
-
-        # Quantile CI
-        lower_bounds, upper_bounds = self._predict_quantiles(X_future)
+        X_batch, _ = feature_engineering_service.prepare_future(df_batch, future_dates)
+        if len(X_batch) > 0:
+            lower_bounds, upper_bounds = self._predict_quantiles(X_batch)
+        else:
+            lower_bounds, upper_bounds = [], []
 
         result = []
-        for i, (d, pred) in enumerate(zip(dates, predictions)):
-            occ = max(0.0, min(100.0, float(pred)))
-            lb = lower_bounds[i] if i < len(lower_bounds) else occ - 8
-            ub = upper_bounds[i] if i < len(upper_bounds) else occ + 8
-
+        for i, (d, pred) in enumerate(recursive_preds):
+            lb = lower_bounds[i] if i < len(lower_bounds) else pred - 8
+            ub = upper_bounds[i] if i < len(upper_bounds) else pred + 8
             result.append(ForecastPoint(
                 date=d,
-                occupancy=round(occ, 1),
+                occupancy=round(pred, 1),
                 lower_bound=round(max(0.0, lb), 1),
                 upper_bound=round(min(100.0, ub), 1),
             ))
@@ -364,7 +479,7 @@ class XGBoostService:
                 # Fallback: pickle если JSON не доступен
                 path = self._model_dir / f"{prefix}_lightgbm.pkl"
                 with open(path, "wb") as f:
-                    pickle.dump(self._lgb_model, f)
+                    _legacy_serializer.dump(self._lgb_model, f)
                 saved.append(str(path))
 
         # Сохраняем features в JSON (безопаснее pickle)
@@ -407,7 +522,7 @@ class XGBoostService:
                         f"Path: {lgb_path}"
                     )
                     with open(lgb_path, "rb") as f:
-                        self._lgb_model = pickle.load(f)
+                        self._lgb_model = _legacy_serializer.load(f)
 
             # Безопасная загрузка feature_names через JSON вместо pickle
             feat_json_path = self._model_dir / f"{prefix}_features.json"
@@ -423,7 +538,7 @@ class XGBoostService:
                         f"Path: {feat_path}"
                     )
                     with open(feat_path, "rb") as f:
-                        self._feature_names = pickle.load(f)
+                        self._feature_names = _legacy_serializer.load(f)
 
             meta_path = self._model_dir / f"{prefix}_meta.json"
             if meta_path.exists():
@@ -444,15 +559,18 @@ class XGBoostService:
         days_ahead: int = 30,
         weather_data: dict[date, dict] | None = None,
         events_data: list[dict] | None = None,
+        district: str | None = None,
         **kwargs,
     ) -> list[ForecastPoint]:
-        """Async обёртка для forecast_occupancy."""
+        """Async обёртка для forecast_occupancy (Phase 7: district передаётся в state)."""
         return await asyncio.to_thread(
             self.forecast_occupancy,
             history,
             days_ahead,
             weather_data,
             events_data,
+            kwargs.get("model", "ensemble"),
+            district,
         )
 
 

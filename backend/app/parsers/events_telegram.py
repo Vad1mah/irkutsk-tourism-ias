@@ -120,14 +120,48 @@ _VENUE_PATTERNS = [
 ]
 
 
+_RELATIVE_DATE_PHRASES = (
+    "завтра", "послезавтра",
+    "в эти выходные", "на этой неделе", "на следующей неделе",
+    "в субботу", "в воскресенье", "в пятницу", "в четверг",
+    "в среду", "во вторник", "в понедельник",
+    "через неделю", "через 2 дня", "через два дня", "через три дня",
+    "сегодня вечером", "сегодня",
+)
+
+
 def _extract_event_date(text: str) -> str | None:
-    """Извлечь дату события из текста сообщения."""
+    """Извлечь дату события из текста сообщения.
+
+    Стратегия:
+    1. Regex-паттерны (_DATE_PATTERNS) — точные формы «15 мая», «15.03.2026».
+    2. Fallback: dateparser для относительных фраз («завтра», «в эти выходные»).
+       Подключается только если ключевая фраза присутствует в тексте, чтобы
+       избежать ложноположительных матчей dateparser'а на длинных текстах.
+    """
     for pattern in _DATE_PATTERNS:
         m = pattern.search(text)
         if m:
             result = parse_russian_date(m.group(0))
             if result:
                 return result
+
+    text_lower = text.lower()
+    matched_phrase = next((p for p in _RELATIVE_DATE_PHRASES if p in text_lower), None)
+    if not matched_phrase:
+        return None
+
+    try:
+        import dateparser
+        parsed = dateparser.parse(
+            matched_phrase,
+            languages=["ru"],
+            settings={"PREFER_DATES_FROM": "future", "TIMEZONE": "Asia/Irkutsk", "RETURN_AS_TIMEZONE_AWARE": False},
+        )
+        if parsed:
+            return parsed.date().isoformat()
+    except Exception as e:
+        logger.debug(f"dateparser fallback failed для {matched_phrase!r}: {e}")
     return None
 
 
@@ -461,15 +495,21 @@ class TelegramWebParser:
         soup = BeautifulSoup(html, 'html.parser')
         
         # Ищем сообщения
+        forwarded_skipped = 0
         for msg_div in soup.find_all('div', class_='tgme_widget_message'):
             try:
+                # Phase 5: skip forwarded posts (репост с другого канала = дубль)
+                if msg_div.find(class_='tgme_widget_message_forwarded_from_name'):
+                    forwarded_skipped += 1
+                    continue
+
                 # ID сообщения
                 msg_id = msg_div.get('data-post', '').split('/')[-1]
-                
+
                 # Текст
                 text_div = msg_div.find('div', class_='tgme_widget_message_text')
                 text = text_div.get_text(separator='\n', strip=True) if text_div else ""
-                
+
                 if not text:
                     continue
                 
@@ -506,7 +546,8 @@ class TelegramWebParser:
             except Exception as e:
                 logger.debug(f"Ошибка парсинга сообщения: {e}")
         
-        logger.info(f"Получено {len(messages)} сообщений из @{channel} (web preview)")
+        log_extra = f", {forwarded_skipped} forwarded-skipped" if forwarded_skipped else ""
+        logger.info(f"Получено {len(messages)} сообщений из @{channel} (web preview){log_extra}")
         return messages
 
 

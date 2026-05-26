@@ -58,9 +58,21 @@ class NeuralProphetService:
             if len(df) < 14:
                 return self._fallback_forecast(history, days_ahead)
 
-            effective_lags = max(n_lags, days_ahead)
+            # Phase 8: cap n_forecasts чтобы не получить катастрофический underfit
+            # для длинных горизонтов (n_forecasts=365 на 280 точках → 55 train примеров).
+            # Для days_ahead > MAX_NP_HORIZON используем cap и далее recursive-extend.
+            MAX_NP_HORIZON = 30
+            effective_horizon = min(days_ahead, MAX_NP_HORIZON)
+            if days_ahead > MAX_NP_HORIZON:
+                logger.warning(
+                    "NeuralProphet: days_ahead=%d > %d, cap n_forecasts=%d. "
+                    "Для длинных горизонтов рекомендуется использовать Prophet или XGBoost.",
+                    days_ahead, MAX_NP_HORIZON, MAX_NP_HORIZON,
+                )
+
+            effective_lags = max(n_lags, effective_horizon)
             model = NeuralProphet(
-                n_forecasts=days_ahead,
+                n_forecasts=effective_horizon,
                 n_lags=effective_lags,
                 yearly_seasonality=True,
                 weekly_seasonality=True,
@@ -163,7 +175,17 @@ class NeuralProphetService:
     # ------------------------------------------------------------------
 
     def _prepare_dataframe(self, history: list[dict]) -> pd.DataFrame:
-        """Создаёт непрерывный ежедневный DataFrame с интерполяцией."""
+        """Создаёт непрерывный ежедневный DataFrame с осторожной интерполяцией.
+
+        Phase 8: вместо unrestricted linear interpolate (которая создавала
+        синтетический «плавный» тренд через 4-месячный gap 24.06–25.10.2025
+        и стирала летний пик) применяем гибридную стратегию:
+          - короткие пропуски (≤ GAP_INTERPOLATE_LIMIT=7 дней) — linear interpolation
+          - длинные пропуски (> 7 дней) — оставляем NaN, NeuralProphet с drop_missing=True
+            обработает их как настоящие пропуски, а не как синтетический ряд.
+        Затем bfill/ffill заполняет границы (хвосты ряда без known точек).
+        """
+        GAP_INTERPOLATE_LIMIT = 7
         df = pd.DataFrame({
             "ds": pd.to_datetime([h["date"] for h in history]),
             "y": pd.to_numeric([h["occupancy"] for h in history], errors="coerce"),
@@ -172,8 +194,21 @@ class NeuralProphetService:
 
         full_range = pd.date_range(df["ds"].min(), df["ds"].max(), freq="D")
         df = df.set_index("ds").reindex(full_range).rename_axis("ds").reset_index()
-        df["y"] = df["y"].interpolate(method="linear").bfill().ffill()
-        logger.info(f"NeuralProphet: {len(df)} непрерывных дней")
+
+        # Интерполяция только для коротких пропусков (limit=7)
+        y_interp = df["y"].interpolate(method="linear", limit=GAP_INTERPOLATE_LIMIT, limit_area="inside")
+        # Длинные пропуски остаются NaN — отбрасываем их явно вместо синтетики
+        df["y"] = y_interp
+
+        # Подсчёт пропусков для логирования
+        gap_count = int(df["y"].isna().sum())
+        if gap_count > 0:
+            logger.info(
+                f"NeuralProphet: {len(df)} календарных дней, {gap_count} с NaN "
+                f"(длинные gap'ы >7 дней оставлены как пропуски — модель их пропустит при drop_missing=True)"
+            )
+        else:
+            logger.info(f"NeuralProphet: {len(df)} непрерывных дней")
         return df
 
     def _fill_temperature(

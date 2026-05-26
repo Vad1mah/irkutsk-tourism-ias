@@ -3,8 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  LineChart, Line, Legend,
 } from 'recharts'
-import { Building2, MapPin, Star, ArrowLeft, TrendingUp, DollarSign, Sparkles, Loader2, AlertCircle, GitCompare } from 'lucide-react'
+import { Building2, MapPin, Star, ArrowLeft, TrendingUp, DollarSign, Sparkles, Loader2, AlertCircle, GitCompare, CheckCircle2 } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardContent, Badge, Button } from '../components/ui'
 import { ErrorState } from '../components/ErrorState'
 import { usePageTitle } from '../hooks/usePageTitle'
@@ -118,6 +119,10 @@ function HotelDetail() {
 
   const forecastMutation = useMutation({
     mutationFn: () => api.hotelForecast(id!, forecastDays),
+  })
+
+  const validationMutation = useMutation({
+    mutationFn: () => api.getHotelValidation(id!, 14),
   })
 
   const { data: hotel, isLoading, isError, refetch } = useQuery({
@@ -445,6 +450,130 @@ function HotelDetail() {
                       </>
                     )
                   })()}
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Точность прогноза (backtest validation для конкретного объекта) */}
+          <Card variant="glass">
+            <CardHeader>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-5 h-5 text-[hsl(var(--accent))]" />
+                  <CardTitle>Точность прогноза для этого объекта</CardTitle>
+                </div>
+                {validationMutation.data && validationMutation.data.samples > 0 && (
+                  <Badge variant="outline" size="sm">backtest на 14 днях</Badge>
+                )}
+              </div>
+              <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
+                Метод holdout-backtest: модель обучается на истории объекта без последних 14 дней, затем прогнозирует эти 14 дней и сравнивается с фактом. RMSE/MAE/MAPE показывают типичную ошибку именно для этого средства размещения, а не для усреднённого района.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {!validationMutation.data && !validationMutation.isPending && !validationMutation.isError && (
+                <div className="flex flex-col items-center gap-3 py-6">
+                  <p className="text-sm text-[hsl(var(--muted-foreground))] text-center max-w-md">
+                    Запуск занимает ~2-5 секунд: обучается Prophet и считаются метрики.
+                  </p>
+                  <Button onClick={() => validationMutation.mutate()} variant="secondary" size="md">
+                    <CheckCircle2 size={16} />
+                    Проверить точность
+                  </Button>
+                </div>
+              )}
+
+              {validationMutation.isPending && (
+                <div className="flex flex-col items-center gap-3 py-6">
+                  <Loader2 className="w-7 h-7 text-[hsl(var(--accent))] animate-spin" />
+                  <p className="text-sm text-[hsl(var(--muted-foreground))]">Запускаем backtest…</p>
+                </div>
+              )}
+
+              {validationMutation.isError && (
+                <div className="flex items-center gap-2 text-[hsl(var(--destructive))] py-4">
+                  <AlertCircle size={16} />
+                  <span className="text-sm">
+                    {(validationMutation.error as Error)?.message || 'Не удалось рассчитать точность'}
+                  </span>
+                </div>
+              )}
+
+              {validationMutation.data && validationMutation.data.error && (
+                <div className="flex items-start gap-2 text-[hsl(var(--warning))] py-4 text-sm">
+                  <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
+                  <span>{validationMutation.data.error}</span>
+                </div>
+              )}
+
+              {validationMutation.data && validationMutation.data.samples > 0 && (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                    <div className="text-center">
+                      <p className="text-xs text-[hsl(var(--muted-foreground))] mb-1">RMSE</p>
+                      <p className="text-xl font-bold tabular-nums">{validationMutation.data.rmse?.toFixed(1)}</p>
+                      <p className="text-[10px] text-[hsl(var(--muted-foreground))]">п.п.</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs text-[hsl(var(--muted-foreground))] mb-1">MAE</p>
+                      <p className="text-xl font-bold tabular-nums">{validationMutation.data.mae?.toFixed(1)}</p>
+                      <p className="text-[10px] text-[hsl(var(--muted-foreground))]">п.п.</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs text-[hsl(var(--muted-foreground))] mb-1">MAPE</p>
+                      <p className="text-xl font-bold tabular-nums">{validationMutation.data.mape?.toFixed(1)}%</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs text-[hsl(var(--muted-foreground))] mb-1">R²</p>
+                      <p className={`text-xl font-bold tabular-nums ${(validationMutation.data.r2 ?? 0) < 0 ? 'text-[hsl(var(--destructive))]' : ''}`}>
+                        {validationMutation.data.r2?.toFixed(3)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {(validationMutation.data.r2 ?? 0) < 0 && (
+                    <div className="mb-3 p-3 rounded-lg border border-[hsl(var(--warning)/0.4)] bg-[hsl(var(--warning)/0.08)] text-xs">
+                      <p className="text-[hsl(var(--muted-foreground))] leading-relaxed">
+                        <span className="font-semibold text-[hsl(var(--warning))]">R² отрицательный.</span>{' '}
+                        На уровне одного отеля Prophet без ансамбля и без событийной корректировки уступает простому baseline'у «всегда предсказывать среднее». Это типично для длинных горизонтов на малых выборках. Для тактических решений используйте районный ансамблевый прогноз — там R² стабильно положителен на горизонтах ≤14 дней.
+                      </p>
+                    </div>
+                  )}
+
+                  <ResponsiveContainer width="100%" height={220}>
+                    <LineChart
+                      data={validationMutation.data.forecasted.map((f, i) => ({
+                        date: new Date(f.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }),
+                        forecast: f.occupancy,
+                        actual: validationMutation.data!.actual[i]?.occupancy ?? null,
+                      }))}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                      <XAxis dataKey="date" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
+                      <YAxis domain={[0, 100]} tick={{ fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `${v}%`} />
+                      <Tooltip
+                        {...RECHARTS_TOOLTIP_PROPS}
+                        formatter={(v: number, name: string) => [
+                          `${v.toFixed(1)}%`,
+                          name === 'forecast' ? 'Прогноз' : 'Факт',
+                        ]}
+                      />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Line
+                        type="monotone" dataKey="forecast" name="Прогноз"
+                        stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 3 }}
+                      />
+                      <Line
+                        type="monotone" dataKey="actual" name="Факт"
+                        stroke="hsl(var(--success))" strokeWidth={2} strokeDasharray="4 4" dot={{ r: 3 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                  <p className="text-xs text-[hsl(var(--muted-foreground))] mt-3">
+                    Обучение на {validationMutation.data.history_points - validationMutation.data.test_days} точках,
+                    тест на {validationMutation.data.samples} днях. Пунктирная линия — реальная занятость по данным парсера.
+                  </p>
                 </>
               )}
             </CardContent>

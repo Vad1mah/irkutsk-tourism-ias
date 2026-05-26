@@ -1,10 +1,10 @@
 <mxfile host="app.diagrams.net" agent="Claude Code">
-  <diagram name="Архитектура" id="arch">
+  <diagram name="Концепция" id="arch">
     <mxGraphModel dx="1700" dy="1000" grid="1" gridSize="20" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="940" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="title" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontFamily=Verdana;fontSize=18;fontStyle=1;fillColor=none;strokeColor=none;" value="Общая архитектура информационно-аналитической системы" vertex="1">
+        <mxCell id="title" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontFamily=Verdana;fontSize=18;fontStyle=1;fillColor=none;strokeColor=none;" value="Общая концепция информационно-аналитической системы" vertex="1">
           <mxGeometry height="40" width="1380" x="60" y="20" as="geometry" />
         </mxCell>
         <mxCell id="client_group" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;verticalAlign=top;align=center;fontFamily=Verdana;fontSize=15;fontStyle=1;spacingTop=8;" value="Клиентский слой" vertex="1">
@@ -31,7 +31,7 @@
         <mxCell id="server_group" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;verticalAlign=top;align=center;fontFamily=Verdana;fontSize=15;fontStyle=1;spacingTop=8;" value="Серверное ядро (FastAPI)" vertex="1">
           <mxGeometry height="780" width="420" x="540" y="80" as="geometry" />
         </mxCell>
-        <mxCell id="routers" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontFamily=Verdana;fontSize=13;align=center;verticalAlign=middle;" value="API-слой&#xa;7 роутеров, 63 endpoint'а:&#xa;hotels · events · query · forecast ·&#xa;documents · parser · analytics" vertex="1">
+        <mxCell id="routers" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontFamily=Verdana;fontSize=13;align=center;verticalAlign=middle;" value="API-слой&#xa;8 роутеров, 68 endpoint'ов:&#xa;hotels · events · query · forecast ·&#xa;documents · parser · analytics · root" vertex="1">
           <mxGeometry height="110" width="380" x="560" y="130" as="geometry" />
         </mxCell>
         <mxCell id="services" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontFamily=Verdana;fontSize=13;align=center;verticalAlign=middle;" value="Сервисный слой&#xa;19 модулей:&#xa;data_service · cache_service · chroma_service ·&#xa;ensemble_service · methodology_service ·&#xa;parser_health_service и др." vertex="1">
@@ -40,10 +40,10 @@
         <mxCell id="agent" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontFamily=Verdana;fontSize=13;align=center;verticalAlign=middle;" value="Интеллектуальный агент (LangGraph)&#xa;12 инструментов + MemorySaver + SSE&#xa;Fallback Groq → DeepSeek → Mistral" vertex="1">
           <mxGeometry height="100" width="380" x="560" y="410" as="geometry" />
         </mxCell>
-        <mxCell id="ensemble" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontFamily=Verdana;fontSize=13;align=center;verticalAlign=middle;" value="Ансамбль прогнозирования&#xa;Prophet + NeuralProphet + XGBoost&#xa;38 признаков, веса по inverse-RMSE" vertex="1">
+        <mxCell id="ensemble" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontFamily=Verdana;fontSize=13;align=center;verticalAlign=middle;" value="Ансамбль прогнозирования&#xa;Prophet + NeuralProphet + XGBoost (recursive)&#xa;42 признака, walk-forward CV, веса по inverse-RMSE" vertex="1">
           <mxGeometry height="100" width="380" x="560" y="530" as="geometry" />
         </mxCell>
-        <mxCell id="parsers" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontFamily=Verdana;fontSize=13;align=center;verticalAlign=middle;" value="Парсеры данных (BaseParser)&#xa;8 событийных + 101Hotels + OSM Overpass&#xa;Open-Meteo (погода)" vertex="1">
+        <mxCell id="parsers" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontFamily=Verdana;fontSize=13;align=center;verticalAlign=middle;" value="Парсеры данных (BaseParser): 11 источников&#xa;8 событийных + 101Hotels + OSM Overpass&#xa;+ Open-Meteo · rapidfuzz dedup · dateparser" vertex="1">
           <mxGeometry height="100" width="380" x="560" y="650" as="geometry" />
         </mxCell>
         <mxCell id="infra_group" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;strokeWidth=2;verticalAlign=top;align=center;fontFamily=Verdana;fontSize=15;fontStyle=1;spacingTop=8;" value="Инфраструктурный слой&#xa;(Docker Compose)" vertex="1">

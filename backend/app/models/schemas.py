@@ -357,7 +357,11 @@ class ValidationPoint(BaseModel):
 
 
 class ForecastValidationResponse(BaseModel):
-    """Результат самовалидации модели: прогноз vs факт."""
+    """Результат самовалидации модели: прогноз vs факт.
+
+    Phase 8: добавлено ci_coverage — доля наблюдений, попавших в CI прогноза.
+    Целевое значение для 80% PI: ~0.80. Меньше → CI занижен; больше → CI избыточно широк.
+    """
     district: str
     days_back: int
     samples: int
@@ -366,6 +370,59 @@ class ForecastValidationResponse(BaseModel):
     mae_per_day: list[float] = Field(default_factory=list)
     forecasted: list[ValidationPoint] = Field(default_factory=list)
     actual: list[ValidationPoint] = Field(default_factory=list)
+    ci_coverage: float | None = None
+    ci_target: float = 0.80
+    ci_lower: list[float] = Field(default_factory=list)
+    ci_upper: list[float] = Field(default_factory=list)
+
+
+class HotelValidationResponse(BaseModel):
+    """Per-hotel backtest validation: точность прогноза для конкретного объекта.
+
+    Без зависимости от сохранённых прогнозов. Алгоритм: берём всю историю отеля
+    (≥30 точек), отрезаем последние test_days дней как hold-out, обучаем Prophet
+    на остатке (with weather regressor), прогнозируем test_days дней вперёд,
+    сравниваем с фактом. R² показывает качество vs naive-mean baseline.
+    """
+    hotel_id: str
+    hotel_name: str | None = None
+    history_points: int
+    test_days: int
+    samples: int
+    rmse: float | None = None
+    mae: float | None = None
+    r2: float | None = None
+    mape: float | None = None  # MAPE для intuitive intepretation в %
+    forecasted: list[ValidationPoint] = Field(default_factory=list)
+    actual: list[ValidationPoint] = Field(default_factory=list)
+    error: str | None = None
+
+
+class HotelValidationSummaryItem(BaseModel):
+    """Один отель в batch-validation summary."""
+    hotel_id: str
+    hotel_name: str | None = None
+    district: str | None = None
+    rooms_num: int | None = None
+    history_points: int
+    rmse: float | None = None
+    mae: float | None = None
+    r2: float | None = None
+
+
+class HotelValidationSummaryResponse(BaseModel):
+    """Сводка backtest validation по топ-N отелей.
+
+    Используется в About / Analytics для демонстрации точности per-hotel
+    в дополнение к agregated district-валидации.
+    """
+    n_evaluated: int
+    median_rmse: float | None = None
+    p25_rmse: float | None = None
+    p75_rmse: float | None = None
+    median_mae: float | None = None
+    median_r2: float | None = None
+    hotels: list[HotelValidationSummaryItem] = Field(default_factory=list)
 
 
 class PriceDistributionResponse(BaseModel):

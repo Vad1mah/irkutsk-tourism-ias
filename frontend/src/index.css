@@ -82,6 +82,26 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Phase 9: дать браузеру понять что мы используем темную тему,
+   чтобы native UI элементы (иконка календаря в input[type="date"],
+   скроллбары, autocomplete suggestion popup) перерендерились в dark variant.
+   Без этого календарь-picker в input типа "date" отрисовывается чёрным на чёрном. */
+:root, .dark {
+  color-scheme: dark;
+}
+
+.light {
+  color-scheme: light;
+}
+
+input[type="date"],
+input[type="datetime-local"],
+input[type="time"],
+input[type="month"],
+input[type="week"] {
+  color-scheme: inherit;
+}
+
 /* Скроллбар */
 ::-webkit-scrollbar {
   width: 8px;

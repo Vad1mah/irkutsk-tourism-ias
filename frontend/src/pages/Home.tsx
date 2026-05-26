@@ -281,17 +281,23 @@ function Home() {
               <Activity size={18} className="text-[hsl(var(--primary))]" />
               <h2 className="text-base font-semibold">Динамика бронирований за 30 дней</h2>
             </div>
-            {pickup?.summary && (
-              <span className="inline-flex items-center gap-1">
-                <Badge
-                  variant={pickup.summary.trend === 'ускорение' ? 'success' : pickup.summary.trend === 'замедление' ? 'danger' : 'outline'}
-                  size="sm"
-                >
-                  {pickup.summary.trend}
-                </Badge>
-                <MethodologyTooltip text="Сравнение последних 3 дней с первыми 3 в окне 30 дней. «Ускорение» — рост бронирований более чем на 20%, «замедление» — спад более чем на 20%, иначе — «стабильно»." />
-              </span>
-            )}
+            <div className="inline-flex items-center gap-2">
+              {pickup?.summary && (
+                <span className="inline-flex items-center gap-1">
+                  <Badge
+                    variant={pickup.summary.trend === 'ускорение' ? 'success' : pickup.summary.trend === 'замедление' ? 'danger' : 'outline'}
+                    size="sm"
+                  >
+                    {pickup.summary.trend}
+                  </Badge>
+                  <MethodologyTooltip text="Сравнение последних 3 дней с первыми 3 в окне 30 дней. «Ускорение» — рост бронирований более чем на 20%, «замедление» — спад более чем на 20%, иначе — «стабильно»." />
+                </span>
+              )}
+              <Button variant="secondary" size="sm" onClick={() => navigate('/analytics?tab=seasonality')} title="Полная динамика с накоплением и тепловой картой">
+                Подробнее
+                <ArrowRight size={14} />
+              </Button>
+            </div>
           </div>
           {pickup && pickup.points.length > 0 ? (
             <>

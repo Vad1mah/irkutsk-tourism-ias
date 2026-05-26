@@ -37,6 +37,14 @@ class DataServiceProtocol(Protocol):
         city: str | None = None,
     ) -> list[dict]: ...
 
+    async def get_events_by_district(
+        self,
+        district: str,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        limit: int = 500,
+    ) -> list[dict]: ...
+
     async def get_occupancy_by_district(
         self,
         district: str,
@@ -72,6 +80,9 @@ class DataServiceProtocol(Protocol):
     ) -> int: ...
 
     async def get_saved_forecasts(self, *, district: str, dates: list[date]) -> dict[date, float]: ...
+    async def get_saved_forecasts_with_ci(
+        self, *, district: str, dates: list[date]
+    ) -> dict[date, dict]: ...
 
     async def get_hotels_count(self) -> int: ...
     async def get_events_count(self) -> int: ...

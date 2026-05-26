@@ -42,6 +42,31 @@ docs/vkr/OTCHET_PO_PRAKTIKE_FROM_DOCX.md
 docs/vkr/cursovaya_backup/
 docs/vkr/*.bak_*
 
+# Сами артефакты ВКР (docx/pdf/pptx) — публичный репо только с кодом
+docs/*.docx
+docs/*.pdf
+docs/vkr/*.docx
+docs/vkr/*.pdf
+docs/presentation/
+presentation/*.pptx
+**/~$*
+
+# Внутренние session-документы и скрипты применения правок
+docs/vkr/SESSION_LOG_*.md
+docs/vkr/VIDEO_SCRIPT_*.md
+docs/vkr/VKR_EDITS_*.md
+docs/vkr/apply_edits_*.py
+
+# Локальные кэши/бэкапы сессий
+.cache_*
+.backup_*
+.recheck.py
+docs/.backup_*
+
+# Одноразовые JSON-выгрузки (метрики walk-forward, snapshot CLI)
+/c[0-9].json
+/cmp_*.json
+
 # Legacy backend scripts (один-разовые, поглощены main кодом)
 backend/scripts/audit_chat.py
 backend/scripts/audit_frontend.py

@@ -26,8 +26,40 @@ router = APIRouter(prefix="/api/parser", tags=["parser"])
 
 @router.get("/health")
 async def parser_health() -> list[dict]:
-    """Статус каждого парсера: last_run, status, items_collected, error."""
+    """Статус каждого парсера.
+
+    Returns:
+        Список dict с полями: parser_id, status, items_collected, error, last_run,
+        last_run_age_minutes, expected_interval_minutes, next_expected_run, is_stale.
+
+    is_stale=True означает что последний запуск был >2x ожидаемого интервала назад —
+    UI должен подсветить такого парсера красным.
+    """
     return await parser_health_service.list_all()
+
+
+@router.get("/health/summary")
+async def parser_health_summary() -> dict:
+    """Сводка для дашборда: счётчики и список stale-парсеров."""
+    items = await parser_health_service.list_all()
+    stale = [i for i in items if i.get("is_stale")]
+    failed = [i for i in items if i.get("status") == "fail"]
+    return {
+        "total": len(items),
+        "ok": sum(1 for i in items if i.get("status") == "ok" and not i.get("is_stale")),
+        "warn": sum(1 for i in items if i.get("status") == "warn"),
+        "failed": len(failed),
+        "stale": len(stale),
+        "stale_parsers": [
+            {
+                "parser_id": i.get("parser_id"),
+                "last_run": i.get("last_run"),
+                "age_minutes": i.get("last_run_age_minutes"),
+                "expected_interval_minutes": i.get("expected_interval_minutes"),
+            }
+            for i in stale
+        ],
+    }
 
 
 @router.post("/hotels", dependencies=[Depends(verify_api_key)])

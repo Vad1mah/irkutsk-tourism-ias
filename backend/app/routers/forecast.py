@@ -10,8 +10,10 @@ from app.models.schemas import (
     ForecastRequest, ForecastResponse, ForecastPoint,
     EnsembleResponse, CompareAllResponse,
     ForecastValidationResponse, ValidationPoint,
+    HotelValidationResponse, HotelValidationSummaryResponse, HotelValidationSummaryItem,
 )
-from app.constants import DEFAULT_DISTRICT
+from app.constants import DEFAULT_DISTRICT, DISTRICT_CENTERS
+from app.services.weather_service import IRKUTSK_LAT, IRKUTSK_LON
 from app.dependencies import (
     DataServiceDep,
     ProphetServiceDep,
@@ -67,30 +69,59 @@ async def _get_history(hotel_id: str | None, district: str | None, data_svc=None
     return history
 
 
+def _resolve_district_coords(district: str | None) -> tuple[float, float]:
+    """Возвращает (lat, lon) центроида района. Fallback: координаты Иркутска."""
+    if district and district in DISTRICT_CENTERS:
+        return DISTRICT_CENTERS[district]
+    return (IRKUTSK_LAT, IRKUTSK_LON)
+
+
 async def _get_weather_and_events(
     history: list[dict],
     days_ahead: int,
     weather_svc,
     data_svc,
+    district: str | None = None,
 ) -> tuple[dict, list]:
-    """Получить погоду и события для прогноза."""
+    """Получить погоду и события для прогноза.
+
+    Args:
+        district: район для геопривязки погоды (центроид через DISTRICT_CENTERS)
+                  и фильтрации событий через CITY_TO_DISTRICT (Phase 3).
+    """
     weather_data: dict = {}
     events_data: list = []
 
     if not history:
         return weather_data, events_data
 
+    lat, lon = _resolve_district_coords(district)
+
     try:
         all_dates = [h["date"] for h in history]
         last_date = max(all_dates) if all_dates else date.today()
         for i in range(days_ahead):
             all_dates.append(last_date + timedelta(days=i + 1))
-        weather_data = await weather_svc.get_weather_for_dates(all_dates)
+        weather_data = await weather_svc.get_weather_for_dates(all_dates, lat=lat, lon=lon)
+        logger.info(
+            "Weather for district=%r resolved to lat=%.4f lon=%.4f (%d dates)",
+            district or "<default>", lat, lon, len(all_dates),
+        )
     except Exception as e:
         logger.warning(f"Weather error: {e}")
 
     try:
-        events_raw = await data_svc.get_events()
+        # Phase 3: фильтруем по району если он задан (CITY_TO_DISTRICT substring-match)
+        if district and hasattr(data_svc, "get_events_by_district"):
+            events_raw = await data_svc.get_events_by_district(district)
+            district_matched = sum(1 for e in events_raw if e.get("geo_inferred") is True)
+            without_geo = sum(1 for e in events_raw if e.get("geo_inferred") is False)
+            logger.info(
+                "Events for district=%r: %d total (%d district-matched, %d without geo passed-through)",
+                district, len(events_raw), district_matched, without_geo,
+            )
+        else:
+            events_raw = await data_svc.get_events()
         events_data = [
             {"date_start": e.get("date_start"), "title": e.get("title"), "event_type": e.get("event_type")}
             for e in events_raw
@@ -137,7 +168,7 @@ async def _run_forecast(
         )
 
     weather_data, events_data = await _get_weather_and_events(
-        history, request.days_ahead, weather_svc, data_svc
+        history, request.days_ahead, weather_svc, data_svc, district=request.district
     )
     forecast = await forecast_fn(
         history=history,
@@ -228,23 +259,9 @@ async def get_ensemble_forecast(
     if len(history) < 30:
         raise HTTPException(status_code=400, detail="Недостаточно данных для ensemble (нужно минимум 30 точек)")
 
-    try:
-        all_dates = [h["date"] for h in history]
-        last_date = max(all_dates)
-        for i in range(days_ahead):
-            all_dates.append(last_date + timedelta(days=i + 1))
-        weather_data = await weather_svc.get_weather_for_dates(all_dates)
-    except Exception as e:
-        logger.warning(f"Weather error: {e}")
-
-    try:
-        events_raw = await data_svc.get_events()
-        events_data = [
-            {"date_start": e.get("date_start"), "title": e.get("title"), "event_type": e.get("event_type")}
-            for e in events_raw if e.get("date_start")
-        ]
-    except Exception as e:
-        logger.warning(f"Events error: {e}")
+    weather_data, events_data = await _get_weather_and_events(
+        history, days_ahead, weather_svc, data_svc, district=district
+    )
 
     try:
         result = await ensemble_svc.forecast_ensemble_async(
@@ -362,20 +379,10 @@ async def compare_all_models(
         if len(history) < test_days + 30:
             raise HTTPException(status_code=400, detail=f"Недостаточно данных (нужно минимум {test_days + 30} точек)")
 
-        try:
-            all_dates = [h["date"] for h in history]
-            weather_data = await weather_svc.get_weather_for_dates(all_dates)
-        except Exception as e:
-            logger.warning(f"Не удалось загрузить погоду для сравнения: {e}")
-
-        try:
-            events_raw = await data_svc.get_events()
-            events_data = [
-                {"date_start": e.get("date_start"), "title": e.get("title"), "event_type": e.get("event_type")}
-                for e in events_raw if e.get("date_start")
-            ]
-        except Exception as e:
-            logger.warning(f"Не удалось загрузить события для сравнения: {e}")
+        # Phase 2+3: district-aware weather (центроид) + events (CITY_TO_DISTRICT match)
+        weather_data, events_data = await _get_weather_and_events(
+            history, days_ahead=0, weather_svc=weather_svc, data_svc=data_svc, district=district
+        )
 
         metrics = await run_sync(
             ensemble_svc.compare_models,
@@ -547,10 +554,11 @@ async def forecast_validation(
     target_dates = [today - timedelta(days=i) for i in range(days_back, 0, -1)]
 
     try:
-        saved = await data.get_saved_forecasts(district=district, dates=target_dates)
+        # Phase 8: with_ci версия — отдаёт lower/upper для расчёта ci_coverage
+        saved_with_ci = await data.get_saved_forecasts_with_ci(district=district, dates=target_dates)
     except Exception:
-        logger.warning("forecast_validation: get_saved_forecasts failed", exc_info=True)
-        saved = {}
+        logger.warning("forecast_validation: get_saved_forecasts_with_ci failed", exc_info=True)
+        saved_with_ci = {}
 
     try:
         actual_rows = await data.get_occupancy_by_district(
@@ -569,23 +577,40 @@ async def forecast_validation(
     pairs: list[tuple[float, float]] = []
     forecasted: list[ValidationPoint] = []
     actual: list[ValidationPoint] = []
+    ci_lower_list: list[float] = []
+    ci_upper_list: list[float] = []
+    ci_hits = 0  # Сколько раз actual попал в [lower, upper]
+    ci_total = 0  # Сколько раз lower/upper были доступны
     for d in target_dates:
-        f = saved.get(d)
+        rec = saved_with_ci.get(d) or {}
+        f = rec.get("occupancy")
         a = actual_map.get(d)
         if f is None or a is None:
             continue
         pairs.append((f, a))
         forecasted.append(ValidationPoint(date=d.isoformat(), occupancy=f))
         actual.append(ValidationPoint(date=d.isoformat(), occupancy=a))
+        lb, ub = rec.get("lower"), rec.get("upper")
+        if lb is not None and ub is not None:
+            ci_lower_list.append(round(float(lb), 1))
+            ci_upper_list.append(round(float(ub), 1))
+            ci_total += 1
+            if lb <= a <= ub:
+                ci_hits += 1
+        else:
+            ci_lower_list.append(round(f - 8.0, 1))
+            ci_upper_list.append(round(f + 8.0, 1))
 
     if not pairs:
         return ForecastValidationResponse(
             district=district, days_back=days_back, samples=0,
             rmse=None, mae=None, mae_per_day=[], forecasted=[], actual=[],
+            ci_coverage=None,
         )
 
     rmse = math.sqrt(sum((f - a) ** 2 for f, a in pairs) / len(pairs))
     mae = sum(abs(f - a) for f, a in pairs) / len(pairs)
+    ci_coverage = round(ci_hits / ci_total, 3) if ci_total >= 3 else None  # min 3 для статистической значимости
     return ForecastValidationResponse(
         district=district,
         days_back=days_back,
@@ -595,4 +620,284 @@ async def forecast_validation(
         mae_per_day=[round(abs(f - a), 2) for f, a in pairs],
         forecasted=forecasted,
         actual=actual,
+        ci_coverage=ci_coverage,
+        ci_lower=ci_lower_list,
+        ci_upper=ci_upper_list,
     )
+
+
+# ---------------------------------------------------------------------------
+# Per-hotel backtest validation (preferred for честность защиты ВКР)
+# ---------------------------------------------------------------------------
+
+HOTEL_VALIDATION_CACHE_TTL = 1800  # 30 минут
+
+
+def _backtest_metrics(forecasted: list[float], actual: list[float]) -> dict[str, float]:
+    """RMSE/MAE/R²/MAPE из пары списков (одинаковая длина)."""
+    import math
+
+    n = len(forecasted)
+    if n == 0:
+        return {"rmse": 0.0, "mae": 0.0, "r2": 0.0, "mape": 0.0}
+    rmse = math.sqrt(sum((f - a) ** 2 for f, a in zip(forecasted, actual)) / n)
+    mae = sum(abs(f - a) for f, a in zip(forecasted, actual)) / n
+    mean_actual = sum(actual) / n
+    ss_tot = sum((a - mean_actual) ** 2 for a in actual)
+    ss_res = sum((a - f) ** 2 for f, a in zip(forecasted, actual))
+    r2 = (1.0 - ss_res / ss_tot) if ss_tot > 0 else 0.0
+    # MAPE с защитой от нулей: исключаем точки где actual = 0
+    mape_pairs = [(f, a) for f, a in zip(forecasted, actual) if a >= 1.0]
+    mape = (sum(abs(f - a) / a for f, a in mape_pairs) / len(mape_pairs) * 100.0) if mape_pairs else 0.0
+    return {"rmse": rmse, "mae": mae, "r2": r2, "mape": mape}
+
+
+async def _hotel_backtest_validation(
+    *,
+    hotel_id: str,
+    data_svc,
+    prophet_svc,
+    weather_svc,
+    test_days: int = 14,
+    min_history: int = 30,
+) -> HotelValidationResponse | None:
+    """Backtest для одного отеля. Возвращает None если истории недостаточно.
+
+    Алгоритм: тянем `get_hotel_statistics(hotel_id)`, считаем occupancy = 100 - available%,
+    отрезаем последние test_days как hold-out, обучаем Prophet на остатке (with weather),
+    прогнозируем test_days, сравниваем с фактом.
+    """
+    try:
+        stats = await data_svc.get_hotel_statistics(hotel_id=hotel_id)
+    except Exception as e:
+        logger.warning(f"hotel_backtest: get_hotel_statistics failed for {hotel_id}: {e}")
+        return None
+
+    history = [
+        {"date": s.date, "occupancy": 100.0 - (s.available_rooms_percent or 0)}
+        for s in stats
+        if s.available_rooms_percent is not None
+    ]
+    if len(history) < min_history + test_days:
+        return HotelValidationResponse(
+            hotel_id=hotel_id,
+            history_points=len(history),
+            test_days=test_days,
+            samples=0,
+            error=f"Недостаточно истории: {len(history)} точек, требуется минимум {min_history + test_days}",
+        )
+
+    # Hold-out: последние test_days точек = test, остальное = train
+    train = history[:-test_days]
+    test = history[-test_days:]
+
+    # Получаем погоду на все даты (history + test_period)
+    all_dates = [h["date"] for h in history]
+    weather_data: dict = {}
+    try:
+        weather_data = await weather_svc.get_weather_for_dates(all_dates)
+    except Exception as e:
+        logger.warning(f"hotel_backtest: weather fetch failed for {hotel_id}: {e}")
+
+    # Запускаем Prophet через executor (синхронный fit)
+    try:
+        forecast_points = await prophet_svc.forecast_occupancy_async(
+            history=train, days_ahead=test_days,
+            weather_data=weather_data, events_data=[],
+        )
+    except Exception as e:
+        logger.warning(f"hotel_backtest: prophet failed for {hotel_id}: {e}")
+        return HotelValidationResponse(
+            hotel_id=hotel_id,
+            history_points=len(history),
+            test_days=test_days,
+            samples=0,
+            error=f"Ошибка прогноза: {e}",
+        )
+
+    # Сопоставление по дате
+    from datetime import date as date_type
+    def _to_date(v) -> date_type | None:
+        if isinstance(v, date_type):
+            return v
+        if isinstance(v, str):
+            try:
+                return date_type.fromisoformat(v[:10])
+            except ValueError:
+                return None
+        return None
+
+    forecast_map = {_to_date(fp.date): fp.occupancy for fp in forecast_points}
+    actual_map = {_to_date(t["date"]): t["occupancy"] for t in test}
+
+    paired_dates = sorted(d for d in forecast_map.keys() & actual_map.keys() if d)
+    if not paired_dates:
+        return HotelValidationResponse(
+            hotel_id=hotel_id,
+            history_points=len(history),
+            test_days=test_days,
+            samples=0,
+            error="Прогноз и факт не пересекаются по датам",
+        )
+
+    forecasted_vals = [forecast_map[d] for d in paired_dates]
+    actual_vals = [actual_map[d] for d in paired_dates]
+    metrics = _backtest_metrics(forecasted_vals, actual_vals)
+
+    return HotelValidationResponse(
+        hotel_id=hotel_id,
+        history_points=len(history),
+        test_days=test_days,
+        samples=len(paired_dates),
+        rmse=round(metrics["rmse"], 2),
+        mae=round(metrics["mae"], 2),
+        r2=round(metrics["r2"], 3),
+        mape=round(metrics["mape"], 1),
+        forecasted=[ValidationPoint(date=d.isoformat(), occupancy=round(v, 1)) for d, v in zip(paired_dates, forecasted_vals)],
+        actual=[ValidationPoint(date=d.isoformat(), occupancy=round(v, 1)) for d, v in zip(paired_dates, actual_vals)],
+    )
+
+
+@router.get("/hotel/{hotel_id}/validation", response_model=HotelValidationResponse)
+async def hotel_forecast_validation(
+    hotel_id: str,
+    data_svc: DataServiceDep,
+    prophet_svc: ProphetServiceDep,
+    weather_svc: WeatherServiceDep,
+    cache_svc: CacheServiceDep,
+    test_days: int = Query(14, ge=3, le=30),
+) -> HotelValidationResponse:
+    """Backtest validation для конкретного отеля (Prophet single-model).
+
+    Преподаватель на ВКР подсказал: «прогнозирование для конкретных средств размещения —
+    точность лучше проверять per-hotel, чем на районном агрегате». Этот endpoint
+    делает это без зависимости от сохранённых прогнозов: отрезаем последние test_days
+    как hold-out, обучаем модель на остатке, сравниваем прогноз с фактом.
+    """
+    cache_key = cache_svc.cache_key("hotel_validation", hotel_id, test_days)
+    cached = await cache_svc.get(cache_key)
+    if cached:
+        logger.info(f"hotel_validation cache hit: {hotel_id}")
+        return HotelValidationResponse(**cached)
+
+    result = await _hotel_backtest_validation(
+        hotel_id=hotel_id, data_svc=data_svc, prophet_svc=prophet_svc,
+        weather_svc=weather_svc, test_days=test_days,
+    )
+    if result is None:
+        raise HTTPException(404, f"Отель {hotel_id} не найден или ошибка получения данных")
+
+    # Подтянем hotel_name из БД
+    try:
+        hotels, _ = await data_svc.get_hotels(limit=1, offset=0)
+        from sqlalchemy import select  # noqa
+        # упрощённый поиск имени через get_hotel_latest_stats или через separate query
+        latest = await data_svc.get_hotel_latest_stats(hotel_id)
+        if latest:
+            result.hotel_name = latest.get("hotel_name") or latest.get("name")
+    except Exception:
+        pass
+
+    await cache_svc.set(cache_key, result.model_dump(), ttl=HOTEL_VALIDATION_CACHE_TTL)
+    return result
+
+
+@router.get("/hotels/validation-summary", response_model=HotelValidationSummaryResponse)
+async def hotels_validation_summary(
+    data_svc: DataServiceDep,
+    prophet_svc: ProphetServiceDep,
+    weather_svc: WeatherServiceDep,
+    cache_svc: CacheServiceDep,
+    top_n: int = Query(10, ge=3, le=30),
+    test_days: int = Query(14, ge=7, le=21),
+) -> HotelValidationSummaryResponse:
+    """Batch backtest для топ-N самых крупных отелей с достаточной историей.
+
+    Используется на странице About / Analytics как доказательство точности
+    per-hotel прогнозов. Возвращает median/p25/p75 RMSE — robust к outliers.
+    """
+    cache_key = cache_svc.cache_key("hotels_validation_summary", top_n, test_days)
+    cached = await cache_svc.get(cache_key)
+    if cached:
+        return HotelValidationSummaryResponse(**cached)
+
+    # Берём топ-N отелей с наибольшим средним rooms_num по статистике (proxy «крупности»).
+    # rooms_num — колонка hot.hotel_statistics (не hotels), берём MAX за всю историю.
+    candidates: list[dict] = []
+    try:
+        from sqlalchemy import text as sql_text
+        from app.db.session import async_session
+        async with async_session() as s:
+            rows = (await s.execute(sql_text(
+                """
+                SELECT h.id, h.name, h.district,
+                       MAX(hs.rooms_num) AS rooms_num,
+                       COUNT(hs.date) AS history_points
+                FROM hotels h
+                JOIN hotel_statistics hs ON hs.id = h.id
+                WHERE hs.rooms_num >= 20
+                GROUP BY h.id, h.name, h.district
+                HAVING COUNT(hs.date) >= 60
+                ORDER BY MAX(hs.rooms_num) DESC, COUNT(hs.date) DESC
+                LIMIT :n
+                """
+            ), {"n": top_n})).all()
+            for r in rows:
+                candidates.append({
+                    "hotel_id": r.id, "name": r.name, "district": r.district,
+                    "rooms_num": r.rooms_num, "history_points": r.history_points,
+                })
+    except Exception as e:
+        logger.error(f"hotels_validation_summary: candidate query failed: {e}")
+        raise HTTPException(500, "Не удалось получить список отелей для validation")
+
+    if not candidates:
+        return HotelValidationSummaryResponse(n_evaluated=0)
+
+    # Запускаем backtest для каждого (sequential — Prophet single-threaded; параллельно через asyncio.gather)
+    results: list[HotelValidationResponse] = []
+    for cand in candidates:
+        res = await _hotel_backtest_validation(
+            hotel_id=cand["hotel_id"], data_svc=data_svc, prophet_svc=prophet_svc,
+            weather_svc=weather_svc, test_days=test_days,
+        )
+        if res and res.samples > 0 and res.rmse is not None:
+            res.hotel_name = cand["name"]
+            results.append(res)
+
+    if not results:
+        return HotelValidationSummaryResponse(n_evaluated=0)
+
+    rmses = sorted(r.rmse for r in results if r.rmse is not None)
+    maes = sorted(r.mae for r in results if r.mae is not None)
+    r2s = sorted(r.r2 for r in results if r.r2 is not None)
+
+    def _percentile(sorted_vals: list[float], p: float) -> float | None:
+        if not sorted_vals:
+            return None
+        idx = max(0, min(len(sorted_vals) - 1, int(round(p * (len(sorted_vals) - 1)))))
+        return round(sorted_vals[idx], 2)
+
+    items = [
+        HotelValidationSummaryItem(
+            hotel_id=r.hotel_id,
+            hotel_name=r.hotel_name,
+            district=next((c["district"] for c in candidates if c["hotel_id"] == r.hotel_id), None),
+            rooms_num=next((c["rooms_num"] for c in candidates if c["hotel_id"] == r.hotel_id), None),
+            history_points=r.history_points,
+            rmse=r.rmse, mae=r.mae, r2=r.r2,
+        )
+        for r in results
+    ]
+
+    response = HotelValidationSummaryResponse(
+        n_evaluated=len(results),
+        median_rmse=_percentile(rmses, 0.5),
+        p25_rmse=_percentile(rmses, 0.25),
+        p75_rmse=_percentile(rmses, 0.75),
+        median_mae=_percentile(maes, 0.5),
+        median_r2=_percentile(r2s, 0.5),
+        hotels=items,
+    )
+    await cache_svc.set(cache_key, response.model_dump(), ttl=HOTEL_VALIDATION_CACHE_TTL)
+    return response
