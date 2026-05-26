@@ -1835,6 +1835,22 @@ async def get_revenue_summary(
 _EXPORT_TYPES = ("occupancy", "events", "hotels")
 
 
+_CYR_TO_LAT = str.maketrans({
+    "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "yo", "ж": "zh",
+    "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m", "н": "n", "о": "o",
+    "п": "p", "р": "r", "с": "s", "т": "t", "у": "u", "ф": "f", "х": "h", "ц": "ts",
+    "ч": "ch", "ш": "sh", "щ": "sch", "ъ": "", "ы": "y", "ь": "", "э": "e", "ю": "yu",
+    "я": "ya", " ": "_", "-": "_",
+})
+
+
+def _ascii_slug(s: str) -> str:
+    """Транслит кириллицы для ASCII-fallback в HTTP Content-Disposition filename."""
+    out = s.lower().translate(_CYR_TO_LAT)
+    # Оставить только [a-z0-9_]
+    return "".join(c for c in out if c.isascii() and (c.isalnum() or c == "_")) or "all"
+
+
 @router.get("/export")
 async def export_data(
     data: DataServiceDep,
@@ -1854,6 +1870,10 @@ async def export_data(
     if not data.is_connected:
         raise HTTPException(503, "БД не подключена")
 
+    # HTTP-headers допускают только Latin-1 → в filename для Content-Disposition
+    # ASCII-фрагмент с slug-районом, а UTF-8-имя кладём через filename* (RFC 5987).
+    district_slug = _ascii_slug(district) if district else "all"
+
     if type == "occupancy":
         rows = await data.export_occupancy_rows(
             district=district, date_from=date_from, date_to=date_to, limit=limit,
@@ -1862,7 +1882,8 @@ async def export_data(
             "date", "hotel_id", "hotel_name", "district", "city",
             "rooms_num", "free_rooms_amount", "available_rooms_percent", "min_price",
         ]
-        filename = f"occupancy_{district or 'all'}_{date.today()}.csv"
+        filename = f"occupancy_{district_slug}_{date.today()}.csv"
+        utf8_name = f"occupancy_{district or 'all'}_{date.today()}.csv"
     elif type == "events":
         events = await data.get_events(date_from=date_from, date_to=date_to, limit=limit)
         rows = [
@@ -1883,6 +1904,7 @@ async def export_data(
             "event_type", "location", "source_id", "url",
         ]
         filename = f"events_{date.today()}.csv"
+        utf8_name = filename
     else:  # hotels
         hotels_list, _ = await data.get_hotels(district=district, limit=limit)
         rows = [
@@ -1903,7 +1925,8 @@ async def export_data(
             "id", "name", "city", "district", "lat", "lon",
             "rating", "min_price", "accommodation_type",
         ]
-        filename = f"hotels_{district or 'all'}_{date.today()}.csv"
+        filename = f"hotels_{district_slug}_{date.today()}.csv"
+        utf8_name = f"hotels_{district or 'all'}_{date.today()}.csv"
 
     buffer = io.StringIO()
     buffer.write("﻿")  # BOM для корректного открытия в Excel
@@ -1913,11 +1936,17 @@ async def export_data(
         writer.writerow(row)
     buffer.seek(0)
 
+    # RFC 5987: filename — ASCII fallback, filename* — UTF-8 для русских названий районов.
+    from urllib.parse import quote
+    content_disposition = (
+        f'attachment; filename="{filename}"; '
+        f"filename*=UTF-8''{quote(utf8_name)}"
+    )
     return StreamingResponse(
         iter([buffer.getvalue()]),
         media_type="text/csv; charset=utf-8",
         headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Disposition": content_disposition,
             "X-Total-Rows": str(len(rows)),
         },
     )
