@@ -244,11 +244,12 @@ class EnsembleService:
                         ubs.append(fp.upper_bound)
                         break
             if vals:
+                mean_occ = float(np.mean(vals))
                 result.append(ForecastPoint(
                     date=d,
-                    occupancy=round(float(np.mean(vals)), 1),
-                    lower_bound=round(float(np.mean(lbs)), 1),
-                    upper_bound=round(float(np.mean(ubs)), 1),
+                    occupancy=round(max(0.0, min(100.0, mean_occ)), 1),
+                    lower_bound=round(max(0.0, min(100.0, float(np.mean(lbs)))), 1),
+                    upper_bound=round(max(0.0, min(100.0, float(np.mean(ubs)))), 1),
                 ))
         return result
 
@@ -287,7 +288,7 @@ class EnsembleService:
 
             result.append(ForecastPoint(
                 date=d,
-                occupancy=round(mean_occ, 1),
+                occupancy=round(max(0.0, min(100.0, mean_occ)), 1),
                 lower_bound=round(max(0.0, mean_occ - total_half_ci), 1),
                 upper_bound=round(min(100.0, mean_occ + total_half_ci), 1),
             ))

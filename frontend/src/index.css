@@ -102,6 +102,23 @@ input[type="week"] {
   color-scheme: inherit;
 }
 
+/* Принудительная белая иконка picker'а в тёмной теме —
+   на случай если color-scheme не сработал (например в Chromium на Linux
+   или при custom appearance). invert(1) переворачивает чёрный glyph в белый. */
+.dark input[type="date"]::-webkit-calendar-picker-indicator,
+.dark input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+.dark input[type="time"]::-webkit-calendar-picker-indicator,
+.dark input[type="month"]::-webkit-calendar-picker-indicator,
+.dark input[type="week"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(0.9);
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.dark input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
 /* Скроллбар */
 ::-webkit-scrollbar {
   width: 8px;

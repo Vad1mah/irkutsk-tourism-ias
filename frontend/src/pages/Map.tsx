@@ -432,44 +432,44 @@ function MapPage() {
       {hotelsMap && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Card variant="glass">
-            <CardContent className="p-3">
-              <div className="flex items-center gap-1.5 text-[hsl(var(--muted-foreground))] text-[11px] uppercase tracking-wider mb-1">
-                <Building2 size={12} /> Объектов
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 text-[hsl(var(--muted-foreground))] text-sm font-medium uppercase tracking-wider mb-1.5">
+                <Building2 size={16} /> Объектов
               </div>
-              <p className="text-2xl font-bold tabular-nums leading-tight">{filteredKpi.total_hotels.toLocaleString('ru-RU')}</p>
-              <p className="text-[10px] text-[hsl(var(--muted-foreground))] mt-0.5">на {fmtDateRu(focusDate)}</p>
+              <p className="text-3xl font-bold tabular-nums leading-tight">{filteredKpi.total_hotels.toLocaleString('ru-RU')}</p>
+              <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">на {fmtDateRu(focusDate)}</p>
             </CardContent>
           </Card>
           <Card variant="glass">
-            <CardContent className="p-3">
-              <div className="flex items-center gap-1.5 text-[hsl(var(--muted-foreground))] text-[11px] uppercase tracking-wider mb-1">
-                <BedDouble size={12} /> Всего номеров
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 text-[hsl(var(--muted-foreground))] text-sm font-medium uppercase tracking-wider mb-1.5">
+                <BedDouble size={16} /> Всего номеров
               </div>
-              <p className="text-2xl font-bold tabular-nums leading-tight">{filteredKpi.total_rooms.toLocaleString('ru-RU')}</p>
-              <p className="text-[10px] text-[hsl(var(--muted-foreground))] mt-0.5">в выбранных районах</p>
+              <p className="text-3xl font-bold tabular-nums leading-tight">{filteredKpi.total_rooms.toLocaleString('ru-RU')}</p>
+              <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">в выбранных районах</p>
             </CardContent>
           </Card>
           <Card variant="glass">
-            <CardContent className="p-3">
-              <div className="flex items-center gap-1.5 text-[hsl(var(--muted-foreground))] text-[11px] uppercase tracking-wider mb-1">
-                <BedDouble size={12} /> Свободных
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 text-[hsl(var(--muted-foreground))] text-sm font-medium uppercase tracking-wider mb-1.5">
+                <BedDouble size={16} /> Свободных
                 <MethodologyTooltip text="Сумма свободных номеров по выбранным районам на дату среза." />
               </div>
-              <p className="text-2xl font-bold tabular-nums leading-tight text-[hsl(var(--success))]">
+              <p className="text-3xl font-bold tabular-nums leading-tight text-[hsl(var(--success))]">
                 {filteredKpi.free_rooms.toLocaleString('ru-RU')}
               </p>
-              <p className="text-[10px] text-[hsl(var(--muted-foreground))] mt-0.5">
+              <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
                 {filteredKpi.total_rooms > 0 ? `${Math.round((filteredKpi.free_rooms / filteredKpi.total_rooms) * 100)}% инвентаря` : '—'}
               </p>
             </CardContent>
           </Card>
           <Card variant="glass">
-            <CardContent className="p-3">
-              <div className="flex items-center gap-1.5 text-[hsl(var(--muted-foreground))] text-[11px] uppercase tracking-wider mb-1">
-                <Activity size={12} /> Ср. загрузка
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 text-[hsl(var(--muted-foreground))] text-sm font-medium uppercase tracking-wider mb-1.5">
+                <Activity size={16} /> Ср. загрузка
               </div>
-              <p className="text-2xl font-bold tabular-nums leading-tight">{filteredKpi.avg_occupancy}%</p>
-              <p className="text-[10px] text-[hsl(var(--muted-foreground))] mt-0.5">по выбранным районам</p>
+              <p className="text-3xl font-bold tabular-nums leading-tight">{filteredKpi.avg_occupancy}%</p>
+              <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">по выбранным районам</p>
             </CardContent>
           </Card>
         </div>
