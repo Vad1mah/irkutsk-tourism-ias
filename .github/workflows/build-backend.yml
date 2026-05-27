@@ -1,0 +1,60 @@
+name: Build & Push Backend
+
+# Триггеры:
+# 1. push в main с изменениями в backend/** или сам workflow — авто-rebuild
+# 2. workflow_dispatch — ручной запуск из вкладки Actions (для первого smoke-теста
+#    и в ситуациях когда нужно пересобрать без коммита, например когда базовый
+#    образ python:3.11-slim получил CVE-патч)
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/build-backend.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write   # нужно чтобы GITHUB_TOKEN мог пушить в ghcr.io
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30  # обычно 8-12 мин на ML-deps, 30 на холодный кэш с запасом
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          # metadata-action автоматически приводит имя к lowercase (ghcr требование)
+          images: ghcr.io/${{ github.repository_owner }}/irkutsk-tourism-ias-backend
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short
+            type=ref,event=branch
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # GH-runner: 14 GB RAM + 70 GB SSD — никакого NCCL out-of-space
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
