@@ -23,8 +23,15 @@ jobs:
     timeout-minutes: 30  # обычно 8-12 мин на ML-deps, 30 на холодный кэш с запасом
 
     steps:
-      - name: Checkout
+      - name: Checkout (sparse — только backend)
         uses: actions/checkout@v4
+        with:
+          # Полный checkout ломается на длинных русских именах в models/, docs/vkr/figures/
+          # после mojibake-кодирования (превышает ext4 лимит 255 байт).
+          # Для backend build нужен только backend/, остальное игнорируем.
+          sparse-checkout: |
+            backend
+          sparse-checkout-cone-mode: false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
