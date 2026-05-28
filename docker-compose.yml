@@ -47,6 +47,10 @@ services:
         max-file: "3"
 
   backend:
+    # Prod использует image из ghcr.io (билдится в GitHub Actions, см. .github/workflows/build-backend.yml).
+    # Для локальной разработки можно сделать docker compose build backend — тогда
+    # локальный образ перезапишет тег ghcr.io и docker compose up будет использовать его.
+    image: ghcr.io/vad1mah/irkutsk-tourism-ias-backend:latest
     build: ./backend
     container_name: tourism-backend
     ports:
@@ -83,6 +87,10 @@ services:
         max-file: "3"
 
   frontend:
+    # Prod использует image из ghcr.io (билдится в GitHub Actions, см. .github/workflows/build-frontend.yml).
+    # VITE-секреты прокидываются как build args в CI; для локального build нужны те же
+    # переменные в окружении (см. frontend/.env.example).
+    image: ghcr.io/vad1mah/irkutsk-tourism-ias-frontend:latest
     build:
       context: ./frontend
       args:
