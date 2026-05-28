@@ -52,6 +52,8 @@ presentation/*.pptx
 docs/vkr/SESSION_LOG_*.md
 docs/vkr/VIDEO_SCRIPT_*.md
 docs/vkr/VKR_EDITS_*.md
+docs/vkr/DEFENSE_PREP_*.md
+docs/vkr/PROMPT_DEFENSE_*.md
 docs/vkr/apply_edits_*.py
 
 # Локальные кэши/бэкапы сессий
