@@ -411,6 +411,25 @@ class DBService:
         return None
 
     @staticmethod
+    def _to_time(value) -> time | None:
+        """Коэрсия time_start в datetime.time.
+
+        ParsedEvent отдаёт time_start строкой "HH:MM" (yandex/kassir), а колонка БД —
+        TIME WITHOUT TIME ZONE. asyncpg требует datetime.time, иначе весь batch падает
+        ('str' object has no attribute 'hour'). Мусорные значения → None.
+        """
+        if value is None or isinstance(value, time):
+            return value
+        if isinstance(value, str):
+            s = value.strip()
+            for fmt in ("%H:%M:%S", "%H:%M"):
+                try:
+                    return datetime.strptime(s, fmt).time()
+                except ValueError:
+                    continue
+        return None
+
+    @staticmethod
     def _clean_location(loc: str | None) -> str | None:
         if not loc:
             return None
@@ -508,7 +527,7 @@ class DBService:
             "location": self._clean_location(ev.get("location")),
             "source_id": ev.get("source_id", ev.get("source", "")),
             "url": ev.get("url"),
-            "time_start": ev.get("time_start"),
+            "time_start": self._to_time(ev.get("time_start")),
             "price_min": ev.get("price_min"),
             "price_max": ev.get("price_max"),
             "image_url": ev.get("image_url"),
