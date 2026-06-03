@@ -237,25 +237,14 @@ class YandexAfishaParser(BaseParser):
         """
         all_events = []
         seen_ids = set()
-        
-        # URL для парсинга (актуальные на 2026)
-        urls_to_parse = [
-            f"{self.base_events_url}",  # Главная
-            f"{self.base_events_url}/events",  # Все события
-            f"{self.base_events_url}/theatre",  # Театр (рабочий URL)
-        ]
 
-        # Добавляем категории (только рабочие)
-        if categories:
-            for cat in categories:
-                if cat in ["theatre", "events"]:
-                    urls_to_parse.append(f"{self.base_events_url}/{cat}")
-        else:
-            # Рабочие категории
-            for cat in ["events", "theatre"]:
-                if f"{self.base_events_url}/{cat}" not in urls_to_parse:
-                    urls_to_parse.append(f"{self.base_events_url}/{cat}")
-        
+        # /events — единственная страница, где Яндекс server-renders JSON-LD со
+        # списком событий (ItemList). Категорийные страницы (/concert, /theatre,
+        # /standup) рендерят список через JS и JSON-LD не содержат, а markdown-
+        # эвристика на них путает пары title↔url (карусельные ссылки). Поэтому
+        # полагаемся на агрегатор /events с корректными schema.org-данными.
+        urls_to_parse = [f"{self.base_events_url}/events"]
+
         for url in urls_to_parse:
             self.logger.info(f"Парсинг: {url}")
             
@@ -278,11 +267,23 @@ class YandexAfishaParser(BaseParser):
         return all_events
     
     async def _fetch_events_ai(self, url: str) -> list[ParsedEvent]:
-        """Извлечение через AI (Crawl4AI или Jina)."""
+        """Извлечение событий. Приоритет — JSON-LD из сырого HTML.
+
+        JSON-LD даёт пару title↔url из одного schema.org-узла (корректно) и
+        работает по обычному aiohttp без браузера — значит парсер живёт и в
+        прод-контейнере. Markdown-эвристика (Crawl4AI/Jina) оставлена только как
+        аварийный fallback для страниц без JSON-LD.
+        """
+        # 1) JSON-LD из сырого HTML (без браузера)
+        html = await self.fetch_with_retry(url)
+        if html:
+            events = self._extract_jsonld_events(html)
+            if events:
+                return events
+
+        # 2) Fallback: markdown-эвристика (Crawl4AI → Jina)
         events = []
-        
         if CRAWL4AI_AVAILABLE:
-            # Используем Crawl4AI
             try:
                 async with AIEventExtractor(headless=True) as extractor:
                     markdown = await extractor.extract_markdown(url)
@@ -290,14 +291,13 @@ class YandexAfishaParser(BaseParser):
                         events = await self._parse_markdown(markdown)
             except Exception as e:
                 self.logger.error(f"Ошибка Crawl4AI: {e}")
-        
+
         if not events:
-            # Fallback на Jina Reader
             self.logger.info("Используем Jina Reader fallback")
             markdown = await fetch_markdown_jina(url)
             if markdown:
                 events = await self._parse_markdown(markdown)
-        
+
         return events
     
     async def _parse_markdown(self, markdown: str) -> list[ParsedEvent]:
@@ -395,34 +395,62 @@ class YandexAfishaParser(BaseParser):
             return None
     
     async def _fetch_events_html(self, url: str) -> list[ParsedEvent]:
-        """Fallback: прямой HTML парсинг."""
-        events = []
-        
+        """Прямой HTML-парсинг через JSON-LD (без браузера)."""
         html = await self.fetch_with_retry(url)
+        return self._extract_jsonld_events(html or "")
+
+    def _extract_jsonld_events(self, html: str) -> list[ParsedEvent]:
+        """События из JSON-LD (`<script type="application/ld+json">`).
+
+        name и url приходят из одного schema.org-узла, поэтому пара title↔url
+        гарантирована — в отличие от markdown-эвристики, которая брала «первый
+        url в блоке» и цепляла карусельные/соседние ссылки. Яндекс отдаёт
+        ItemList событий на странице /events прямо в HTML, браузер не нужен.
+        """
         if not html:
-            return events
-        
+            return []
         soup = BeautifulSoup(html, 'html.parser')
-        
-        # Яндекс Афиша использует React, поэтому HTML парсинг ограничен
-        # Ищем JSON-LD или data-атрибуты
-        
-        # JSON-LD schema.org
+        events: list[ParsedEvent] = []
+        seen: set[str] = set()
         for script in soup.find_all('script', type='application/ld+json'):
+            raw = script.string
+            if not raw:
+                continue
             try:
-                if not script.string:
-                    continue
-                data = json.loads(str(script.string))
-                if isinstance(data, dict) and data.get('@type') == 'Event':
-                    events.extend(self._parse_jsonld_event(data))
-                elif isinstance(data, list):
-                    for item in data:
-                        if isinstance(item, dict) and item.get('@type') == 'Event':
-                            events.extend(self._parse_jsonld_event(item))
+                data = json.loads(str(raw))
             except json.JSONDecodeError:
                 continue
-        
+            for node in self._iter_jsonld_events(data):
+                for event in self._parse_jsonld_event(node):
+                    if event.id not in seen:
+                        seen.add(event.id)
+                        events.append(event)
         return events
+
+    @staticmethod
+    def _iter_jsonld_events(data):
+        """Рекурсивно обойти JSON-LD, выдавая dict-узлы со схемой *Event.
+
+        Поддерживает любую вложенность (ItemList → ListItem → item, @graph и т. п.).
+        Узел-Event не разворачивается дальше — его location/offers не считаются
+        отдельными событиями.
+        """
+        stack = [data]
+        while stack:
+            node = stack.pop()
+            if isinstance(node, dict):
+                raw_type = node.get('@type')
+                is_event = (
+                    (isinstance(raw_type, str) and 'Event' in raw_type)
+                    or (isinstance(raw_type, list)
+                        and any(isinstance(x, str) and 'Event' in x for x in raw_type))
+                )
+                if is_event:
+                    yield node
+                else:
+                    stack.extend(node.values())
+            elif isinstance(node, list):
+                stack.extend(node)
     
     def _parse_jsonld_event(self, data: dict) -> list[ParsedEvent]:
         """Парсинг события из JSON-LD."""
