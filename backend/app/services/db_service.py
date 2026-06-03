@@ -1,6 +1,8 @@
 """PostgreSQL сервис данных."""
 import logging
+from collections.abc import Sequence
 from datetime import date, datetime, time
+from typing import Any
 
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -474,15 +476,24 @@ class DBService:
                 await s.rollback()
                 return False
 
-    def _build_event_row(self, ev: dict) -> dict | None:
-        """Преобразует входящий dict парсера в row для INSERT/UPSERT events.
+    def _build_event_row(self, ev: dict | Any) -> dict | None:
+        """Преобразует входящий dict/ParsedEvent парсера в row для INSERT/UPSERT events.
+
+        Принимает как dict (путь /api/parser/events/{src}), так и Pydantic-модель
+        ParsedEvent (путь scheduler.collect_events). Без конверсии ParsedEvent.get()
+        бросал бы AttributeError, и весь batch-upsert падал бы → 0 сохранённых событий.
 
         Args:
-            ev: Словарь с данными события от парсера.
+            ev: Словарь или ParsedEvent с данными события от парсера.
 
         Returns:
             Словарь с полями для вставки, или None если event_id/date_start отсутствуют.
         """
+        if not isinstance(ev, dict):
+            if hasattr(ev, "model_dump"):
+                ev = ev.model_dump()
+            else:
+                return None
         ds = self._to_date(ev.get("date_start"))
         eid = ev.get("event_id") or ev.get("id")
         if not ds or not eid:
@@ -543,8 +554,10 @@ class DBService:
                 await s.rollback()
                 return 0
 
-    async def upsert_events_batch(self, events: list[dict]) -> int:
+    async def upsert_events_batch(self, events: Sequence[dict | Any]) -> int:
         """Вставить или обновить события с дедупликацией по (source_id, date_start, title).
+
+        Принимает dict или ParsedEvent (конверсия в _build_event_row).
 
         Uses ON CONFLICT ON CONSTRAINT uq_events_dedup — корректно обрабатывает
         повторные запуски парсеров без создания дублей.
