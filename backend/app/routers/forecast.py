@@ -390,6 +390,7 @@ async def compare_all_models(
             weather_data=weather_data,
             events_data=events_data,
             test_days=test_days,
+            district=district,
         )
 
         feature_importance = {}
@@ -402,6 +403,9 @@ async def compare_all_models(
             "district": district,
             "history_points": len(history),
             "test_days": test_days,
+            # best_model лежит и внутри metrics (исключён из перечня моделей в
+            # compare_models), но фронт-тип ждёт его на верхнем уровне — дублируем.
+            "best_model": metrics.get("best_model", "") if isinstance(metrics, dict) else "",
             "metrics": metrics,
             "feature_importance": feature_importance,
         }
@@ -470,7 +474,10 @@ async def _explain_with_fallback(
                 "target_date": target_date or str(date.today() + timedelta(days=7)),
                 "best_model": result.get("best_model", ""),
                 "forecasts": result.get("forecasts", {}),
-                "factors": factors or result.get("factors", []),
+                # Агентские factors несут {name, impact, description, direction} —
+                # ровно контракт фронта (бейджи ↑/↓). _extract даёт лишь {name, importance}
+                # без направления, поэтому предпочитаем агентские, а importance — fallback.
+                "factors": result.get("factors") or factors,
                 "explanation": result.get("explanation", ""),
                 "recommendation": result.get("recommendation", ""),
                 "processing_time": round(result.get("processing_time", 0), 2),

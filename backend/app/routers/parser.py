@@ -44,12 +44,17 @@ async def parser_health_summary() -> dict:
     items = await parser_health_service.list_all()
     stale = [i for i in items if i.get("is_stale")]
     failed = [i for i in items if i.get("status") == "fail"]
+    empty = [i for i in items if i.get("is_empty")]
     return {
         "total": len(items),
-        "ok": sum(1 for i in items if i.get("status") == "ok" and not i.get("is_stale")),
+        "ok": sum(
+            1 for i in items
+            if i.get("status") == "ok" and not i.get("is_stale") and not i.get("is_empty")
+        ),
         "warn": sum(1 for i in items if i.get("status") == "warn"),
         "failed": len(failed),
         "stale": len(stale),
+        "empty": len(empty),
         "stale_parsers": [
             {
                 "parser_id": i.get("parser_id"),
@@ -58,6 +63,14 @@ async def parser_health_summary() -> dict:
                 "expected_interval_minutes": i.get("expected_interval_minutes"),
             }
             for i in stale
+        ],
+        "empty_parsers": [
+            {
+                "parser_id": i.get("parser_id"),
+                "last_run": i.get("last_run"),
+                "age_minutes": i.get("last_run_age_minutes"),
+            }
+            for i in empty
         ],
     }
 
@@ -312,26 +325,24 @@ async def _trigger_reindex(data: DataServiceDep):
 
 
 async def _save_parsed_events(events: list, source: str, data: DataServiceDep) -> int:
-    """Сохранить ParsedEvent или dict в БД (batch upsert)."""
+    """Сохранить ParsedEvent/dict в БД через единый batch-upsert (все поля события).
+
+    Раньше функция вручную пересобирала dict из 9 полей, теряя time_start/price_min/
+    price_max/image_url/address/age_restriction — именно эти поля yandex/kassir/culture_rf
+    достают из JSON-LD. upsert_events_batch → _build_event_row уже корректно разворачивает
+    ParsedEvent.model_dump() со всеми полями, поэтому передаём события как есть, лишь
+    проставляя source там, где парсер его не задал.
+    """
     from app.parsers.base import ParsedEvent
-    rows: list[dict] = []
     for ev in events:
-        try:
-            if isinstance(ev, ParsedEvent):
-                rows.append({
-                    "id": ev.id, "title": ev.title,
-                    "description": ev.description,
-                    "date_start": ev.date_start, "date_end": ev.date_end,
-                    "location": ev.location, "source": ev.source or source,
-                    "url": ev.url, "event_type": ev.event_type,
-                })
-            elif isinstance(ev, dict):
-                rows.append(ev)
-        except Exception as e:
-            logger.error(f"Event conversion error: {e}")
-    if not rows:
+        if isinstance(ev, ParsedEvent):
+            if not ev.source:
+                ev.source = source
+        elif isinstance(ev, dict) and not ev.get("source"):
+            ev["source"] = source
+    if not events:
         return 0
-    return await data.upsert_events_batch(rows)
+    return await data.upsert_events_batch(events)
 
 
 # ── Scheduler endpoints ──────────────────────────────────────

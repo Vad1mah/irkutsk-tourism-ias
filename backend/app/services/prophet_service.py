@@ -61,6 +61,7 @@ class ProphetService:
 
         if use_weather:
             model.add_regressor("temperature")
+            model.add_regressor("precipitation")
 
         model.fit(df)
 
@@ -136,6 +137,7 @@ class ProphetService:
     ) -> pd.DataFrame:
         df = df.copy()
         temps = []
+        precs = []
         for ds in df["ds"]:
             d = ds.date() if hasattr(ds, "date") else ds
             w = weather_data.get(d, {})
@@ -143,7 +145,10 @@ class ProphetService:
             if temp is None:
                 temp = AVG_MONTHLY_TEMP_IRKUTSK.get(d.month, 0.0) if hasattr(d, "month") else 0.0
             temps.append(float(temp))
+            prec = w.get("precipitation")
+            precs.append(float(prec) if prec is not None else 0.0)
         df["temperature"] = temps
+        df["precipitation"] = precs
         return df
 
     async def forecast_occupancy_async(

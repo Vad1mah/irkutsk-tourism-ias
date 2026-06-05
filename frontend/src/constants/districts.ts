@@ -30,4 +30,27 @@ export const DEFAULT_DISTRICT = 'Иркутский'
 
 export const DEFAULT_DISTRICTS = ['Иркутский', 'Ольхонский', 'Слюдянский', 'Ангарский'] as const
 
-export const ALL_DISTRICT_NAMES = Object.keys(DISTRICT_COORDS)
+/**
+ * Районы, доступные для выбора в UI (dropdown Home/Analytics и др.).
+ * ДОЛЖЕН совпадать с backend VALID_DISTRICTS (backend/app/constants.py) — иначе
+ * выбор района даёт HTTP 400 на district-валидируемых endpoint'ах, а react-query
+ * не ретраит 4xx → пустой/сломанный экран. DISTRICT_COORDS оставлен полным для
+ * отрисовки на карте, но выбирать можно только районы с данными.
+ */
+export const ALL_DISTRICT_NAMES: string[] = [
+  'Иркутский',
+  'Ольхонский',
+  'Слюдянский',
+  'Ангарский',
+  'Прибайкальский',
+  'Кабанский',
+  'Баргузинский',
+  'Северобайкальский',
+  'Тункинский',
+  'Братский',
+  'Шелеховский',
+  'Нижнеудинский',
+  'Усть-Кутский',
+  'Зиминский',
+  'Улан-Удэ',
+]

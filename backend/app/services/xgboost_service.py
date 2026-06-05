@@ -374,16 +374,19 @@ class XGBoostService:
             target_dates=future_dates,
             include_lags=True,
         )
-        X_batch, _ = feature_engineering_service.prepare_future(df_batch, future_dates)
+        X_batch, dates_batch = feature_engineering_service.prepare_future(df_batch, future_dates)
+        ci_by_date: dict[date, tuple[float, float]] = {}
         if len(X_batch) > 0:
             lower_bounds, upper_bounds = self._predict_quantiles(X_batch)
-        else:
-            lower_bounds, upper_bounds = [], []
+            for d_b, lb_b, ub_b in zip(dates_batch, lower_bounds, upper_bounds):
+                ci_by_date[d_b] = (float(lb_b), float(ub_b))
 
         result = []
-        for i, (d, pred) in enumerate(recursive_preds):
-            lb = lower_bounds[i] if i < len(lower_bounds) else pred - 8
-            ub = upper_bounds[i] if i < len(upper_bounds) else pred + 8
+        for d, pred in recursive_preds:
+            # CI матчим по ДАТЕ, не по позиции: recursive_preds мог пропустить шаг
+            # (пустые features), из-за чего позиционная индексация lower_bounds[i]
+            # съезжала на чужую дату относительно batch-квантилей.
+            lb, ub = ci_by_date.get(d, (pred - 8, pred + 8))
             result.append(ForecastPoint(
                 date=d,
                 occupancy=round(pred, 1),

@@ -106,7 +106,7 @@ class EnsembleService:
         if not self._calibrating and self._should_calibrate() and len(history) >= 60:
             try:
                 metrics = await asyncio.to_thread(
-                    self.compare_models, history, weather_data, events_data, 14,
+                    self.compare_models, history, weather_data, events_data, 14, district or None,
                 )
                 if "best_model" in metrics:
                     self._update_weights(metrics)
@@ -142,6 +142,7 @@ class EnsembleService:
         events_data: list[dict] | None = None,
         price_data: list[dict] | None = None,
         method: str = "weighted_average",
+        district: str | None = None,
     ) -> dict:
         """Синхронная обёртка для обратной совместимости."""
         # Для синхронного контекста запускаем последовательно
@@ -181,6 +182,7 @@ class EnsembleService:
             results["models"]["xgboost"] = xgboost_service.forecast_occupancy(
                 history=history, days_ahead=days_ahead,
                 weather_data=weather_data, events_data=events_data,
+                district=district,  # Phase 7: per-district model isolation и в sync-пути
             )
             logger.info(f"XGBoost: {len(results['models']['xgboost'])} точек")
         except Exception as e:
@@ -193,7 +195,7 @@ class EnsembleService:
         # Калибровка весов (с TTL)
         if not self._calibrating and self._should_calibrate() and len(history) >= 60:
             try:
-                metrics = self.compare_models(history, weather_data, events_data, test_days=14)
+                metrics = self.compare_models(history, weather_data, events_data, test_days=14, district=district)
                 if "best_model" in metrics:
                     self._update_weights(metrics)
                     self._calibrated_at = time.time()
@@ -328,6 +330,7 @@ class EnsembleService:
         weather_data: dict[date, dict] | None = None,
         events_data: list[dict] | None = None,
         test_days: int = 14,
+        district: str | None = None,
     ) -> dict:
         """Сравнение моделей через walk-forward CV (5 fold'ов, step=14d).
 
@@ -367,8 +370,12 @@ class EnsembleService:
         # Per-model per-fold метрики
         rmse_per_model: dict[str, list[float]] = defaultdict(list)
         mae_per_model: dict[str, list[float]] = defaultdict(list)
-        r2_per_model: dict[str, list[float]] = defaultdict(list)
         points_per_model: dict[str, int] = defaultdict(int)
+        # Для пулинга R²: собираем сырые пары (actual, pred) по ВСЕМ фолдам и считаем
+        # R² один раз. Усреднение per-fold R² статистически некорректно (R² не
+        # аддитивен) и обрушивается одним плоским фолдом / заглушкой 0.0.
+        pooled_true: dict[str, list[float]] = defaultdict(list)
+        pooled_pred: dict[str, list[float]] = defaultdict(list)
 
         self._calibrating = True
         try:
@@ -391,7 +398,7 @@ class EnsembleService:
                 fold_forecasts = self.forecast_ensemble(
                     history=train_slice, days_ahead=test_days,
                     weather_data=weather_data, events_data=events_data,
-                    method="weighted_average",
+                    method="weighted_average", district=district,
                 )
                 # Per-model метрики
                 for name, fcs in fold_forecasts["models"].items():
@@ -399,15 +406,17 @@ class EnsembleService:
                     if m:
                         rmse_per_model[name].append(m["rmse"])
                         mae_per_model[name].append(m["mae"])
-                        r2_per_model[name].append(m["r2"])
                         points_per_model[name] += m["points"]
+                        pooled_true[name].extend(m["_y_true"])
+                        pooled_pred[name].extend(m["_y_pred"])
                 # Ensemble
                 m_ens = self._compute_metrics(fold_forecasts["ensemble"], actuals)
                 if m_ens:
                     rmse_per_model["ensemble"].append(m_ens["rmse"])
                     mae_per_model["ensemble"].append(m_ens["mae"])
-                    r2_per_model["ensemble"].append(m_ens["r2"])
                     points_per_model["ensemble"] += m_ens["points"]
+                    pooled_true["ensemble"].extend(m_ens["_y_true"])
+                    pooled_pred["ensemble"].extend(m_ens["_y_pred"])
 
                 logger.info(
                     "compare_models fold %d/%d: train[0:%d], test[%d:%d], rmse=%s",
@@ -422,11 +431,13 @@ class EnsembleService:
         for name, rmses in rmse_per_model.items():
             if not rmses:
                 continue
+            yt, yp = pooled_true[name], pooled_pred[name]
+            r2_pooled = round(float(r2_score(yt, yp)), 3) if len(yt) > 1 else 0.0
             results[name] = {
                 "rmse": round(float(np.mean(rmses)), 2),
                 "rmse_std": round(float(np.std(rmses)), 2),
                 "mae": round(float(np.mean(mae_per_model[name])), 2),
-                "r2": round(float(np.mean(r2_per_model[name])), 3),
+                "r2": r2_pooled,
                 "fold_count": len(rmses),
                 "points": points_per_model[name],
             }
@@ -459,7 +470,10 @@ class EnsembleService:
         rmse = float(np.sqrt(mean_squared_error(y_true, y_pred)))
         mae = float(mean_absolute_error(y_true, y_pred))
         r2 = float(r2_score(y_true, y_pred)) if len(y_true) > 1 else 0.0
-        return {"rmse": round(rmse, 2), "mae": round(mae, 2), "r2": round(r2, 3), "points": len(y_true)}
+        return {
+            "rmse": round(rmse, 2), "mae": round(mae, 2), "r2": round(r2, 3),
+            "points": len(y_true), "_y_true": y_true, "_y_pred": y_pred,
+        }
 
     # ------------------------------------------------------------------
     # Weight calibration

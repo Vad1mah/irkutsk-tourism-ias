@@ -24,9 +24,11 @@ async def test_explain_returns_fallback_on_llm_error(client):
 
 @pytest.mark.asyncio
 async def test_explain_respects_timeout(client):
-    """Запрос с медленным LLM завершается за <10 секунд (timeout 5s + buffer)."""
+    """Медленный LLM обрывается по LLM_EXPLAIN_TIMEOUT_S, endpoint не висит дольше."""
+    from app.routers.forecast import LLM_EXPLAIN_TIMEOUT_S
+
     async def slow_llm(*args, **kwargs):
-        await asyncio.sleep(30)
+        await asyncio.sleep(LLM_EXPLAIN_TIMEOUT_S + 30)
         return {}
 
     with patch(
@@ -39,6 +41,8 @@ async def test_explain_respects_timeout(client):
             params={"district": "Иркутский", "days_ahead": 14},
         )
         elapsed = asyncio.get_running_loop().time() - start
-    assert elapsed < 10, f"Took {elapsed:.1f}s, must be <10s due to timeout"
+    assert elapsed < LLM_EXPLAIN_TIMEOUT_S + 5, (
+        f"Took {elapsed:.1f}s, must abort near {LLM_EXPLAIN_TIMEOUT_S}s timeout"
+    )
     assert response.status_code == 200
     assert response.json().get("source") == "llm_timeout"

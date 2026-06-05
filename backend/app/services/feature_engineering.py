@@ -150,13 +150,14 @@ class FeatureEngineeringService:
 
     def _add_lag_features(self, df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
-        data_len = df["y"].notna().sum()
 
+        # Колонку лага создаём ВСЕГДА (даже если lag >= длины ряда — выйдет всё-NaN).
+        # Раньше длинные лаги пропускались → train и predict получали РАЗНЫЙ набор
+        # колонок (особенно в walk-forward CV с короткими train-срезами), а XGBoost
+        # сопоставляет признаки по позиции → тихо неверный прогноз. NaN XGBoost
+        # обрабатывает нативно (missing branch), поэтому стабильный состав безопаснее.
         for lag in LAG_DAYS:
-            if lag < data_len:
-                df[f"lag_{lag}"] = df["y"].shift(lag)
-            else:
-                logger.debug(f"Skipping lag_{lag}: only {data_len} data points")
+            df[f"lag_{lag}"] = df["y"].shift(lag)
 
         # shift(1) prevents target leakage: diff uses y[i-1] - y[i-1-d], not y[i]
         y_shifted = df["y"].shift(1)

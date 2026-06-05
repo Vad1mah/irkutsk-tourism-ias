@@ -33,6 +33,32 @@ router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
 TOURIST_DISTRICTS = set(VALID_DISTRICTS)
 
+
+def _percentile_linear(sorted_values: list[int], p: int) -> int:
+    """Перцентиль методом линейной интерполяции (как numpy 'linear' / percentile_cont).
+
+    НЕ «p-й элемент по позиции int(n*p/100)» — тот схлопывал p90 в максимум на малых
+    выборках, а p50 давал не медиану. Интерполирует между соседними рангами.
+
+    Args:
+        sorted_values: Непустой список значений, отсортированный по возрастанию.
+        p: Перцентиль 0..100.
+
+    Returns:
+        Округлённое до целого значение перцентиля.
+    """
+    n = len(sorted_values)
+    if n == 1:
+        return int(round(sorted_values[0]))
+    rank = (p / 100) * (n - 1)
+    lo = int(rank)
+    frac = rank - lo
+    if lo + 1 < n:
+        val = sorted_values[lo] + (sorted_values[lo + 1] - sorted_values[lo]) * frac
+    else:
+        val = sorted_values[lo]
+    return int(round(val))
+
 _forecast_locks: dict[str, asyncio.Lock] = {}
 _forecast_results: dict[str, tuple[float, dict]] = {}
 _FORECAST_TTL = 300
@@ -1611,15 +1637,15 @@ async def booking_pace(
     days_ahead: int = Query(14, ge=1, le=90),
     lookback_days: int = Query(7, ge=1, le=30),
 ) -> BookingPaceResponse:
-    """Proxy-pickup для будущих дат: разница загрузки между двумя временны́ми срезами.
+    """Proxy-pickup по фактическим снимкам: динамика наблюдаемой загрузки района.
 
-    Методология: proxy_pickup_pct = occupancy(future_date, today) - occupancy(future_date, today - lookback_days).
-    При положительной дельте загрузка «набирается» — сигнал для пересмотра тарифов.
+    Методология: для даты d (из последних days_ahead дат с данными)
+    proxy_pickup_pct = occupancy(d) - occupancy(d - lookback_days).
+    Положительная дельта — загрузка «набирается», сигнал для пересмотра тарифов.
 
-    Ограничение текущей реализации: hotel_statistics не хранит timestamp snapshot'а,
-    поэтому два среза для одной future_date недостижимы.  Endpoint возвращает
-    proxy_pickup_pct=0.0 там, где данные есть, и None там, где данных нет.
-    Поле methodology содержит явное описание ограничения.
+    Ограничение: hotel_statistics не хранит timestamp snapshot'а, поэтому истинный
+    Pickup (для одной future-даты по мере приближения) недостижим. Endpoint показывает
+    честный прокси — динамику weighted occupancy по реальным датам.
     Имя `proxy_pickup_pct` подчёркивает, что это прокси, а не настоящий Pickup из RMS.
     """
     if district not in VALID_DISTRICTS:
@@ -1661,11 +1687,11 @@ async def booking_pace(
         lookback_days=lookback_days,
         method="daily_proxy_pickup",
         methodology=(
-            "proxy_pickup_pct = occupancy(future_date, today) - occupancy(future_date, today - lookback_days). "
-            "Ограничение: hotel_statistics не хранит timestamp snapshot'а, поэтому два временны́х среза "
-            "для одной future_date недостижимы в текущей схеме БД. "
-            "proxy_pickup_pct=0.0 означает наличие данных при отсутствии временно́й дельты; "
-            "proxy_pickup_pct=null — данных за эту дату нет совсем. "
+            "proxy_pickup_pct = occupancy(d) - occupancy(d - lookback_days) по последним "
+            "days_ahead датам с данными; occupancy — room-night weighted. "
+            "Ограничение: hotel_statistics не хранит timestamp snapshot'а, поэтому истинный "
+            "Pickup для одной future-даты недостижим — показана динамика наблюдаемой загрузки. "
+            "proxy_pickup_pct=null — нет снимка за дату d-lookback_days. "
             "Префикс «proxy_» подчёркивает: это не настоящий Pickup из RMS-системы."
         ),
         points=[BookingPacePoint(**p) for p in points_raw],
@@ -2034,19 +2060,15 @@ async def price_distribution(
         sorted_p = sorted(prices)
         n = len(sorted_p)
 
-        def _pct(p: int) -> int:
-            idx = min(int(n * p / 100), n - 1)
-            return sorted_p[idx]
-
         response = PriceDistributionResponse(
             district=district,
             days=days,
             samples=n,
-            p10=_pct(10),
-            p25=_pct(25),
-            p50=_pct(50),
-            p75=_pct(75),
-            p90=_pct(90),
+            p10=_percentile_linear(sorted_p, 10),
+            p25=_percentile_linear(sorted_p, 25),
+            p50=_percentile_linear(sorted_p, 50),
+            p75=_percentile_linear(sorted_p, 75),
+            p90=_percentile_linear(sorted_p, 90),
         )
     await cache.set(cache_key, response.model_dump(), ttl=300)
     return response

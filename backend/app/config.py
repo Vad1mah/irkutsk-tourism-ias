@@ -21,8 +21,8 @@ class Settings(BaseSettings):
     chroma_persist_dir: str = "./chroma_db"
     chroma_collection_name: str = "tourism_docs"
 
-    # LLM Provider
-    llm_provider: Literal["gemini", "gigachat", "groq", "mistral", "deepseek", "openrouter"] = "mistral"
+    # LLM Provider (primary; fallback chain groq → deepseek → mistral в main_agent)
+    llm_provider: Literal["gemini", "gigachat", "groq", "mistral", "deepseek", "openrouter"] = "groq"
 
     # Google Gemini API
     gemini_api_key: SecretStr | None = None

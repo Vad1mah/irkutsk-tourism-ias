@@ -15,6 +15,29 @@ from app.models.schemas import HotelStatistics as HotelStatsSchema
 logger = logging.getLogger(__name__)
 
 
+def _weighted_occ_sql(alias: str = "hs") -> str:
+    """Room-night weighted occupancy как SQL-выражение (единая формула проекта).
+
+    STR-методология (Phase 6): 100 * SUM(occupied_rooms) / SUM(total_rooms),
+    с клипом available% в [0,100] и защитой от деления на ноль. Совпадает с
+    get_occupancy_by_district — единственным источником истины по occupancy.
+    Использовать вместо устаревшего AVG(100 - available_rooms_percent), который
+    давал равный вес хостелу на 5 номеров и базе на 100 (расхождение до 20 п.п.).
+
+    Args:
+        alias: Алиас таблицы hotel_statistics ("hs") или "" для CTE latest.
+
+    Returns:
+        SQL-фрагмент для подстановки на место выражения occupancy.
+    """
+    p = f"{alias}." if alias else ""
+    return (
+        f"100.0 * SUM({p}rooms_num - {p}rooms_num * "
+        f"LEAST(100.0, GREATEST(0.0, COALESCE({p}available_rooms_percent, 0))) / 100.0) "
+        f"/ NULLIF(SUM({p}rooms_num), 0)"
+    )
+
+
 class DBService:
     """PostgreSQL-сервис данных."""
 
@@ -834,19 +857,19 @@ class DBService:
 
     async def get_total_metrics(self) -> dict:
         async with async_session() as s:
-            combined = text("""
+            combined = text(f"""
                 SELECT
                     (SELECT count(*) FROM hotels) AS hotels_count,
                     (SELECT count(DISTINCT city) FROM hotels) AS cities_count,
                     (SELECT count(*) FROM events) AS events_count,
                     COALESCE(s.total_rooms, 0) AS total_rooms,
                     COALESCE(s.free_rooms, 0) AS free_rooms,
-                    COALESCE(s.avg_avail, 0) AS avg_avail
+                    COALESCE(s.avg_occupancy, 0) AS avg_occupancy
                 FROM (
                     SELECT
                         sum(rooms_num) AS total_rooms,
                         sum(free_rooms_amount) AS free_rooms,
-                        avg(available_rooms_percent) AS avg_avail
+                        {_weighted_occ_sql("")} AS avg_occupancy
                     FROM hotel_statistics
                     WHERE date = (SELECT max(date) FROM hotel_statistics)
                 ) s
@@ -865,15 +888,15 @@ class DBService:
                 "total_events": int(row.events_count or 0),
                 "total_rooms": int(row.total_rooms or 0),
                 "free_rooms": int(row.free_rooms or 0),
-                "avg_occupancy": round(100.0 - float(row.avg_avail or 0), 1),
+                "avg_occupancy": round(float(row.avg_occupancy or 0), 1),
             }
 
     async def get_districts_statistics(self) -> list[dict]:
         async with async_session() as s:
-            q = text("""
+            q = text(f"""
                 SELECT
                     h.district,
-                    AVG(100.0 - hs.available_rooms_percent) AS avg_occupancy,
+                    {_weighted_occ_sql("hs")} AS avg_occupancy,
                     SUM(hs.free_rooms_amount) AS free_rooms,
                     SUM(hs.rooms_num) AS total_rooms,
                     AVG(hs.min_price) AS avg_price,
@@ -1001,10 +1024,10 @@ class DBService:
         free_rooms/total_rooms берутся как средние per-day, чтобы цифры не
         умножались на длину окна."""
         async with async_session() as s:
-            q = text("""
+            q = text(f"""
                 SELECT
                     h.district,
-                    AVG(100.0 - hs.available_rooms_percent) AS avg_occupancy,
+                    {_weighted_occ_sql("hs")} AS avg_occupancy,
                     AVG(hs.free_rooms_amount) AS free_rooms_avg,
                     AVG(hs.rooms_num) AS total_rooms_avg,
                     AVG(hs.min_price) AS avg_price,
@@ -1062,11 +1085,11 @@ class DBService:
     async def get_weekday_heatmap(self, district: str | None = None) -> list[dict]:
         """Тепловая карта загрузки: день недели (1=Пн..7=Вс) × месяц (1..12)."""
         async with async_session() as s:
-            q_text = """
+            q_text = f"""
                 SELECT
                     EXTRACT(ISODOW FROM hs.date)::int AS weekday,
                     EXTRACT(MONTH FROM hs.date)::int AS month,
-                    AVG(100.0 - hs.available_rooms_percent) AS avg_occupancy,
+                    {_weighted_occ_sql("hs")} AS avg_occupancy,
                     COUNT(*) AS samples
                 FROM hotel_statistics hs
                 JOIN hotels h ON h.id = hs.id
@@ -1381,8 +1404,9 @@ class DBService:
                     .where(Hotel.district == district)
                     .where(HotelStatistic.date >= cutoff)
                     .where(HotelStatistic.min_price.is_not(None))
+                    .where(HotelStatistic.min_price > 0)
                 )).all()
-                return [r[0] for r in rows if r[0] is not None]
+                return [r[0] for r in rows if r[0] is not None and r[0] > 0]
         except Exception as exc:
             logger.error("collect_min_prices: %s", exc)
             return []
@@ -1394,19 +1418,19 @@ class DBService:
         days_ahead: int,
         lookback_days: int,
     ) -> list[dict]:
-        """Прокси-pickup: разница occupancy между двумя snapshot'ами для будущих дат.
+        """Прокси-pickup по фактическим снимкам: динамика наблюдаемой загрузки.
 
-        Ограничение: таблица hotel_statistics хранит одну строку на (hotel_id, date)
-        без временно́й метки snapshot'а.  Настоящий pickup требовал бы двух snapshot'ов —
-        «сегодня» и «lookback_days назад» — для одной и той же future_date.
-        Поскольку такой timestamp отсутствует, метод возвращает текущий уровень occupancy
-        для каждой будущей даты и proxy_pickup_pct=0.0, явно документируя ограничение
-        через поле methodology в ответе.
+        Ограничение: hotel_statistics хранит одну строку на (hotel_id, date) без
+        timestamp снимка, поэтому истинный pickup (для ОДНОЙ future-даты по мере
+        приближения) недостижим.  Честный прокси — динамика weighted occupancy по
+        последним фактическим датам: для даты d берём occupancy(d) и occupancy(d −
+        lookback_days), их разница показывает, набирается ли загрузка в регионе.
+        Это не RMS Pickup, а наблюдаемая дельта загрузки — отсюда префикс proxy_.
 
         Args:
             district: Район Иркутской области.
-            days_ahead: Количество будущих дней для анализа.
-            lookback_days: Запрошенный горизонт ретроспективы (сохраняется для ответа).
+            days_ahead: Сколько последних дат с данными вернуть.
+            lookback_days: Горизонт сравнения (occupancy(d) против occupancy(d−lookback)).
 
         Returns:
             Список словарей с ключами date, occupancy_today, occupancy_lookback, proxy_pickup_pct.
@@ -1415,43 +1439,46 @@ class DBService:
             return []
         from datetime import timedelta as _td
         today = date.today()
-        futures = [today + _td(days=i) for i in range(1, days_ahead + 1)]
+        date_from = today - _td(days=days_ahead + lookback_days)
 
         try:
             async with async_session() as s:
-                q_text = """
+                q_text = f"""
                     SELECT
-                        hs.date,
-                        AVG(100.0 - hs.available_rooms_percent) AS occupancy
+                        hs.date AS d,
+                        {_weighted_occ_sql("hs")} AS occupancy
                     FROM hotel_statistics hs
                     JOIN hotels h ON h.id = hs.id
                     WHERE h.district = :district
+                      AND hs.date >= :date_from
                       AND hs.available_rooms_percent IS NOT NULL
-                      AND hs.date = ANY(:futures)
                     GROUP BY hs.date
                     ORDER BY hs.date
                 """
                 result = await s.execute(
                     text(q_text),
-                    {"district": district, "futures": futures},
+                    {"district": district, "date_from": date_from},
                 )
                 rows = result.all()
 
-            by_date: dict[date, float] = {r[0]: float(r[1] or 0.0) for r in rows}
+            by_date: dict[date, float] = {r.d: float(r.occupancy or 0.0) for r in rows}
+            observed = sorted(by_date.keys())
+            # Последние days_ahead дат, по которым реально есть снимки.
+            recent = observed[-days_ahead:] if len(observed) > days_ahead else observed
 
             points: list[dict] = []
-            for fd in futures:
-                today_val = by_date.get(fd)
-                # Without per-snapshot timestamps we cannot distinguish "occupancy seen
-                # today" vs "occupancy seen lookback_days ago" for the same future date.
-                # Both slots receive the same value; proxy_pickup_pct is therefore 0.0 when
-                # data exists and None when it doesn't — caller documents this via methodology.
-                prev_val = today_val
-                pickup = 0.0 if today_val is not None else None
+            for d in recent:
+                occ_now = by_date.get(d)
+                occ_prev = by_date.get(d - _td(days=lookback_days))
+                pickup = (
+                    round(occ_now - occ_prev, 2)
+                    if occ_now is not None and occ_prev is not None
+                    else None
+                )
                 points.append({
-                    "date": fd.isoformat(),
-                    "occupancy_today": round(today_val, 2) if today_val is not None else None,
-                    "occupancy_lookback": round(prev_val, 2) if prev_val is not None else None,
+                    "date": d.isoformat(),
+                    "occupancy_today": round(occ_now, 2) if occ_now is not None else None,
+                    "occupancy_lookback": round(occ_prev, 2) if occ_prev is not None else None,
                     "proxy_pickup_pct": pickup,
                 })
             return points
@@ -1465,7 +1492,7 @@ class DBService:
             return {}
         try:
             async with async_session() as s:
-                result = await s.execute(text("""
+                result = await s.execute(text(f"""
                     WITH latest AS (
                         SELECT DISTINCT ON (id) id, rooms_num, available_rooms_percent, min_price
                         FROM hotel_statistics
@@ -1478,7 +1505,7 @@ class DBService:
                             ELSE 'large'
                         END AS size_bucket,
                         COUNT(*) AS n,
-                        AVG(100 - available_rooms_percent) AS avg_occ,
+                        {_weighted_occ_sql("")} AS avg_occ,
                         AVG(min_price) AS avg_price
                     FROM latest
                     WHERE rooms_num IS NOT NULL
@@ -1545,7 +1572,7 @@ class DBService:
                     )
                 """
 
-                size_q = latest_cte + """
+                size_q = latest_cte + f"""
                     SELECT
                         CASE
                             WHEN rooms_num <= 15 THEN 'mini'
@@ -1553,7 +1580,7 @@ class DBService:
                             ELSE 'large'
                         END AS size_bucket,
                         COUNT(*) AS n,
-                        AVG(100 - available_rooms_percent) AS avg_occ,
+                        {_weighted_occ_sql("")} AS avg_occ,
                         AVG(NULLIF(min_price, 0)) AS avg_price
                     FROM latest
                     WHERE rooms_num IS NOT NULL
@@ -1573,11 +1600,11 @@ class DBService:
                         "revpar": int(price * occ / 100) if price and occ else None,
                     })
 
-                type_q = latest_cte + """
+                type_q = latest_cte + f"""
                     SELECT
                         COALESCE(accommodation_type, 'не указан') AS at,
                         COUNT(*) AS n,
-                        AVG(100 - available_rooms_percent) AS avg_occ,
+                        {_weighted_occ_sql("")} AS avg_occ,
                         AVG(NULLIF(min_price, 0)) AS avg_price
                     FROM latest
                     GROUP BY at
@@ -1666,7 +1693,7 @@ class DBService:
                     "max_r": bounds[1],
                     "exclude_id": exclude_hotel_id,
                 }
-                row = (await s.execute(text("""
+                row = (await s.execute(text(f"""
                     WITH latest AS (
                         SELECT DISTINCT ON (h.id) h.id, h.district, hs.rooms_num,
                                hs.available_rooms_percent, hs.min_price
@@ -1678,7 +1705,7 @@ class DBService:
                         ORDER BY h.id, hs.date DESC
                     )
                     SELECT COUNT(*) AS n,
-                           AVG(100 - available_rooms_percent) AS avg_occ,
+                           {_weighted_occ_sql("")} AS avg_occ,
                            AVG(min_price) AS avg_price
                     FROM latest
                 """), params)).first()

@@ -104,6 +104,11 @@ class ParserHealthService:
         )
         entry["next_expected_run"] = next_expected_iso
         entry["is_stale"] = is_stale
+        # «ok с 0 событий» — не здоровье, а тихий сбой (yandex/kassir в проде без
+        # браузера возвращают пусто со status=ok). Помечаем отдельным флагом, чтобы
+        # дашборд не считал такой парсер исправным.
+        items = entry.get("items_collected", 0) or 0
+        entry["is_empty"] = bool(entry.get("status") == "ok" and items == 0)
         return entry
 
     async def is_stale(self, parser_id: str) -> bool:

@@ -137,8 +137,12 @@ class NeuralProphetService:
                 self._model = model
 
             # --- Future dataframe (context7: make_future -> predict(future)) ---
+            # periods согласован с n_forecasts (effective_horizon): при days_ahead>30
+            # модель физически имеет только step0..step{effective_horizon-1}, поэтому
+            # строить future на полный days_ahead бессмысленно — вернётся ≤30 точек,
+            # а хвост горизонта в ensemble закрывают Prophet/XGBoost.
             future = model.make_future_dataframe(
-                df, periods=days_ahead, n_historic_predictions=len(df),
+                df, periods=effective_horizon, n_historic_predictions=len(df),
             )
 
             if events_df is not None:
