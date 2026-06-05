@@ -446,9 +446,9 @@ async def get_top_events_by_impact(
     for i, e in enumerate(events, 1):
         delta = e.get("delta_pct", 0) or 0
         sign = "+" if delta >= 0 else ""
-        baseline = e.get("baseline_occupancy", e.get("baseline", 0)) or 0
+        baseline = e.get("baseline_mean", 0) or 0
         confidence = e.get("confidence", e.get("confidence_level", "—"))
-        n_obs = e.get("n", e.get("observations", "—"))
+        n_obs = e.get("n_samples", "—")
         event_name = e.get("event", e.get("event_name", e.get("name", "—")))
         event_date = e.get("date", e.get("event_date", "—"))
         dist = e.get("district", "—")
@@ -988,10 +988,17 @@ async def call_model(state: AgentState) -> Command[Literal["tools", "__end__"]]:
     лимитов одного провайдера. При duplicate tool_call_id (Mistral баг) —
     retry без tool history с backoff.
     """
-    messages = state["messages"]
+    messages = list(state["messages"])
 
-    if not messages or not isinstance(messages[0], SystemMessage):
-        messages = [SystemMessage(content=_build_system_prompt())] + list(messages)
+    # Системный промпт пересобирается на КАЖДОМ вызове со свежей date.today().
+    # С MemorySaver messages[0] приходит из чекпоинта предыдущего хода — если просто
+    # "добавлять при отсутствии", дата застынет на дне создания треда. Поэтому
+    # существующий SystemMessage заменяется свежим (содержимое детерминировано, кроме даты).
+    fresh_system = SystemMessage(content=_build_system_prompt())
+    if messages and isinstance(messages[0], SystemMessage):
+        messages[0] = fresh_system
+    else:
+        messages = [fresh_system, *messages]
 
     messages = _dedup_tool_call_ids(messages)
     chain = _resolve_provider_chain()

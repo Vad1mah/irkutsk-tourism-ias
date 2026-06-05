@@ -24,25 +24,27 @@ def _make_response(status: int, json_data):
 # Fixtures — образцы ответов бэкенда
 # ---------------------------------------------------------------------------
 
+# Ключи соответствуют реальному контракту /api/analytics/events-impact
+# (methodology_service.corrected_impact → baseline_mean, n_samples). Раньше здесь
+# стояли baseline_occupancy/n — те же неверные ключи, что читал код агента, из-за
+# чего baseline/n печатались как 0.0/— на проде, а тест этого не замечал.
 EVENTS_IMPACT_PAYLOAD = [
     {
         "event": "Фестиваль Байкал",
-        "event_date": "2026-07-15",
         "date": "2026-07-15",
         "district": "Иркутский",
         "delta_pct": 22.5,
-        "baseline_occupancy": 55.0,
-        "n": 8,
+        "baseline_mean": 55.0,
+        "n_samples": 8,
         "confidence": "high",
     },
     {
         "event": "Новый год",
-        "event_date": "2025-12-31",
         "date": "2025-12-31",
         "district": "Ольхонский",
         "delta_pct": -5.3,
-        "baseline_occupancy": 40.0,
-        "n": 3,
+        "baseline_mean": 40.0,
+        "n_samples": 3,
         "confidence": "low",
     },
 ]
@@ -126,6 +128,10 @@ class TestGetTopEventsByImpact:
         assert "Фестиваль Байкал" in result
         assert "22.5%" in result or "+22.5%" in result
         assert "high" in result
+        # Регрессия: baseline и n должны браться из baseline_mean/n_samples,
+        # а не печататься как 0.0/— из-за рассинхрона ключей.
+        assert "baseline 55.0%" in result
+        assert "n=8" in result
 
     @pytest.mark.asyncio
     async def test_filters_by_district(self):
