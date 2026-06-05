@@ -4,14 +4,17 @@
  * Pattern: each domain exposes a `*_LABELS` Record + a `localize*` function with safe fallback.
  */
 
-export const CONFIDENCE_LABELS: Record<'high' | 'medium' | 'low', string> = {
+export const CONFIDENCE_LABELS: Record<string, string> = {
   high: 'высокая',
   medium: 'средняя',
   low: 'низкая',
+  // Значения из /correlation (сезонность) — раньше выпадали сырым английским
+  limited: 'ограниченная',
+  none: 'нет данных',
 }
 
 export function localizeConfidence(c: string): string {
-  return CONFIDENCE_LABELS[c as 'high' | 'medium' | 'low'] ?? c
+  return CONFIDENCE_LABELS[c] ?? c
 }
 
 export const ACCOMMODATION_TYPE_LABELS: Record<string, string> = {

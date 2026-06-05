@@ -519,16 +519,19 @@ async def get_kpi(data: DataServiceDep, cache: CacheServiceDep) -> KPIResponse:
         data.get_districts_statistics(),
     )
 
-    # Расчёт общих показателей
-    total_rooms = sum(d.get("total_rooms", 0) or 0 for d in districts) if districts else 0
-    free_rooms = sum(d.get("free_rooms", 0) or 0 for d in districts) if districts else 0
-    avg_occupancy = 0.0
+    # Общие показатели берём из get_total_metrics — там avg_occupancy уже
+    # room-night weighted по всему региону (Phase 6), а не невзвешенное среднее
+    # средних по районам (которое давало равный вес Иркутскому и Зиминскому).
+    total_rooms = int(metrics.get("total_rooms", 0) or 0)
+    free_rooms = int(metrics.get("free_rooms", 0) or 0)
+    avg_occupancy = round(float(metrics.get("avg_occupancy", 0) or 0), 1)
+    # Средняя цена: взвешиваем медиану/средние районов по числу номеров, иначе
+    # малый район искажает «среднюю цену региона».
     avg_price = None
     if districts:
-        occupancies = [d.get("avg_occupancy", 0) or 0 for d in districts if d.get("avg_occupancy")]
-        avg_occupancy = round(sum(occupancies) / len(occupancies), 1) if occupancies else 0.0
-        prices = [d.get("avg_price", 0) or 0 for d in districts if d.get("avg_price")]
-        avg_price = round(sum(prices) / len(prices)) if prices else None
+        num = sum((d.get("avg_price") or 0) * (d.get("total_rooms") or 0) for d in districts)
+        den = sum((d.get("total_rooms") or 0) for d in districts if d.get("avg_price"))
+        avg_price = round(num / den) if den else None
 
     result = KPIResponse(
         total_hotels=metrics.get("total_hotels", 0) or 0,
@@ -1887,17 +1890,20 @@ async def get_revenue_summary(
         return {"occupancy": 0, "adr": 0, "revpar": 0, "by_district": []}
 
     by_district: list[dict[str, Any]] = []
-    occupancies: list[float] = []
-    adrs: list[float] = []
-    revpars: list[float] = []
+    # Взвешиваем общие метрики по числу номеров района (room-night), а не простым
+    # средним по районам — иначе малый район весит как крупный.
+    w_occ_num = w_adr_num = w_den = 0.0
     for d in districts_stats:
         d_name = d.get("district") or ""
         if d_name not in TOURIST_DISTRICTS:
             continue
         occ = float(d.get("avg_occupancy") or 0)
-        adr = float(d.get("avg_price") or 0)
+        # ADR-proxy = медиана min_price района (устойчивее к выбросам, единый метод
+        # с compare-districts/price-distribution).
+        adr = float(d.get("median_price") or d.get("avg_price") or 0)
         revpar = round(adr * occ / 100, 0) if adr and occ else 0
         count = int(d.get("hotels_count") or 0)
+        rooms = float(d.get("total_rooms") or 0)
 
         by_district.append({
             "district": d_name,
@@ -1907,21 +1913,24 @@ async def get_revenue_summary(
             "hotels_count": count,
             "confidence": "high" if count >= 10 else "medium" if count >= 3 else "low",
         })
-        occupancies.append(occ)
-        adrs.append(adr)
-        revpars.append(revpar)
+        if rooms > 0:
+            w_occ_num += occ * rooms
+            w_adr_num += adr * rooms
+            w_den += rooms
 
     by_district.sort(key=lambda x: x["revpar"], reverse=True)
 
+    occ_all = round(w_occ_num / w_den, 1) if w_den else 0
+    adr_all = round(w_adr_num / w_den) if w_den else 0
     response = {
-        "occupancy": round(sum(occupancies) / len(occupancies), 1) if occupancies else 0,
-        "adr": round(sum(adrs) / len(adrs)) if adrs else 0,
-        "revpar": round(sum(revpars) / len(revpars)) if revpars else 0,
+        "occupancy": occ_all,
+        "adr": adr_all,
+        "revpar": round(adr_all * occ_all / 100) if adr_all and occ_all else 0,
         "by_district": by_district,
         "methodology": (
-            "Загрузка = средняя по району доля занятых номеров (100 − %% свободных). "
-            "ADR — средний минимальный тариф номера по данным 101Hotels (прокси). "
-            "RevPAR = ADR × Загрузка / 100."
+            "Загрузка = room-night weighted доля занятых номеров по району. "
+            "ADR — медиана минимального тарифа номера по данным 101Hotels (прокси). "
+            "RevPAR = ADR × Загрузка / 100. Общие метрики взвешены по числу номеров района."
         ),
     }
     await cache.set(cache_key, response, ttl=300)
@@ -2182,7 +2191,9 @@ async def compare_districts(
         if not recent:
             return DistrictComparisonItem(district=name, samples=0)
         avg_occ = sum(r["avg_occupancy"] for r in recent) / len(recent)
-        adr_proxy = int(sorted(prices)[len(prices) // 2]) if prices else None
+        # Медиана через интерполяцию (единый метод с price-distribution), а не
+        # sorted[len//2] (смещён вверх для чётных N).
+        adr_proxy = _percentile_linear(sorted(prices), 50) if prices else None
         revpar_proxy = round((adr_proxy or 0) * (avg_occ / 100), 2) if adr_proxy else None
         return DistrictComparisonItem(
             district=name,

@@ -899,7 +899,9 @@ class DBService:
                     {_weighted_occ_sql("hs")} AS avg_occupancy,
                     SUM(hs.free_rooms_amount) AS free_rooms,
                     SUM(hs.rooms_num) AS total_rooms,
-                    AVG(hs.min_price) AS avg_price,
+                    AVG(NULLIF(hs.min_price, 0)) AS avg_price,
+                    percentile_cont(0.5) WITHIN GROUP (ORDER BY hs.min_price)
+                        FILTER (WHERE hs.min_price > 0) AS median_price,
                     COUNT(DISTINCT h.id) AS hotels_count
                 FROM hotels h
                 JOIN hotel_statistics hs ON h.id = hs.id
@@ -916,6 +918,9 @@ class DBService:
                     "free_rooms": int(row.free_rooms or 0),
                     "avg_occupancy": round(float(row.avg_occupancy or 0), 1),
                     "avg_price": round(float(row.avg_price or 0)),
+                    # ADR-proxy = медиана min_price (устойчивее к рекламным выбросам,
+                    # согласовано с compare-districts / price-distribution).
+                    "median_price": round(float(row.median_price or 0)),
                 }
                 for row in result
             ]

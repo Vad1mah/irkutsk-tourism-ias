@@ -74,29 +74,13 @@ function Events() {
     queryFn: api.getEvents,
   })
 
-  const { data: impactData } = useQuery({
-    queryKey: ['events-impact'],
-    queryFn: api.getEventsImpact,
-    staleTime: 10 * 60 * 1000,
-  })
-
+  // Прогнозный impact для предстоящих событий (events показывает будущее, а
+  // измеренный seasonal_corrected существует только для прошедших дат).
   const { data: correctedImpactData } = useQuery({
-    queryKey: ['events-impact-corrected'],
-    queryFn: () => api.getEventsImpactCorrected(),
+    queryKey: ['events-impact-upcoming'],
+    queryFn: () => api.getEventsImpactCorrected(3, 'upcoming'),
     staleTime: 10 * 60 * 1000,
   })
-
-  const impactMap = useMemo(() => {
-    const map = new Map<string, number>()
-    if (impactData) {
-      for (const item of impactData) {
-        if (item.impact !== null) {
-          map.set(item.event, item.impact)
-        }
-      }
-    }
-    return map
-  }, [impactData])
 
   const correctedImpactMap = useMemo(() => {
     const map = new Map<string, number>()
@@ -484,7 +468,6 @@ function Events() {
                 key={event.event_id}
                 event={event}
                 onClick={() => setSelectedEvent(event)}
-                impact={impactMap.get(event.title.slice(0, 50))}
                 correctedDeltaPct={correctedImpactMap.get(`${event.title.slice(0, 50)}|${event.date_start}`)}
               />
             ))}
@@ -648,12 +631,10 @@ function EventMiniCard({
 function EventCard({
   event,
   onClick,
-  impact,
   correctedDeltaPct,
 }: {
   event: EventData
   onClick: () => void
-  impact?: number
   correctedDeltaPct?: number
 }) {
   const type = getEventTypeKey(event)
@@ -707,27 +688,17 @@ function EventCard({
         {/* Impact + Hover hint */}
         <div className="mt-3 pt-3 border-t border-[hsl(var(--border))] flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-1.5 flex-wrap">
-            {impact !== undefined && (
-              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full inline-flex items-center gap-1 ${
-                impact > 5 ? 'bg-[hsl(var(--destructive)/0.1)] text-[hsl(var(--destructive))]'
-                  : impact > 0 ? 'bg-[hsl(var(--warning)/0.1)] text-[hsl(var(--warning))]'
-                    : 'bg-[hsl(var(--success)/0.1)] text-[hsl(var(--success))]'
-              }`}>
-                Наивный {impact > 0 ? '+' : ''}{impact.toFixed(0)}%
-                <MethodologyTooltip text="Простой расчёт: разница между загрузкой в день события и средней загрузкой района. Не учитывает сезон и день недели — поэтому оценка приблизительная." />
-              </span>
-            )}
             {correctedDeltaPct !== undefined && (
               <span className={`text-xs font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 ${
                 correctedDeltaPct >= 0
                   ? 'bg-[hsl(var(--success)/0.12)] text-[hsl(var(--success))]'
                   : 'bg-[hsl(var(--destructive)/0.1)] text-[hsl(var(--destructive))]'
               }`}>
-                Сезонный {correctedDeltaPct >= 0 ? '↑' : '↓'}{Math.abs(correctedDeltaPct).toFixed(1)}%
-                <MethodologyTooltip text="Точный расчёт: сравниваем загрузку в день события с обычной загрузкой того же дня недели за 3 недели до и после, без других мероприятий. Учитывает сезон и день недели — поэтому точнее простого расчёта." />
+                Прогноз {correctedDeltaPct >= 0 ? '↑' : '↓'}~{Math.abs(correctedDeltaPct).toFixed(1)}%
+                <MethodologyTooltip text="Прогнозная оценка влияния на спрос: средний измеренный impact прошедших событий того же типа. Точное значение станет известно после события." />
               </span>
             )}
-            {impact === undefined && correctedDeltaPct === undefined && <span />}
+            {correctedDeltaPct === undefined && <span />}
           </div>
           <span className="text-xs text-[hsl(var(--primary))] opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
             <Info size={12} />

@@ -669,8 +669,8 @@ function EventsTab({
                     <th className="py-2 pr-3">Дата</th>
                     <th className="py-2 pr-3">Событие</th>
                     <th className="py-2 pr-3">Район</th>
-                    <th className="py-2 pr-3 text-right">Δ%</th>
-                    <th className="py-2 pr-3 text-right">Базовая</th>
+                    <th className="py-2 pr-3 text-right">Δ отн.</th>
+                    <th className="py-2 pr-3 text-right">База → факт</th>
                     <th className="py-2 pr-3 text-right">N набл.</th>
                     <th className="py-2 text-center">Достоверность</th>
                   </tr>
@@ -693,8 +693,16 @@ function EventsTab({
                             {(e.delta_pct ?? 0) > 0 ? '↑' : '↓'} {Math.abs(e.delta_pct ?? 0).toFixed(1)}%
                           </span>
                         </td>
-                        <td className="py-2 pr-3 text-right tabular-nums">
-                          {e.baseline_mean != null ? `${e.baseline_mean.toFixed(1)}%` : '—'}
+                        <td className="py-2 pr-3 text-right tabular-nums whitespace-nowrap">
+                          {e.baseline_mean != null ? (
+                            <span className="text-[hsl(var(--muted-foreground))]">
+                              {e.baseline_mean.toFixed(0)}%
+                              <span className="opacity-50 px-0.5">→</span>
+                              <span className="text-[hsl(var(--foreground))]">
+                                {e.occupancy_on_day != null ? `${e.occupancy_on_day.toFixed(0)}%` : '—'}
+                              </span>
+                            </span>
+                          ) : '—'}
                         </td>
                         <td className="py-2 pr-3 text-right tabular-nums">{e.n_samples}</td>
                         <td className="py-2 text-center">
