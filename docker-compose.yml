@@ -2,6 +2,10 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: tourism-postgres
+    # -c timezone: env TZ меняет только ОС контейнера, а CURRENT_DATE/now() postgres
+    # берёт из timezone GUC (в уже инициализированном volume = UTC). Без этого флага
+    # backend (Asia/Irkutsk) и postgres (UTC) расходятся на дату у границы суток.
+    command: ["postgres", "-c", "timezone=Asia/Irkutsk"]
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-tourism}
       POSTGRES_USER: ${POSTGRES_USER:-tourism}
