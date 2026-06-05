@@ -290,6 +290,7 @@ class AnalyticsMetadataResponse(BaseModel):
     """Ответ метаданных системы аналитики."""
     hotels_count: int
     events_count: int
+    upcoming_events_count: int = 0
     data_range: DataDateRange
     last_refresh: str | None = None
     gap_periods: list[GapPeriod] = Field(default_factory=list)

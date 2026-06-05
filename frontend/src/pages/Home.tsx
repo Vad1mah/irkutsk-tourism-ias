@@ -443,8 +443,8 @@ function Home() {
               <p className="text-sm font-semibold tabular-nums">{metadata.hotels_count}</p>
             </div>
             <div>
-              <p className="text-xs text-[hsl(var(--muted-foreground))]">Событий</p>
-              <p className="text-sm font-semibold tabular-nums">{metadata.events_count}</p>
+              <p className="text-xs text-[hsl(var(--muted-foreground))]">Предстоящих событий</p>
+              <p className="text-sm font-semibold tabular-nums">{metadata.upcoming_events_count ?? metadata.events_count}</p>
             </div>
             <div>
               <p className="text-xs text-[hsl(var(--muted-foreground))]">Период данных</p>

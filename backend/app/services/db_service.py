@@ -1314,7 +1314,7 @@ class DBService:
             return 0
 
     async def get_events_count(self) -> int:
-        """Количество событий в базе данных."""
+        """Количество событий в базе данных (всего, включая прошедшие)."""
         if not self.is_connected:
             return 0
         try:
@@ -1322,6 +1322,20 @@ class DBService:
                 return (await s.execute(select(func.count(Event.event_id)))).scalar_one()
         except Exception as exc:
             logger.error("get_events_count: %s", exc)
+            return 0
+
+    async def get_upcoming_events_count(self) -> int:
+        """Количество ПРЕДСТОЯЩИХ событий (date_start >= сегодня) — согласовано
+        со страницей «События», которая по умолчанию показывает только будущие."""
+        if not self.is_connected:
+            return 0
+        try:
+            async with async_session() as s:
+                return (await s.execute(
+                    select(func.count(Event.event_id)).where(Event.date_start >= date.today())
+                )).scalar_one()
+        except Exception as exc:
+            logger.error("get_upcoming_events_count: %s", exc)
             return 0
 
     async def get_data_date_range(self) -> dict:

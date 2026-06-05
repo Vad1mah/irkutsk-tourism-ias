@@ -218,6 +218,7 @@ export type EventImpact = {
 export type AnalyticsMetadata = {
   hotels_count: number
   events_count: number
+  upcoming_events_count?: number
   data_range: { from: string | null; to: string | null }
   last_refresh: string | null
   gap_periods: Array<{ from: string | null; to: string | null; gap_days: number; reason: string }>
@@ -435,7 +436,6 @@ export type StreamEvent = {
   error?: string
 }
 
-import { DEFAULT_DISTRICT } from '../constants/districts'
 
 export const api = {
   getHotels: async () => {
@@ -533,17 +533,10 @@ export const api = {
     const tail = qs.toString() ? `?${qs.toString()}` : ''
     return request<DistrictData[]>(`/api/analytics/districts${tail}`)
   },
-  getRecommendations: () => request<Recommendation[]>('/api/analytics/recommendations'),
   getKPI: () => request<KPIData>('/api/analytics/kpi'),
   getHotelsByDistrict: () => request<HotelsByDistrict[]>('/api/analytics/hotels-by-district'),
   explainForecast: (district: string, daysAhead: number = 14) =>
     request<ExplainResponse>(`/api/forecast/explain?district=${encodeURIComponent(district)}&days_ahead=${daysAhead}`),
-
-  getHeatmap: (days: number = 14) => request<{
-    data: { district: string; date: string; occupancy: number }[]
-    districts: string[]
-    dates: string[]
-  }>(`/api/analytics/heatmap?days=${days}`),
 
   getHealth: () => request<{
     status: string
@@ -553,11 +546,6 @@ export const api = {
     chroma_docs: number
   }>('/health'),
 
-  getTripSummary: (district: string = DEFAULT_DISTRICT, days: number = 14) =>
-    request<TripSummary>(`/api/analytics/trip-summary?district=${encodeURIComponent(district)}&days=${days}`),
-
-  getBestDates: (district: string = DEFAULT_DISTRICT, daysAhead: number = 30) =>
-    request<BestDate[]>(`/api/analytics/best-dates?district=${encodeURIComponent(district)}&days_ahead=${daysAhead}`),
 
   getEventsImpact: () => request<EventImpact[]>('/api/analytics/events-impact'),
 

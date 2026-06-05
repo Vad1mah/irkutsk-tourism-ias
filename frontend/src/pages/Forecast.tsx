@@ -334,7 +334,7 @@ function Forecast() {
                   <div>
                     <CardTitle>События и загруженность</CardTitle>
                     <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
-                      Как мероприятия влияют на заполняемость отелей
+                      Как события статистически связаны с заполняемостью (корреляция, не причинность)
                     </p>
                   </div>
                   {correlationCoeff !== null && correlationCoeff !== undefined && (

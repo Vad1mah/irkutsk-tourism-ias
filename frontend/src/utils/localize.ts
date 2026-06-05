@@ -65,7 +65,7 @@ export function localizeSizeBucket(b: string): string {
 export const MODEL_INFO: Record<string, { label: string; about: string }> = {
   ensemble: {
     label: 'Ансамбль',
-    about: 'Среднее по трём моделям прогноза с весами по точности на исторических данных. Сглаживает ошибки отдельных моделей.',
+    about: 'Средневзвешенное по трём моделям прогноза с весами по точности на исторических данных. Сглаживает ошибки отдельных моделей.',
   },
   prophet: {
     label: 'Prophet',
@@ -85,6 +85,6 @@ export function localizeModel(name: string): string {
   return MODEL_INFO[name.toLowerCase()]?.label ?? name
 }
 
-export const FORECAST_HEADER_TEXT = 'Среднее по трём моделям прогноза. Слева — факт за 14 дней, справа — прогноз на 14 вперёд.'
+export const FORECAST_HEADER_TEXT = 'Средневзвешенное по трём моделям прогноза. Слева — факт за 14 дней, справа — прогноз на 14 вперёд.'
 export const FORECAST_METHODOLOGY_TEXT =
-  'Используются три модели: Prophet (тренды и сезонность), NeuralProphet (нейросеть на лагах), XGBoost (бустинг на 38 признаках). Итоговый прогноз — среднее с весами по точности на истории. Подробности — в разделе «О проекте».'
+  'Используются три модели: Prophet (тренды и сезонность), NeuralProphet (нейросеть на лагах), XGBoost (бустинг на 38 признаках). Итоговый прогноз — взвешенное среднее с весами по точности на истории. Подробности — в разделе «О проекте».'

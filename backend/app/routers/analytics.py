@@ -1075,9 +1075,10 @@ async def get_metadata(
     if cached:
         return AnalyticsMetadataResponse.model_validate(cached)
 
-    hotels, events, date_range, gaps, last = await asyncio.gather(
+    hotels, events, upcoming_events, date_range, gaps, last = await asyncio.gather(
         data.get_hotels_count(),
         data.get_events_count(),
+        data.get_upcoming_events_count(),
         data.get_data_date_range(),
         data.detect_gap_periods(min_days=7),
         data.get_last_data_refresh(),
@@ -1086,6 +1087,7 @@ async def get_metadata(
     response = AnalyticsMetadataResponse(
         hotels_count=hotels,
         events_count=events,
+        upcoming_events_count=upcoming_events,
         data_range=DataDateRange(**date_range),
         last_refresh=last.isoformat() if last else None,
         gap_periods=[GapPeriod(**g) for g in gaps],
