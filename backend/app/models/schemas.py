@@ -133,6 +133,11 @@ class KPIResponse(BaseModel):
     free_rooms: int
     avg_occupancy: float
     avg_price: float | None = None
+    # Свежесть снимка: дата последних данных + флаг устаревания (для UI-сигнала
+    # «данные на DD.MM» вместо «Текущая загрузка», когда scheduler стоял).
+    as_of_date: str | None = None
+    is_stale: bool = False
+    data_age_days: int | None = None
 
 
 class DistrictStats(BaseModel):

@@ -165,6 +165,22 @@ function Home() {
         />
       </div>
 
+      {/* Сигнал свежести данных */}
+      {revenueSummary?.as_of_date && (
+        <div className="-mt-2 mb-1">
+          {revenueSummary.is_stale ? (
+            <span className="px-2.5 py-1 rounded-full text-xs bg-[hsl(var(--warning)/0.15)] text-[hsl(var(--warning))] inline-flex items-center gap-1.5 font-medium">
+              Данные устарели — последний срез {new Date(revenueSummary.as_of_date).toLocaleDateString('ru-RU')}
+              {revenueSummary.data_age_days != null && revenueSummary.data_age_days > 0 ? ` (${revenueSummary.data_age_days} дн. назад)` : ''}
+            </span>
+          ) : (
+            <span className="text-xs text-[hsl(var(--muted-foreground))]">
+              Данные на {new Date(revenueSummary.as_of_date).toLocaleDateString('ru-RU')}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* KPI блок */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KPITile
@@ -185,7 +201,7 @@ function Home() {
           icon={Banknote}
           label="ADR"
           value={districtKpi?.adr ? `${districtKpi.adr.toLocaleString('ru-RU')}₽` : '—'}
-          sub="Средний тариф номера"
+          sub="Тариф номера (медиана, прокси)"
           accent="accent"
           tooltip="ADR (Average Daily Rate) — средний тариф номера за сутки. Считаем по медиане минимальных цен на сайтах бронирования. Реальный тариф обычно на 15–30% выше — мы видим только рекламируемую цену."
         />

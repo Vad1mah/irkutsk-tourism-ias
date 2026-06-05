@@ -862,6 +862,7 @@ class DBService:
                     (SELECT count(*) FROM hotels) AS hotels_count,
                     (SELECT count(DISTINCT city) FROM hotels) AS cities_count,
                     (SELECT count(*) FROM events) AS events_count,
+                    (SELECT max(date) FROM hotel_statistics) AS as_of_date,
                     COALESCE(s.total_rooms, 0) AS total_rooms,
                     COALESCE(s.free_rooms, 0) AS free_rooms,
                     COALESCE(s.avg_occupancy, 0) AS avg_occupancy
@@ -880,6 +881,7 @@ class DBService:
                 return {
                     "total_hotels": 0, "total_cities": 0, "total_events": 0,
                     "total_rooms": 0, "free_rooms": 0, "avg_occupancy": 0.0,
+                    "as_of_date": None,
                 }
 
             return {
@@ -889,6 +891,7 @@ class DBService:
                 "total_rooms": int(row.total_rooms or 0),
                 "free_rooms": int(row.free_rooms or 0),
                 "avg_occupancy": round(float(row.avg_occupancy or 0), 1),
+                "as_of_date": row.as_of_date.isoformat() if row.as_of_date else None,
             }
 
     async def get_districts_statistics(self) -> list[dict]:
@@ -902,6 +905,7 @@ class DBService:
                     AVG(NULLIF(hs.min_price, 0)) AS avg_price,
                     percentile_cont(0.5) WITHIN GROUP (ORDER BY hs.min_price)
                         FILTER (WHERE hs.min_price > 0) AS median_price,
+                    MAX(hs.date) AS as_of_date,
                     COUNT(DISTINCT h.id) AS hotels_count
                 FROM hotels h
                 JOIN hotel_statistics hs ON h.id = hs.id
@@ -918,6 +922,7 @@ class DBService:
                     "free_rooms": int(row.free_rooms or 0),
                     "avg_occupancy": round(float(row.avg_occupancy or 0), 1),
                     "avg_price": round(float(row.avg_price or 0)),
+                    "as_of_date": row.as_of_date.isoformat() if row.as_of_date else None,
                     # ADR-proxy = медиана min_price (устойчивее к рекламным выбросам,
                     # согласовано с compare-districts / price-distribution).
                     "median_price": round(float(row.median_price or 0)),

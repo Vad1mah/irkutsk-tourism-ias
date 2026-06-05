@@ -118,6 +118,9 @@ export type KPIData = {
   free_rooms: number
   avg_occupancy: number
   avg_price?: number | null
+  as_of_date?: string | null
+  is_stale?: boolean
+  data_age_days?: number | null
 }
 
 // Weather types
@@ -418,6 +421,9 @@ export type RevenueSummary = {
   revpar: number
   by_district: RevenueSummaryDistrict[]
   methodology: string
+  as_of_date?: string | null
+  is_stale?: boolean
+  data_age_days?: number | null
 }
 
 export type StreamEvent = {

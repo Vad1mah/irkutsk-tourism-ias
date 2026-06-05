@@ -35,6 +35,24 @@ router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 TOURIST_DISTRICTS = set(VALID_DISTRICTS)
 
 
+def _staleness(as_of_iso: str | None, stale_after_days: int = 1) -> dict[str, Any]:
+    """Сигнал устаревания снимка данных: as_of_date + is_stale + data_age_days.
+
+    Парсер отелей ходит каждые 2ч, поэтому свежий снимок — сегодня/вчера.
+    is_stale=True, если последний снимок старше stale_after_days от сегодня
+    (или данных нет вовсе). Позволяет UI честно подписать «данные на DD.MM»
+    вместо «Текущая загрузка», когда scheduler стоял или идёт gap-период.
+    """
+    if not as_of_iso:
+        return {"as_of_date": None, "is_stale": True, "data_age_days": None}
+    try:
+        as_of = _date.fromisoformat(str(as_of_iso)[:10])
+    except (ValueError, TypeError):
+        return {"as_of_date": as_of_iso, "is_stale": False, "data_age_days": None}
+    age = (_date.today() - as_of).days
+    return {"as_of_date": as_of_iso, "is_stale": age > stale_after_days, "data_age_days": age}
+
+
 def _percentile_linear(sorted_values: list[int], p: int) -> int:
     """Перцентиль методом линейной интерполяции (как numpy 'linear' / percentile_cont).
 
@@ -533,6 +551,7 @@ async def get_kpi(data: DataServiceDep, cache: CacheServiceDep) -> KPIResponse:
         den = sum((d.get("total_rooms") or 0) for d in districts if d.get("avg_price"))
         avg_price = round(num / den) if den else None
 
+    stale = _staleness(metrics.get("as_of_date"))
     result = KPIResponse(
         total_hotels=metrics.get("total_hotels", 0) or 0,
         total_cities=metrics.get("total_cities", 0) or 0,
@@ -541,6 +560,9 @@ async def get_kpi(data: DataServiceDep, cache: CacheServiceDep) -> KPIResponse:
         free_rooms=free_rooms,
         avg_occupancy=avg_occupancy,
         avg_price=avg_price,
+        as_of_date=stale["as_of_date"],
+        is_stale=stale["is_stale"],
+        data_age_days=stale["data_age_days"],
     )
     await cache.set(cache_key, result.model_dump(), ttl=300)
     return result
@@ -1839,14 +1861,18 @@ async def get_pickup_pace(
     else:
         trend = "недостаточно данных"
 
-    today = date.today()
-    period_start = today - timedelta(days=days)
+    # Период — по фактическим датам снимков, а не today-days..today: если данные
+    # обрываются раньше, лейбл «за 30 дней» и «последние 3 дня» не должны
+    # притворяться актуальными.
+    real_dates = [p["date"] for p in points if p.get("date")]
+    period_start = min(real_dates) if real_dates else str(date.today() - timedelta(days=days))
+    period_end = max(real_dates) if real_dates else str(date.today())
 
     response = {
         "district": district,
         "period": {
             "start": str(period_start),
-            "end": str(today),
+            "end": str(period_end),
             "days": days,
         },
         "points": points,
@@ -1922,11 +1948,15 @@ async def get_revenue_summary(
 
     occ_all = round(w_occ_num / w_den, 1) if w_den else 0
     adr_all = round(w_adr_num / w_den) if w_den else 0
+    stale = _staleness(districts_stats[0].get("as_of_date") if districts_stats else None)
     response = {
         "occupancy": occ_all,
         "adr": adr_all,
         "revpar": round(adr_all * occ_all / 100) if adr_all and occ_all else 0,
         "by_district": by_district,
+        "as_of_date": stale["as_of_date"],
+        "is_stale": stale["is_stale"],
+        "data_age_days": stale["data_age_days"],
         "methodology": (
             "Загрузка = room-night weighted доля занятых номеров по району. "
             "ADR — медиана минимального тарифа номера по данным 101Hotels (прокси). "
