@@ -10,7 +10,8 @@ from fastapi.responses import StreamingResponse
 from collections import defaultdict
 import logging
 
-from app.constants import VALID_DISTRICTS, CITY_TO_DISTRICT, DEFAULT_DISTRICT, DISTRICT_CENTERS, SEASON_MONTHS, MIN_SAMPLES_PER_MONTH, MIN_SAMPLES_FOR_HIGH_CONFIDENCE
+from statistics import mean
+from app.constants import VALID_DISTRICTS, CITY_TO_DISTRICT, DEFAULT_DISTRICT, DISTRICT_CENTERS, SEASON_MONTHS, MIN_SAMPLES_PER_MONTH, MIN_SAMPLES_FOR_HIGH_CONFIDENCE, BASELINE_CONFIDENCE_HIGH, BASELINE_CONFIDENCE_MEDIUM
 from app.services.methodology_service import methodology_service
 from app.dependencies import (
     DataServiceDep, WeatherServiceDep, EnsembleServiceDep, CacheServiceDep,
@@ -547,6 +548,7 @@ async def get_events_impact(
     data: DataServiceDep,
     cache: CacheServiceDep,
     method: Literal["naive", "seasonal_corrected"] = "seasonal_corrected",
+    horizon: Literal["past", "upcoming"] = "past",
     window_weeks: int = Query(3, ge=1, le=52, description="Окно для baseline-расчёта (недели). Используется в seasonal_corrected."),
 ) -> list[dict[str, Any]]:
     """Влияние событий на загруженность: сравнение в дни событий vs обычные дни.
@@ -555,14 +557,19 @@ async def get_events_impact(
         method: Метод расчёта. ``naive`` — простая разница event_day vs avg.
             ``seasonal_corrected`` — скорректированный baseline по weekday ±window_weeks недель,
             исключая дни других событий.
+        horizon: ``past`` — ИЗМЕРЕННЫЙ impact прошедших событий (факт загрузки).
+            ``upcoming`` — ПРОГНОЗНЫЙ impact предстоящих событий (средний historical
+            impact событий того же типа, ``is_forecast=True``).
         window_weeks: Размер окна для baseline (недели), только для seasonal_corrected.
     """
-    cache_key = f"analytics:events-impact:{DEFAULT_DISTRICT}:{method}:{window_weeks}"
+    cache_key = f"analytics:events-impact:{DEFAULT_DISTRICT}:{method}:{horizon}:{window_weeks}"
     cached = await cache.get(cache_key)
     if cached:
         return cached
 
-    if method == "naive":
+    if horizon == "upcoming":
+        result = await _events_impact_upcoming(data, window_weeks=window_weeks)
+    elif method == "naive":
         result = await _events_impact_naive(data)
     else:
         result = await _events_impact_seasonal_corrected(data, window_weeks=window_weeks)
@@ -654,6 +661,7 @@ async def _events_impact_seasonal_corrected(
             "event": e.get("title"),
             "date": ds.isoformat(),
             "district": d,
+            "event_type": e.get("event_type") or "event",
             "occupancy_on_day": round(observed, 2),
             **impact,
         })
@@ -661,6 +669,68 @@ async def _events_impact_seasonal_corrected(
     # Сортировка по модулю delta_pct убыв.
     result.sort(key=lambda r: abs(r.get("delta_pct") or 0), reverse=True)
     return result
+
+
+async def _events_impact_upcoming(
+    data: DataServiceProtocol,
+    window_weeks: int = 3,
+) -> list[dict[str, Any]]:
+    """Прогнозный impact для ПРЕДСТОЯЩИХ событий.
+
+    Измеренный impact бывает только у прошедших событий (нужен факт загрузки).
+    Для предстоящих оцениваем влияние как СРЕДНИЙ historical impact прошедших
+    событий того же типа (concert/festival/...), с fallback на общий средний.
+    Результат помечается ``is_forecast=True`` — это оценка, не факт.
+    """
+    if not data.is_connected:
+        raise HTTPException(503, "БД не подключена")
+
+    past = await _events_impact_seasonal_corrected(data, window_weeks=window_weeks)
+    by_type: dict[str, list[float]] = defaultdict(list)
+    all_deltas: list[float] = []
+    for r in past:
+        dp = r.get("delta_pct")
+        if dp is None:
+            continue
+        by_type[r.get("event_type") or "event"].append(dp)
+        all_deltas.append(dp)
+    global_avg = mean(all_deltas) if all_deltas else None
+
+    today = _date.today()
+    events = await data.get_events()
+    upcoming: list[dict[str, Any]] = []
+    for e in events:
+        ds = _to_date(e.get("date_start"))
+        if not ds or ds < today:
+            continue
+        et = e.get("event_type") or "event"
+        samples = by_type.get(et, [])
+        if samples:
+            fd, n, basis = mean(samples), len(samples), f"средний impact прошедших событий типа «{et}»"
+        elif global_avg is not None:
+            fd, n, basis = global_avg, len(all_deltas), "средний impact всех прошедших событий"
+        else:
+            continue
+        conf = (
+            "high" if n >= BASELINE_CONFIDENCE_HIGH else
+            "medium" if n >= BASELINE_CONFIDENCE_MEDIUM else
+            "low"
+        )
+        upcoming.append({
+            "event": e.get("title"),
+            "date": ds.isoformat(),
+            "district": _resolve_district(e),
+            "event_type": et,
+            "delta_pct": round(fd, 2),
+            "confidence": conf,
+            "n_samples": n,
+            "method": "forecast_by_type",
+            "is_forecast": True,
+            "forecast_basis": basis,
+        })
+
+    upcoming.sort(key=lambda r: abs(r.get("delta_pct") or 0), reverse=True)
+    return upcoming
 
 
 async def _events_impact_naive(data: DataServiceProtocol) -> list[dict[str, Any]]:

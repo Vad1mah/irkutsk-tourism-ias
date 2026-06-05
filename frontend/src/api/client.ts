@@ -327,15 +327,20 @@ export type CorrectedEventsImpact = Array<{
   event: string
   date: string
   district: string
-  occupancy_on_day: number
+  occupancy_on_day?: number
   delta_pct: number | null
-  baseline_mean: number | null
-  ci_lower: number | null
-  ci_upper: number | null
+  baseline_mean?: number | null
+  ci_lower?: number | null
+  ci_upper?: number | null
   n_samples: number
   confidence: 'high' | 'medium' | 'low'
   method: string
+  event_type?: string
+  is_forecast?: boolean
+  forecast_basis?: string
 }>
+
+export type EventsImpactHorizon = 'past' | 'upcoming'
 
 export type MapHotel = {
   id: string; name: string; city: string; district: string
@@ -672,8 +677,8 @@ export const api = {
     })
   },
 
-  getEventsImpactCorrected: (windowWeeks = 3) => {
-    const params = new URLSearchParams({ method: 'seasonal_corrected', window_weeks: String(windowWeeks) })
+  getEventsImpactCorrected: (windowWeeks = 3, horizon: EventsImpactHorizon = 'past') => {
+    const params = new URLSearchParams({ method: 'seasonal_corrected', horizon, window_weeks: String(windowWeeks) })
     return request<CorrectedEventsImpact>(`/api/analytics/events-impact?${params}`)
   },
 

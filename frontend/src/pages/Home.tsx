@@ -66,8 +66,8 @@ function Home() {
   })
 
   const { data: eventsImpact } = useQuery({
-    queryKey: ['events-impact-corrected'],
-    queryFn: () => api.getEventsImpactCorrected(),
+    queryKey: ['events-impact-upcoming'],
+    queryFn: () => api.getEventsImpactCorrected(3, 'upcoming'),
     staleTime: 5 * 60_000,
   })
 
@@ -344,7 +344,7 @@ function Home() {
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Calendar size={18} className="text-[hsl(var(--accent))]" />
-              <h2 className="text-base font-semibold">Топ-5 событий по влиянию на спрос</h2>
+              <h2 className="text-base font-semibold">Предстоящие события — прогноз влияния</h2>
             </div>
             <Button variant="secondary" size="sm" onClick={() => navigate('/events')}>
               Все события
@@ -364,21 +364,22 @@ function Home() {
                   </div>
                   <div className="flex flex-col items-end gap-1">
                     <span className="flex items-center gap-1">
+                      <Badge variant="outline" size="sm">прогноз</Badge>
                       <Badge variant={(e.delta_pct ?? 0) > 0 ? 'success' : 'danger'} size="sm">
-                        {(e.delta_pct ?? 0) > 0 ? '+' : ''}{(e.delta_pct ?? 0).toFixed(1)}%
+                        ~{(e.delta_pct ?? 0) > 0 ? '+' : ''}{(e.delta_pct ?? 0).toFixed(1)}%
                       </Badge>
-                      <MethodologyTooltip text="На сколько процентов загрузка в день события отличается от обычной. Сравниваем с такими же днями недели за 3 недели до и после события, исключая дни других мероприятий." />
+                      <MethodologyTooltip text="Прогнозная оценка влияния на спрос: средний измеренный impact прошедших событий того же типа. Точное значение станет известно после события (по факту загрузки)." />
                     </span>
                     <span className={`text-xs font-medium flex items-center gap-1 ${e.confidence === 'high' ? 'text-[hsl(var(--success))]' : e.confidence === 'medium' ? 'text-[hsl(var(--accent))]' : 'text-[hsl(var(--muted-foreground))]'}`}>
                       {localizeConfidence(e.confidence)}
-                      <MethodologyTooltip text="Насколько надёжен расчёт. Высокая — нашли 5 и более похожих дней для сравнения; средняя — 2-4 дня; низкая — только 1 день, оценка ориентировочная." />
+                      <MethodologyTooltip text="Надёжность прогноза: сколько прошедших событий того же типа легло в оценку. Высокая — 5 и более; средняя — 2-4; низкая — одно, оценка ориентировочная." />
                     </span>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-sm text-[hsl(var(--muted-foreground))] py-6 text-center">Нет событий с рассчитанной оценкой влияния на спрос.</p>
+            <p className="text-sm text-[hsl(var(--muted-foreground))] py-6 text-center">Нет предстоящих событий для прогноза влияния на спрос.</p>
           )}
         </Card>
       </div>
