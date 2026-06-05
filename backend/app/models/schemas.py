@@ -254,7 +254,7 @@ class TripSummary(BaseModel):
     weather: list[WeatherDay] = Field(default_factory=list)
     events_count: int = 0
     top_events: list[EventBrief] = Field(default_factory=list)
-    available_hotels: int = 0
+    available_rooms: int = 0
     avg_price: float | None = None
     recommendation: str = ""
 

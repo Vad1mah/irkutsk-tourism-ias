@@ -192,7 +192,7 @@ export type TripSummary = {
   weather: { date: string; temp_max: number; temp_min: number; weather_code: number; description: string }[]
   events_count: number
   top_events: { title: string; date: string; event_type: string | null }[]
-  available_hotels: number
+  available_rooms: number
   avg_price: number | null
   recommendation: string
 }

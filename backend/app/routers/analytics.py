@@ -521,7 +521,7 @@ async def get_kpi(data: DataServiceDep, cache: CacheServiceDep) -> KPIResponse:
     """
     Получить ключевые метрики из БД.
     """
-    cache_key = "analytics:kpi"
+    cache_key = f"analytics:kpi:{_date.today().isoformat()}"
     cached = await cache.get(cache_key)
     if cached:
         try:
@@ -1070,7 +1070,7 @@ async def get_metadata(
     cache: CacheServiceDep,
 ) -> AnalyticsMetadataResponse:
     """Метаданные системы: счётчики, диапазон данных, gap-периоды."""
-    cache_key = "analytics:metadata"
+    cache_key = f"analytics:metadata:{_date.today().isoformat()}"
     cached = await cache.get(cache_key)
     if cached:
         return AnalyticsMetadataResponse.model_validate(cached)
@@ -1276,15 +1276,15 @@ async def get_trip_summary(
     except Exception as e:
         logger.error(f"Events fetch failed: {e}")
 
-    # available_hotels (имя в JSON для фронта): фактически SUM(free_rooms_amount) по району
-    # из get_districts_statistics — суммарное число свободных номеров на последнюю дату, не число отелей.
-    available_hotels = 0
+    # available_rooms: SUM(free_rooms_amount) по району — число свободных НОМЕРОВ
+    # на последнюю дату (не отелей; имя поля раньше вводило в заблуждение).
+    available_rooms = 0
     avg_price: float | None = None
     try:
         districts_stats = await data.get_districts_statistics()
         for d in districts_stats:
             if d.get("district") == district:
-                available_hotels = d.get("free_rooms", 0) or 0
+                available_rooms = d.get("free_rooms", 0) or 0
                 avg_price = d.get("avg_price") or None
                 break
     except Exception as e:
@@ -1305,7 +1305,7 @@ async def get_trip_summary(
         weather=weather_days,
         events_count=events_count,
         top_events=top_events,
-        available_hotels=available_hotels,
+        available_rooms=available_rooms,
         avg_price=avg_price,
         recommendation=recs[level],
     )
@@ -1907,7 +1907,7 @@ async def get_revenue_summary(
     if not data.is_connected:
         raise HTTPException(503, "БД не подключена")
 
-    cache_key = "analytics:revenue_summary"
+    cache_key = f"analytics:revenue_summary:{_date.today().isoformat()}"
     cached = await cache.get(cache_key)
     if cached:
         return cached
@@ -2276,7 +2276,7 @@ async def hotel_segments(
     Сегменты по размеру: mini (≤15 номеров), mid (16-50), large (51+).
     Сегменты по типу: hotel, hostel, guest_house и т.д.
     """
-    cache_key = "analytics:segments"
+    cache_key = f"analytics:segments:{_date.today().isoformat()}"
     cached = await cache.get(cache_key)
     if cached:
         return SegmentsResponse(**cached)

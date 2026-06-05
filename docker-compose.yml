@@ -6,6 +6,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-tourism}
       POSTGRES_USER: ${POSTGRES_USER:-tourism}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tourism_pass}
+      TZ: Asia/Irkutsk
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
@@ -62,7 +63,11 @@ services:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-tourism}:${POSTGRES_PASSWORD:-tourism_pass}@postgres:5432/${POSTGRES_DB:-tourism}
       - REDIS_HOST=redis
       - REDIS_PASSWORD=${REDIS_PASSWORD:-redis_pass}
-      - LLM_PROVIDER=${LLM_PROVIDER:-mistral}
+      - LLM_PROVIDER=${LLM_PROVIDER:-groq}
+      # Иркутское время (UTC+8) — чтобы date.today() совпадал с датами, которыми
+      # парсеры пишут hotel_statistics; иначе UTC-сдвиг даёт даты «завтра» в БД
+      # и новейший день то появляется, то пропадает из выдачи.
+      - TZ=Asia/Irkutsk
     depends_on:
       postgres:
         condition: service_healthy
@@ -107,7 +112,9 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/"]
+      # 127.0.0.1, а не localhost: nginx слушает только IPv4 8080, а wget по
+      # localhost может пойти в IPv6 (::1) → ложный «connection refused»/unhealthy.
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/"]
       interval: 30s
       timeout: 5s
       retries: 3

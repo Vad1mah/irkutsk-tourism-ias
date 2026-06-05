@@ -455,10 +455,10 @@ function MapPage() {
           <Card variant="glass">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 text-[hsl(var(--muted-foreground))] text-sm font-medium uppercase tracking-wider mb-1.5">
-                <BedDouble size={16} /> Свободных
-                <MethodologyTooltip text="Сумма свободных номеров по выбранным районам на дату среза." />
+                <BedDouble size={16} /> Свободных номеров
+                <MethodologyTooltip text="Сумма свободных номеров по выбранным районам на дату среза. Высокое значение означает низкую загрузку — не путать с бизнес-успехом." />
               </div>
-              <p className="text-3xl font-bold tabular-nums leading-tight text-[hsl(var(--success))]">
+              <p className="text-3xl font-bold tabular-nums leading-tight text-[hsl(var(--foreground))]">
                 {filteredKpi.free_rooms.toLocaleString('ru-RU')}
               </p>
               <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
