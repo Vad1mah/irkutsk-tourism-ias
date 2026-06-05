@@ -1506,6 +1506,7 @@ class DBService:
                     WITH latest AS (
                         SELECT DISTINCT ON (id) id, rooms_num, available_rooms_percent, min_price
                         FROM hotel_statistics
+                        WHERE date >= (SELECT MAX(date) FROM hotel_statistics) - INTERVAL '14 days'
                         ORDER BY id, date DESC
                     )
                     SELECT
@@ -1578,6 +1579,7 @@ class DBService:
                         FROM hotel_statistics hs
                         JOIN hotels h ON h.id = hs.id
                         WHERE h.district = :district
+                          AND hs.date >= (SELECT MAX(date) FROM hotel_statistics) - INTERVAL '14 days'
                         ORDER BY hs.id, hs.date DESC
                     )
                 """
@@ -1711,6 +1713,7 @@ class DBService:
                         JOIN hotel_statistics hs ON hs.id = h.id
                         WHERE h.district = :district
                           AND hs.rooms_num BETWEEN :min_r AND :max_r
+                          AND hs.date >= (SELECT MAX(date) FROM hotel_statistics) - INTERVAL '14 days'
                           AND (CAST(:exclude_id AS TEXT) IS NULL OR h.id <> CAST(:exclude_id AS TEXT))
                         ORDER BY h.id, hs.date DESC
                     )

@@ -948,15 +948,14 @@ async def get_heatmap_data(data: DataServiceDep, cache: CacheServiceDep, days: i
             if row_date and start_date <= row_date <= end_date:
                 occ_map[str(row_date)] = round(row.get("avg_occupancy", 0) or 0, 1)
 
-        last_val = None
+        # Только фактические дни — без forward-fill последним значением, иначе
+        # тепловая карта молча размазывает устаревший день поверх gap.
         for d in all_dates:
             if d in occ_map:
-                last_val = occ_map[d]
-            if last_val is not None:
                 heatmap_data.append({
                     "district": district,
                     "date": d,
-                    "occupancy": occ_map.get(d, last_val),
+                    "occupancy": occ_map[d],
                 })
 
     result = {

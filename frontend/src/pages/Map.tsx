@@ -421,10 +421,13 @@ function MapPage() {
       {/* Баннер «нет данных за выбранную дату» — backend strict-фильтрует
           по hotel_statistics, и пустой день виден честно (а не подменой
           на ближайший предшествующий). */}
-      {hotelsMap && hotelsMap.total_hotels === 0 && focusDate !== isoToday() && (
+      {hotelsMap && hotelsMap.total_hotels === 0 && (
         <div className="px-3 py-2 rounded-lg border border-[hsl(var(--warning)/0.4)] bg-[hsl(var(--warning)/0.1)] text-sm text-[hsl(var(--warning-foreground,var(--foreground)))] flex items-center gap-2">
           <Calendar size={14} />
-          <span>За <strong>{fmtDateRu(focusDate)}</strong> нет данных от парсеров. Выберите другую дату или нажмите «сегодня».</span>
+          <span>
+            За <strong>{fmtDateRu(focusDate)}</strong> нет данных от парсеров
+            {focusDate === isoToday() ? ' — снимок за сегодня ещё не собран (отели обновляются каждые 2 ч).' : '. Выберите другую дату.'}
+          </span>
         </div>
       )}
 
