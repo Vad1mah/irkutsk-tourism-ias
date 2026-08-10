@@ -7,6 +7,7 @@ URL: https://www.culture.ru/afisha/irkutskaya-oblast-irkutsk
 """
 
 import asyncio
+import json
 import re
 import logging
 from datetime import date
@@ -18,10 +19,17 @@ from app.parsers.base import (
     parse_russian_date,
     detect_event_type,
 )
-from app.parsers.ai_extractor import CRAWL4AI_AVAILABLE, fetch_markdown_jina
+from app.parsers.ai_extractor import fetch_markdown_jina
 from app.parsers.anti_detection import rate_limiter, response_cache
 
 logger = logging.getLogger(__name__)
+
+# Встроенное состояние Next.js: полный список событий приходит внутри HTML,
+# отдельный запрос к API и рендер страницы не нужны.
+_NEXT_DATA_RE = re.compile(
+    r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>',
+    re.DOTALL,
+)
 
 
 def _extract_address_from_jsonld(jsonld: dict) -> str | None:
@@ -128,43 +136,109 @@ class CultureRFParser(BaseParser):
             self.logger.debug("Используем кэш")
             return self._parse_markdown(cached)
         
-        # Crawl4AI — основной метод
-        if CRAWL4AI_AVAILABLE:
-            try:
-                from crawl4ai import AsyncWebCrawler, CrawlerRunConfig
-                
-                async with AsyncWebCrawler(verbose=False) as crawler:
-                    config = CrawlerRunConfig(
-                        wait_until="domcontentloaded",
-                        page_timeout=30000,
-                    )
-                    result = await crawler.arun(url=url, config=config)
-                    
-                    if result.success:
-                        await rate_limiter.report_success(url)
-                        response_cache.set(url, result.markdown)
-                        events = self._parse_markdown(result.markdown)
-                        self.logger.info(f"Crawl4AI: {len(events)} событий")
-                    else:
-                        await rate_limiter.report_error(url)
-                        self.logger.warning(f"Crawl4AI ошибка: {result.error_message}")
-            except Exception as e:
-                self.logger.warning(f"Crawl4AI недоступен: {e}")
-        
-        # Jina Reader — fallback
+        # Встроенное состояние Next.js — обычный GET, без браузера и без Jina.
+        html = await self.fetch_with_retry(url)
+        if html:
+            await rate_limiter.report_success(url)
+            events = self._parse_next_data(html)
+            self.logger.info(f"__NEXT_DATA__: {len(events)} событий")
+        else:
+            await rate_limiter.report_error(url)
+
+        # Jina Reader — запасной путь на случай смены разметки. С прод-IP он
+        # отдаёт 451 и закорачивается внутри fetch_markdown_jina.
         if not events:
-            self.logger.info("Используем Jina Reader fallback")
-            try:
-                markdown = await fetch_markdown_jina(url)
-                if markdown:
-                    response_cache.set(url, markdown)
-                    events = self._parse_markdown(markdown)
-                    self.logger.info(f"Jina Reader: {len(events)} событий")
-            except Exception as e:
-                self.logger.error(f"Jina Reader ошибка: {e}")
-                await rate_limiter.report_error(url)
-        
+            markdown = await fetch_markdown_jina(url)
+            if markdown:
+                response_cache.set(url, markdown)
+                events = self._parse_markdown(markdown)
+                self.logger.info(f"Jina Reader: {len(events)} событий")
+
         return events
+
+    def _parse_next_data(self, html: str) -> list[ParsedEvent]:
+        """Извлечь события из блока ``__NEXT_DATA__`` страницы афиши.
+
+        Записи без разбираемой даты начала пропускаются. На 10.08.2026 листинг
+        culture.ru не отдаёт её вовсе: ``date`` и ``seanceStartDate`` пусты у
+        всех записей, заполнен только ``seanceEndDate``, а детальные страницы по
+        ссылкам из собственной microdata отвечают 404. Подставлять дату
+        окончания вместо даты начала нельзя — даты событий питают оценку
+        событийного эффекта, и сдвинутая дата испортит её молча.
+        """
+        match = _NEXT_DATA_RE.search(html)
+        if not match:
+            self.logger.warning("Блок __NEXT_DATA__ не найден — разметка изменилась")
+            return []
+        try:
+            items = (
+                json.loads(match.group(1))["props"]["pageProps"]["events"]["items"]
+            )
+        except (json.JSONDecodeError, KeyError, TypeError) as e:
+            self.logger.warning(f"Не разобрать __NEXT_DATA__: {e}")
+            return []
+
+        events: list[ParsedEvent] = []
+        skipped_no_date = 0
+        for item in items:
+            event = self._event_from_item(item)
+            if event is None:
+                skipped_no_date += 1
+                continue
+            events.append(event)
+
+        if skipped_no_date:
+            self.logger.warning(
+                f"Пропущено {skipped_no_date} записей culture.ru без даты начала: "
+                "источник отдаёт только дату окончания"
+            )
+        return events
+
+    def _event_from_item(self, item: dict) -> ParsedEvent | None:
+        """Собрать ParsedEvent из записи листинга; None — если нет даты начала."""
+        title = (item.get("title") or "").strip()
+        if len(title) < 3:
+            return None
+
+        raw_start = item.get("date") or item.get("seanceStartDate")
+        date_start = str(raw_start)[:10] if raw_start else None
+        if not date_start:
+            return None
+
+        microdata = {}
+        if isinstance(item.get("microdata"), str):
+            try:
+                microdata = json.loads(item["microdata"])
+            except json.JSONDecodeError:
+                microdata = {}
+
+        place = (item.get("places") or [{}])[0]
+        price = item.get("price") or {}
+        genre = (item.get("genres") or [{}])[0].get("title") or ""
+        image = (microdata.get("image") or {}).get("url") if isinstance(microdata.get("image"), dict) else None
+
+        raw_end = item.get("seanceEndDate")
+        date_end = str(raw_end)[:10] if raw_end else None
+
+        try:
+            return ParsedEvent(  # pyright: ignore[reportCallIssue]
+                id=self.generate_event_id(title, date_start, "culture_rf"),
+                title=title,
+                description=(microdata.get("text") or "").strip() or None,
+                date_start=date_start,
+                date_end=date_end if date_end and date_end != date_start else None,
+                event_type=detect_event_type(title, genre),
+                location=item.get("topPlaceTitle") or place.get("title") or "Иркутск",
+                address=place.get("address"),
+                price_min=price.get("min"),
+                price_max=price.get("max"),
+                source="culture_rf",
+                url=microdata.get("url"),
+                image_url=image,
+            )
+        except Exception as e:
+            self.logger.debug(f"Запись culture.ru не прошла валидацию: {e}")
+            return None
 
     def _parse_markdown(self, markdown: str) -> list[ParsedEvent]:
         """Парсинг Markdown с culture.ru."""

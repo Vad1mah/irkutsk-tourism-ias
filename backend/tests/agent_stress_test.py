@@ -75,7 +75,7 @@ TEST_QUERIES: list[TestQuery] = [
               must_contain=("RevPAR",)),
     TestQuery(2, "chat",
               "Какие ближайшие события сильнее всего поднимают спрос на размещение? Топ-5 с расчётом влияния",
-              expect_tools=("get_top_events_by_impact", "search_events"),
+              expect_tools=("get_event_effect", "search_events"),
               must_contain=("событ",)),
     TestQuery(3, "chat",
               "Сравни средний тариф и загрузку по всем районам региона за последние 30 дней. Где RevPAR максимальный?",
@@ -101,7 +101,7 @@ TEST_QUERIES: list[TestQuery] = [
               must_contain=("RevPAR", "район")),
     TestQuery(8, "home",
               "Топ-5 событий с наибольшим положительным влиянием на спрос",
-              expect_tools=("get_top_events_by_impact",),
+              expect_tools=("get_event_effect",),
               must_contain=("событ",)),
     TestQuery(9, "home",
               "Сравни два самых загруженных района по RMS-метрикам",
@@ -123,7 +123,7 @@ TEST_QUERIES: list[TestQuery] = [
               must_contain=("Иркутск", "14")),
     TestQuery(13, "events",
               "Какие события повлияют на заполняемость отелей в мае?",
-              expect_tools=("search_events", "get_top_events_by_impact"),
+              expect_tools=("search_events", "get_event_effect"),
               must_contain=("событ", "мае")),
 
     # === Edge-cases (6) ===

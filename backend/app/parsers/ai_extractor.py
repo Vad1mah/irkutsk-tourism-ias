@@ -19,13 +19,11 @@ from app.parsers.base import (
     ParsedEvent, 
     parse_russian_date, 
     detect_event_type,
-    BaseParser,
-    ParserConfig
+    BaseParser
 )
 from app.parsers.anti_detection import (
     rate_limiter,
     response_cache,
-    get_stealth_config,
     get_realistic_headers,
 )
 
@@ -378,10 +376,18 @@ async def fetch_markdown_jina(url: str, use_cache: bool = True) -> str | None:
             logger.debug(f"Jina: кэш для {url}")
             return cached
     
+    jina_url = f"https://r.jina.ai/{url}"
+
+    # Прод-IP получает от Jina 451 Unavailable For Legal Reasons. Без этой
+    # проверки каждый парсер честно ждал бы своей очереди и растущего бэкоффа,
+    # чтобы получить тот же отказ.
+    if rate_limiter.is_unavailable(jina_url):
+        logger.debug("Jina Reader недоступен для этого хоста, пропускаем")
+        return None
+
     # Rate limiting (для Jina API)
     await rate_limiter.wait_for("r.jina.ai")
-    
-    jina_url = f"https://r.jina.ai/{url}"
+
     headers = get_realistic_headers()
     headers["Accept"] = "text/markdown"
     

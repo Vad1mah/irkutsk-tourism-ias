@@ -192,6 +192,15 @@ MIN_SAMPLES_FOR_HIGH_CONFIDENCE: int = 3  # 3+ записи в месяце — 
 BASELINE_CONFIDENCE_HIGH: int = 5   # >= N samples → confidence "high"
 BASELINE_CONFIDENCE_MEDIUM: int = 3  # >= N samples → confidence "medium" (else "low")
 
+# Событийный эффект (/api/analytics/events-effect).
+# Порог считается по НЕЗАВИСИМЫМ эпизодам, а не по событийным дням: месячный
+# фестиваль даёт один случай. Ниже порога район помечается неидентифицируемым и
+# интервал по нему не показывается, каким бы узким тот ни выглядел.
+MIN_EVENT_EPISODES: int = 10
+EVENTS_EFFECT_PLACEBO_ROUNDS: int = 2000
+EVENTS_EFFECT_LIMIT: int = 100_000  # события берутся все, а не ближайшие к сегодня
+EVENTS_EFFECT_CACHE_TTL_S: int = 1800
+
 OCCUPANCY_MIN: float = 0.0
 OCCUPANCY_MAX: float = 100.0
 

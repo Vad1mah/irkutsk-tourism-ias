@@ -104,9 +104,13 @@ class AdaptiveRateLimiter:
     """Адаптивный rate limiter с учётом состояния каждого домена."""
 
     MAX_DOMAINS = 100  # Лимит доменов в памяти
+    # Коды, после которых повторять запрос бессмысленно: это отказ по существу
+    # (география, отсутствие прав), а не временная перегрузка.
+    TERMINAL_STATUSES = frozenset({401, 451})
 
     def __init__(self):
         self.domains: dict[str, DomainState] = {}
+        self._unavailable: set[str] = set()
         self._lock = asyncio.Lock()
     
     def _get_domain(self, url: str) -> str:
@@ -128,7 +132,14 @@ class AdaptiveRateLimiter:
             logger.debug(f"Очистка rate limiter: удалено {len(inactive[:50])} неактивных доменов")
     
     async def wait_for(self, url: str):
-        """Подождать перед запросом к URL."""
+        """Подождать перед запросом к URL.
+
+        Под локом только расчёт задержки и обновление состояния; само ожидание
+        идёт снаружи. Лок здесь один на все домены, поэтому сон под ним
+        превращал бэкофф одного домена в остановку всех парсеров сразу:
+        четыре источника в общем `asyncio.gather` выстраивались в очередь и
+        выбирали свой таймаут, ни разу не сходив в сеть.
+        """
         domain = self._get_domain(url)
 
         async with self._lock:
@@ -139,30 +150,34 @@ class AdaptiveRateLimiter:
 
             if domain not in self.domains:
                 self.domains[domain] = DomainState()
-            
+
             state = self.domains[domain]
-            
-            # Проверяем блокировку
-            if state.is_blocked():
-                wait_time = (state.blocked_until - datetime.now()).total_seconds()
+            wait_time = 0.0
+
+            if state.is_blocked() and state.blocked_until is not None:
+                wait_time = max((state.blocked_until - datetime.now()).total_seconds(), 0.0)
                 logger.warning(f"Домен {domain} заблокирован, ждём {wait_time:.0f} сек")
-                await asyncio.sleep(wait_time)
                 state.blocked_until = None
                 state.errors_count = 0
-            
-            # Рассчитываем задержку
-            time_since_last = (datetime.now() - state.last_request).total_seconds()
-            required_delay = state.get_delay()
-            
-            if time_since_last < required_delay:
-                wait_time = required_delay - time_since_last
-                logger.debug(f"Rate limit для {domain}: ждём {wait_time:.1f} сек")
-                await asyncio.sleep(wait_time)
-            
-            # Обновляем состояние
-            state.last_request = datetime.now()
+            else:
+                time_since_last = (datetime.now() - state.last_request).total_seconds()
+                required_delay = state.get_delay()
+                if time_since_last < required_delay:
+                    wait_time = required_delay - time_since_last
+                    logger.debug(f"Rate limit для {domain}: ждём {wait_time:.1f} сек")
+
+            # Отметка времени ставится до сна, иначе параллельные вызовы к тому же
+            # домену проснутся одновременно и задержка окажется бесполезной.
+            state.last_request = datetime.now() + timedelta(seconds=wait_time)
             state.request_count += 1
-    
+
+        if wait_time > 0:
+            await asyncio.sleep(wait_time)
+
+    def is_unavailable(self, url: str) -> bool:
+        """Помечен ли домен как недоступный навсегда в пределах процесса."""
+        return self._get_domain(url) in self._unavailable
+
     async def report_success(self, url: str):
         """Сообщить об успешном запросе."""
         domain = self._get_domain(url)
@@ -170,24 +185,35 @@ class AdaptiveRateLimiter:
             if domain in self.domains:
                 # Постепенно снижаем счётчик ошибок
                 self.domains[domain].errors_count = max(0, self.domains[domain].errors_count - 1)
-    
+
     async def report_error(self, url: str, status_code: int | None = None):
         """Сообщить об ошибке."""
         domain = self._get_domain(url)
         async with self._lock:
             if domain not in self.domains:
                 self.domains[domain] = DomainState()
-            
+
             state = self.domains[domain]
             state.errors_count += 1
-            
+
+            # 451 и 401 — отказ по существу, а не перегрузка: ждать и повторять
+            # бессмысленно. Прод-IP получает 451 от r.jina.ai, и без этой ветки
+            # каждый следующий вызов лишь наращивал задержку до потолка в 60 сек.
+            if status_code in self.TERMINAL_STATUSES:
+                self._unavailable.add(domain)
+                logger.warning(
+                    f"Домен {domain} помечен недоступным (код {status_code}): "
+                    "дальнейшие обращения в этом процессе пропускаются"
+                )
+                return
+
             # Блокировка при определённых кодах
             if status_code in [429, 403, 503]:
                 # Экспоненциальная блокировка
                 block_minutes = min(2 ** state.errors_count, 60)  # До 60 минут
                 state.blocked_until = datetime.now() + timedelta(minutes=block_minutes)
                 logger.warning(f"Домен {domain} заблокирован на {block_minutes} мин (код {status_code})")
-    
+
     def get_stats(self) -> dict[str, Any]:
         """Статистика по доменам."""
         return {
@@ -209,18 +235,27 @@ class ResponseCache:
     MAX_MEMORY_ENTRIES = 500  # Лимит записей в памяти
 
     def __init__(self, cache_dir: str = ".cache/parser", ttl_hours: int = 6):
-        self.cache_dir = Path(cache_dir)
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.ttl = timedelta(hours=ttl_hours)
         self.memory_cache: dict[str, Any] = {}
+        # Кэш на диске — ускорение, а не требование. Экземпляр создаётся на
+        # импорте модуля, поэтому упавший mkdir роняет импорт приложения целиком:
+        # так контейнер уходил в crash-loop с `Errno 28` при заполненном диске.
+        self.cache_dir: Path | None = Path(cache_dir)
+        try:
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            logger.warning(
+                f"Дисковый кэш парсеров недоступен ({e}); работаем только в памяти"
+            )
+            self.cache_dir = None
     
     def _get_key(self, url: str) -> str:
         """Генерировать ключ кэша."""
         return hashlib.md5(url.encode()).hexdigest()
     
-    def _get_path(self, key: str) -> Path:
-        """Путь к файлу кэша."""
-        return self.cache_dir / f"{key}.json"
+    def _get_path(self, key: str) -> Path | None:
+        """Путь к файлу кэша; None, если дисковый кэш недоступен."""
+        return self.cache_dir / f"{key}.json" if self.cache_dir else None
     
     def get(self, url: str) -> str | None:
         """Получить из кэша."""
@@ -235,7 +270,7 @@ class ResponseCache:
         
         # Проверяем файл
         path = self._get_path(key)
-        if path.exists():
+        if path and path.exists():
             try:
                 with open(path, encoding="utf-8") as f:
                     entry = json.load(f)
@@ -267,8 +302,11 @@ class ResponseCache:
         self.memory_cache[key] = entry
 
         # На диск
+        path = self._get_path(key)
+        if path is None:
+            return
         try:
-            with open(self._get_path(key), "w", encoding="utf-8") as f:
+            with open(path, "w", encoding="utf-8") as f:
                 json.dump(entry, f, ensure_ascii=False)
         except Exception as e:
             logger.debug(f"Ошибка записи кэша: {e}")
@@ -297,7 +335,7 @@ class ResponseCache:
             del self.memory_cache[k]
         
         # Диск
-        for path in self.cache_dir.glob("*.json"):
+        for path in (self.cache_dir.glob("*.json") if self.cache_dir else ()):
             try:
                 with open(path) as f:
                     entry = json.load(f)
@@ -310,7 +348,7 @@ class ResponseCache:
         """Статистика кэша."""
         return {
             "memory_entries": len(self.memory_cache),
-            "disk_entries": len(list(self.cache_dir.glob("*.json"))),
+            "disk_entries": len(list(self.cache_dir.glob("*.json"))) if self.cache_dir else 0,
         }
 
 
@@ -418,7 +456,7 @@ if __name__ == "__main__":
         for i in range(3):
             print(f"   Запрос {i+1} к kassir.ru...")
             await limiter.wait_for("https://irk.kassir.ru/")
-            print(f"   ✓ Выполнен")
+            print("   ✓ Выполнен")
         
         print(f"\n   Статистика: {limiter.get_stats()}")
         

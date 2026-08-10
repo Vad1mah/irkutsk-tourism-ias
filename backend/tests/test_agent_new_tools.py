@@ -24,30 +24,41 @@ def _make_response(status: int, json_data):
 # Fixtures — образцы ответов бэкенда
 # ---------------------------------------------------------------------------
 
-# Ключи соответствуют реальному контракту /api/analytics/events-impact
-# (methodology_service.corrected_impact → baseline_mean, n_samples). Раньше здесь
-# стояли baseline_occupancy/n — те же неверные ключи, что читал код агента, из-за
-# чего baseline/n печатались как 0.0/— на проде, а тест этого не замечал.
-EVENTS_IMPACT_PAYLOAD = [
-    {
-        "event": "Фестиваль Байкал",
-        "date": "2026-07-15",
-        "district": "Иркутский",
-        "delta_pct": 22.5,
-        "baseline_mean": 55.0,
-        "n_samples": 8,
-        "confidence": "high",
+# Ключи соответствуют контракту /api/analytics/events-effect.
+EVENTS_EFFECT_PAYLOAD = {
+    "method": "month_cell_regression",
+    "unit": "процентные пункты загрузки",
+    "period": {"from": "2025-03-20", "to": "2026-08-10"},
+    "overall": {
+        "district": None,
+        "identifiable": True,
+        "episodes": 49,
+        "effect_pp": 4.63,
+        "ci_lower": -0.69,
+        "ci_upper": 9.95,
+        "placebo_p": 0.0074,
+        "detected": False,
     },
-    {
-        "event": "Новый год",
-        "date": "2025-12-31",
-        "district": "Ольхонский",
-        "delta_pct": -5.3,
-        "baseline_mean": 40.0,
-        "n_samples": 3,
-        "confidence": "low",
-    },
-]
+    "by_district": [
+        {
+            "district": "Иркутский",
+            "identifiable": True,
+            "episodes": 43,
+            "effect_pp": 0.8,
+            "ci_lower": -1.84,
+            "ci_upper": 3.43,
+            "placebo_p": 0.6158,
+            "detected": False,
+        },
+        {
+            "district": "Ольхонский",
+            "identifiable": False,
+            "episodes": 2,
+            "reason": "независимых эпизодов 2 при минимуме 10: отделить событие от сезона нельзя",
+        },
+    ],
+    "min_episodes": 10,
+}
 
 BOOKING_PACE_PAYLOAD = {
     "summary": {
@@ -111,73 +122,55 @@ PRICE_DISTRIBUTION_PAYLOAD = {
 
 
 # ---------------------------------------------------------------------------
-# A1: get_top_events_by_impact
+# A1: get_event_effect
 # ---------------------------------------------------------------------------
 
-class TestGetTopEventsByImpact:
+class TestGetEventEffect:
     @pytest.mark.asyncio
-    async def test_returns_top_events(self):
-        from app.services.main_agent import get_top_events_by_impact
+    async def test_reports_measured_effect(self):
+        from app.services.main_agent import get_event_effect
 
         with patch("app.services.main_agent._agent_get", new_callable=AsyncMock) as mock_get:
-            mock_get.return_value = (200, EVENTS_IMPACT_PAYLOAD)
-            result = await get_top_events_by_impact.ainvoke({"n": 5, "min_impact": 0.0, "district": None})
+            mock_get.return_value = (200, EVENTS_EFFECT_PAYLOAD)
+            result = await get_event_effect.ainvoke({"district": None})
 
-        assert "Топ-" in result
-        assert "Фестиваль Байкал" in result
-        assert "22.5%" in result or "+22.5%" in result
-        assert "high" in result
-        # Регрессия: baseline и n должны браться из baseline_mean/n_samples,
-        # а не печататься как 0.0/— из-за рассинхрона ключей.
-        assert "baseline 55.0%" in result
-        assert "n=8" in result
+        assert "Иркутский" in result
+        assert "+0.8" in result
+        assert "эффект НЕ обнаружен" in result
+        # Район с двумя эпизодами не должен получать интервал ни при каких условиях.
+        assert "Ольхонский" in result
+        assert "оценка невозможна" in result
 
     @pytest.mark.asyncio
     async def test_filters_by_district(self):
-        from app.services.main_agent import get_top_events_by_impact
+        from app.services.main_agent import get_event_effect
 
         with patch("app.services.main_agent._agent_get", new_callable=AsyncMock) as mock_get:
-            mock_get.return_value = (200, EVENTS_IMPACT_PAYLOAD)
-            result = await get_top_events_by_impact.ainvoke(
-                {"n": 5, "min_impact": 0.0, "district": "Ольхонский"}
-            )
+            mock_get.return_value = (200, EVENTS_EFFECT_PAYLOAD)
+            result = await get_event_effect.ainvoke({"district": "Ольхонский"})
 
-        assert "Новый год" in result
-        assert "Фестиваль Байкал" not in result
+        assert "Ольхонский" in result
+        assert "Иркутский" not in result
 
     @pytest.mark.asyncio
-    async def test_filters_by_min_impact(self):
-        from app.services.main_agent import get_top_events_by_impact
+    async def test_unknown_district_returns_text(self):
+        from app.services.main_agent import get_event_effect
 
         with patch("app.services.main_agent._agent_get", new_callable=AsyncMock) as mock_get:
-            mock_get.return_value = (200, EVENTS_IMPACT_PAYLOAD)
-            result = await get_top_events_by_impact.ainvoke(
-                {"n": 5, "min_impact": 10.0, "district": None}
-            )
+            mock_get.return_value = (200, EVENTS_EFFECT_PAYLOAD)
+            result = await get_event_effect.ainvoke({"district": "Катангский"})
 
-        # Только Фестиваль (22.5%), Новый год (5.3%) не проходит порог
-        assert "Фестиваль Байкал" in result
-        assert "Новый год" not in result
+        assert "Нет данных" in result
 
     @pytest.mark.asyncio
     async def test_network_error_returns_text(self):
-        from app.services.main_agent import get_top_events_by_impact
+        from app.services.main_agent import get_event_effect
 
         with patch("app.services.main_agent._agent_get", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = (0, None)
-            result = await get_top_events_by_impact.ainvoke({"n": 5, "min_impact": 0.0, "district": None})
+            result = await get_event_effect.ainvoke({"district": None})
 
         assert "недоступен" in result.lower() or "ошибка" in result.lower()
-
-    @pytest.mark.asyncio
-    async def test_empty_data_returns_text(self):
-        from app.services.main_agent import get_top_events_by_impact
-
-        with patch("app.services.main_agent._agent_get", new_callable=AsyncMock) as mock_get:
-            mock_get.return_value = (200, [])
-            result = await get_top_events_by_impact.ainvoke({"n": 5, "min_impact": 0.0, "district": None})
-
-        assert "не накоплены" in result.lower() or "нет данных" in result.lower() or "пока" in result.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -483,7 +476,7 @@ class TestNewToolsRegistration:
 
         names = [t.name for t in ALL_TOOLS]
         for expected in [
-            "get_top_events_by_impact",
+            "get_event_effect",
             "get_booking_pace",
             "compare_districts",
             "compare_forecast_models",
@@ -501,7 +494,7 @@ class TestNewToolsRegistration:
         from app.services.main_agent import TOOLS_BY_NAME
 
         for expected in [
-            "get_top_events_by_impact",
+            "get_event_effect",
             "get_booking_pace",
             "compare_districts",
             "compare_forecast_models",
@@ -533,7 +526,7 @@ class TestNewToolsRegistration:
 
     def test_new_tools_are_async(self):
         from app.services.main_agent import (
-            get_top_events_by_impact,
+            get_event_effect,
             get_booking_pace,
             compare_districts,
             compare_forecast_models,
@@ -541,7 +534,7 @@ class TestNewToolsRegistration:
             get_price_distribution,
         )
         for t in [
-            get_top_events_by_impact,
+            get_event_effect,
             get_booking_pace,
             compare_districts,
             compare_forecast_models,

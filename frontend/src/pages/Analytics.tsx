@@ -5,7 +5,7 @@ import {
   api,
   type RevenueSummaryDistrict,
   type WeekdayHeatmapCell,
-  type CorrectedEventsImpact,
+  type EventsEffect,
   type SegmentsResponse,
   type PriceDistributionResponse,
   type DistrictSegmentsResponse,
@@ -69,9 +69,9 @@ function Analytics() {
     enabled: activeTab === 'seasonality',
   })
 
-  const { data: eventsImpactCorrected, isLoading: loadEvents } = useQuery({
-    queryKey: ['events-impact-corrected'],
-    queryFn: () => api.getEventsImpactCorrected(3),
+  const { data: eventsEffect, isLoading: loadEvents } = useQuery({
+    queryKey: ['events-effect'],
+    queryFn: api.getEventsEffect,
     enabled: activeTab === 'events',
   })
 
@@ -198,7 +198,7 @@ function Analytics() {
           {/* Tab: События */}
           {activeTab === 'events' && (
             <EventsTab
-              eventsImpactCorrected={eventsImpactCorrected ?? null}
+              eventsEffect={eventsEffect ?? null}
               loadEvents={loadEvents}
               navigate={navigate}
             />
@@ -617,110 +617,89 @@ function SeasonalityTab({
 // ─── Tab: События ─────────────────────────────────────────────────────────────
 
 function EventsTab({
-  eventsImpactCorrected,
+  eventsEffect,
   loadEvents,
   navigate,
 }: {
-  eventsImpactCorrected: CorrectedEventsImpact | null
+  eventsEffect: EventsEffect | null
   loadEvents: boolean
   navigate: (path: string) => void
 }) {
-  const [onlySignificant, setOnlySignificant] = useState(false)
-
-  const topImpact = useMemo(() => {
-    if (!eventsImpactCorrected) return []
-    let data = [...eventsImpactCorrected].filter(e => e.delta_pct != null)
-    if (onlySignificant) data = data.filter(e => Math.abs(e.delta_pct ?? 0) >= 5)
-    return data.sort((a, b) => Math.abs(b.delta_pct ?? 0) - Math.abs(a.delta_pct ?? 0)).slice(0, 10)
-  }, [eventsImpactCorrected, onlySignificant])
-
   return (
     <div className="space-y-6">
       <Card variant="glass">
         <CardHeader className="pb-2">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <div className="flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-[hsl(var(--warning))]" />
-              <CardTitle className="text-base">Топ-10 событий по влиянию на спрос</CardTitle>
-            </div>
-            <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={onlySignificant}
-                onChange={e => setOnlySignificant(e.target.checked)}
-                className="w-4 h-4 rounded border-[hsl(var(--border))] accent-[hsl(var(--primary))] cursor-pointer"
-              />
-              <span className="text-[hsl(var(--muted-foreground))]">только |влияние| ≥ 5%</span>
-            </label>
+          <div className="flex items-center gap-2">
+            <Calendar className="w-5 h-5 text-[hsl(var(--warning))]" />
+            <CardTitle className="text-base">Влияние событий на загрузку — что показало измерение</CardTitle>
           </div>
           <p className="text-sm text-[hsl(var(--muted-foreground))]">
-            Отклонение загрузки в день события от обычного уровня — медианы по похожим дням недели в окне ±3 недели. Сортировка по модулю влияния.{' '}
-            <MethodologyTooltip text="Базовая линия — медиана загрузки по тем же дням недели в трёх неделях до и после события (исключая другие event-дни). Отклонение в процентных пунктах: положительное — спрос выше нормы, отрицательное — ниже." />
+            День события сравнивается с обычными днями того же календарного месяца в том же районе.{' '}
+            <MethodologyTooltip text="У каждой пары «район — месяц» своя точка отсчёта, поэтому форма сезонной кривой не моделируется и подкручивать в методе нечего. Ошибка считается по этим же ячейкам: многодневный фестиваль даёт подряд идущие дни с общим уровнем спроса, и считать их независимыми наблюдениями нельзя." />
           </p>
         </CardHeader>
         <CardContent>
           {loadEvents ? (
-            <div className="h-64 skeleton rounded-xl" />
-          ) : topImpact.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-xs uppercase tracking-wider text-[hsl(var(--muted-foreground))] border-b border-[hsl(var(--border))]">
-                    <th className="py-2 pr-3">Дата</th>
-                    <th className="py-2 pr-3">Событие</th>
-                    <th className="py-2 pr-3">Район</th>
-                    <th className="py-2 pr-3 text-right">Δ отн.</th>
-                    <th className="py-2 pr-3 text-right">База → факт</th>
-                    <th className="py-2 pr-3 text-right">N набл.</th>
-                    <th className="py-2 text-center">Достоверность</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {topImpact.map((e, i) => {
-                    const isHi = e.confidence === 'high'
-                    const isMid = e.confidence === 'medium'
-                    return (
-                      <tr
-                        key={i}
-                        className="border-b border-[hsl(var(--border))] hover:bg-[hsl(var(--secondary))/0.4] cursor-pointer"
-                        onClick={() => navigate('/events')}
-                      >
-                        <td className="py-2 pr-3 whitespace-nowrap">{e.date}</td>
-                        <td className="py-2 pr-3 max-w-xs truncate">{e.event}</td>
-                        <td className="py-2 pr-3 whitespace-nowrap">{e.district}</td>
+            <div className="h-48 skeleton rounded-xl" />
+          ) : eventsEffect ? (
+            <div className="space-y-4">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs uppercase tracking-wider text-[hsl(var(--muted-foreground))] border-b border-[hsl(var(--border))]">
+                      <th className="py-2 pr-3">Район</th>
+                      <th className="py-2 pr-3 text-right">Эффект, п.п.</th>
+                      <th className="py-2 pr-3 text-right">95% интервал</th>
+                      <th className="py-2 pr-3 text-right">
+                        Эпизодов
+                        <MethodologyTooltip text="Неразрывные серии событийных дней. Месячный фестиваль — это один случай, а не тридцать: оценка по нему не становится надёжнее оттого, что он длился месяц." />
+                      </th>
+                      <th className="py-2">Вывод</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[eventsEffect.overall, ...eventsEffect.by_district].map((row, i) => (
+                      <tr key={i} className="border-b border-[hsl(var(--border))]">
+                        <td className="py-2 pr-3 whitespace-nowrap font-medium">
+                          {row.district ?? 'Все районы'}
+                        </td>
                         <td className="py-2 pr-3 text-right tabular-nums">
-                          <span className={`inline-flex items-center gap-0.5 ${(e.delta_pct ?? 0) > 0 ? 'text-[hsl(var(--success))]' : 'text-[hsl(var(--destructive))]'}`}>
-                            {(e.delta_pct ?? 0) > 0 ? '↑' : '↓'} {Math.abs(e.delta_pct ?? 0).toFixed(1)}%
-                          </span>
+                          {row.identifiable && row.effect_pp != null
+                            ? `${row.effect_pp > 0 ? '+' : ''}${row.effect_pp.toFixed(1)}`
+                            : '—'}
                         </td>
                         <td className="py-2 pr-3 text-right tabular-nums whitespace-nowrap">
-                          {e.baseline_mean != null ? (
-                            <span className="text-[hsl(var(--muted-foreground))]">
-                              {e.baseline_mean.toFixed(0)}%
-                              <span className="opacity-50 px-0.5">→</span>
-                              <span className="text-[hsl(var(--foreground))]">
-                                {e.occupancy_on_day != null ? `${e.occupancy_on_day.toFixed(0)}%` : '—'}
-                              </span>
-                            </span>
-                          ) : '—'}
+                          {row.identifiable && row.ci_lower != null && row.ci_upper != null
+                            ? `[${row.ci_lower > 0 ? '+' : ''}${row.ci_lower.toFixed(1)}, ${row.ci_upper > 0 ? '+' : ''}${row.ci_upper.toFixed(1)}]`
+                            : '—'}
                         </td>
-                        <td className="py-2 pr-3 text-right tabular-nums">{e.n_samples}</td>
-                        <td className="py-2 text-center">
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs ${isHi ? 'bg-[hsl(var(--success)/0.15)] text-[hsl(var(--success))]' : isMid ? 'bg-[hsl(var(--primary)/0.15)] text-[hsl(var(--primary))]' : 'bg-[hsl(var(--muted-foreground)/0.15)] text-[hsl(var(--muted-foreground))]'}`}>
-                            {localizeConfidence(e.confidence)}
-                          </span>
+                        <td className="py-2 pr-3 text-right tabular-nums">{row.episodes ?? '—'}</td>
+                        <td className="py-2 text-[hsl(var(--muted-foreground))]">
+                          {!row.identifiable
+                            ? (row.reason ?? 'оценка невозможна')
+                            : row.detected
+                              ? 'эффект обнаружен'
+                              : 'эффект не обнаружен'}
                         </td>
                       </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                Период данных: {eventsEffect.period.from ?? '—'} — {eventsEffect.period.to ?? '—'}.
+                Район показывается с оценкой, только если в нём набралось не меньше{' '}
+                {eventsEffect.min_episodes} независимых эпизодов. Ниже этого порога отделить
+                событие от сезона нельзя: фестиваль, который каждый год ставят на пик спроса,
+                неотличим от самого пика.
+              </p>
+              <Button variant="secondary" size="sm" onClick={() => navigate('/events')}>
+                Календарь событий
+              </Button>
             </div>
           ) : (
             <p className="text-sm text-[hsl(var(--muted-foreground))] py-8 text-center">
-              {eventsImpactCorrected && eventsImpactCorrected.length > 0 && onlySignificant
-                ? 'Нет событий с влиянием ≥ 5%. Снимите фильтр для отображения всех.'
-                : 'Недостаточно данных для расчёта влияния событий.'}
+              Недостаточно данных, чтобы измерить влияние событий.
             </p>
           )}
         </CardContent>

@@ -10,13 +10,11 @@ from fastapi.responses import StreamingResponse
 from collections import defaultdict
 import logging
 
-from statistics import mean
-from app.constants import VALID_DISTRICTS, CITY_TO_DISTRICT, DEFAULT_DISTRICT, DISTRICT_CENTERS, SEASON_MONTHS, MIN_SAMPLES_PER_MONTH, MIN_SAMPLES_FOR_HIGH_CONFIDENCE, BASELINE_CONFIDENCE_HIGH, BASELINE_CONFIDENCE_MEDIUM, DISTRICT_SAMPLE_HIGH, DISTRICT_SAMPLE_MIN
+from app.constants import VALID_DISTRICTS, CITY_TO_DISTRICT, DEFAULT_DISTRICT, DISTRICT_CENTERS, SEASON_MONTHS, MIN_SAMPLES_PER_MONTH, MIN_SAMPLES_FOR_HIGH_CONFIDENCE, DISTRICT_SAMPLE_HIGH, DISTRICT_SAMPLE_MIN, MIN_EVENT_EPISODES, EVENTS_EFFECT_PLACEBO_ROUNDS, EVENTS_EFFECT_LIMIT, EVENTS_EFFECT_CACHE_TTL_S
 from app.services.methodology_service import methodology_service
 from app.dependencies import (
     DataServiceDep, WeatherServiceDep, EnsembleServiceDep, CacheServiceDep,
 )
-from app.services.protocols import DataServiceProtocol
 from pydantic import ValidationError
 from app.models.schemas import (
     KPIResponse, CityHotels,
@@ -572,39 +570,115 @@ async def get_kpi(data: DataServiceDep, cache: CacheServiceDep) -> KPIResponse:
     return result
 
 
-@router.get("/events-impact")
-async def get_events_impact(
+@router.get("/events-effect")
+async def get_events_effect(
     data: DataServiceDep,
     cache: CacheServiceDep,
-    method: Literal["naive", "seasonal_corrected"] = "seasonal_corrected",
-    horizon: Literal["past", "upcoming"] = "past",
-    window_weeks: int = Query(3, ge=1, le=52, description="Окно для baseline-расчёта (недели). Используется в seasonal_corrected."),
-) -> list[dict[str, Any]]:
-    """Влияние событий на загруженность: сравнение в дни событий vs обычные дни.
+) -> dict[str, Any]:
+    """Измеренный эффект событий на загрузку — по региону и по каждому району.
 
-    Args:
-        method: Метод расчёта. ``naive`` — простая разница event_day vs avg.
-            ``seasonal_corrected`` — скорректированный baseline по weekday ±window_weeks недель,
-            исключая дни других событий.
-        horizon: ``past`` — ИЗМЕРЕННЫЙ impact прошедших событий (факт загрузки).
-            ``upcoming`` — ПРОГНОЗНЫЙ impact предстоящих событий (средний historical
-            impact событий того же типа, ``is_forecast=True``).
-        window_weeks: Размер окна для baseline (недели), только для seasonal_corrected.
+    Сравнение идёт с обычными днями того же календарного месяца в том же районе:
+    у каждой пары «район × месяц» своя константа, поэтому форма сезонной кривой
+    не моделируется и настраивать в методе нечего.
+
+    Ключевое поле ответа — ``episodes``. Оно считает неразрывные серии событийных
+    дней, а не сами дни: месячный фестиваль это один случай, а не тридцать, и
+    оценка по нему не становится надёжнее оттого, что он длился месяц. Район, где
+    эпизодов мало, помечается ``identifiable=False`` — по нему интервал не
+    предъявляется, каким бы узким он ни выглядел.
     """
-    cache_key = f"analytics:events-impact:{DEFAULT_DISTRICT}:{method}:{horizon}:{window_weeks}"
+    cache_key = "analytics:events-effect:v1"
     cached = await cache.get(cache_key)
     if cached:
         return cached
 
-    if horizon == "upcoming":
-        result = await _events_impact_upcoming(data, window_weeks=window_weeks)
-    elif method == "naive":
-        result = await _events_impact_naive(data)
-    else:
-        result = await _events_impact_seasonal_corrected(data, window_weeks=window_weeks)
+    if not data.is_connected:
+        raise HTTPException(503, "БД не подключена")
 
-    await cache.set(cache_key, result, ttl=300)
-    return result
+    events = await data.get_events(limit=EVENTS_EFFECT_LIMIT)
+    event_days: dict[str, set[_date]] = {}
+    for event in events:
+        district = _resolve_district(event)
+        start = _to_date(event.get("date_start"))
+        if not start:
+            continue
+        end = _to_date(event.get("date_end")) or start
+        cursor = start
+        while cursor <= max(end, start):
+            event_days.setdefault(district, set()).add(cursor)
+            cursor += timedelta(days=1)
+
+    districts = sorted(event_days)
+    fetched = await asyncio.gather(
+        *(data.get_occupancy_by_district(d) for d in districts),
+        return_exceptions=False,
+    )
+    panel: list[tuple[str, _date, float]] = []
+    for district, rows in zip(districts, fetched):
+        for row in rows:
+            day = _to_date(row.get("date"))
+            occupancy = row.get("avg_occupancy")
+            if day and occupancy is not None:
+                panel.append((district, day, float(occupancy)))
+
+    def _describe(result: Any, district: str | None) -> dict[str, Any]:
+        if result is None:
+            return {
+                "district": district,
+                "identifiable": False,
+                "reason": "недостаточно наблюдений для сравнения",
+            }
+        identifiable = result.n_episodes >= MIN_EVENT_EPISODES
+        payload: dict[str, Any] = {
+            "district": district,
+            "identifiable": identifiable,
+            "episodes": result.n_episodes,
+            "event_days": result.n_event_days,
+            "observations": result.n_obs,
+            "cells": result.n_cells,
+        }
+        if identifiable:
+            payload.update({
+                "effect_pp": result.tau,
+                "ci_lower": result.ci_lower,
+                "ci_upper": result.ci_upper,
+                "placebo_p": result.placebo_p,
+                "detected": result.ci_lower > 0 or result.ci_upper < 0,
+            })
+        else:
+            payload["reason"] = (
+                f"независимых эпизодов {result.n_episodes} при минимуме "
+                f"{MIN_EVENT_EPISODES}: отделить событие от сезона нельзя"
+            )
+        return payload
+
+    overall = methodology_service.event_effect_regression(
+        panel=panel, event_days=event_days, placebo_rounds=EVENTS_EFFECT_PLACEBO_ROUNDS
+    )
+    per_district = []
+    for district in districts:
+        rows = [row for row in panel if row[0] == district]
+        result = methodology_service.event_effect_regression(
+            panel=rows,
+            event_days={district: event_days.get(district, set())},
+            placebo_rounds=EVENTS_EFFECT_PLACEBO_ROUNDS,
+        )
+        per_district.append(_describe(result, district))
+
+    days = [row[1] for row in panel]
+    response = {
+        "method": "month_cell_regression",
+        "unit": "процентные пункты загрузки",
+        "period": {
+            "from": min(days).isoformat() if days else None,
+            "to": max(days).isoformat() if days else None,
+        },
+        "overall": _describe(overall, None),
+        "by_district": per_district,
+        "min_episodes": MIN_EVENT_EPISODES,
+    }
+    await cache.set(cache_key, response, ttl=EVENTS_EFFECT_CACHE_TTL_S)
+    return response
 
 
 def _resolve_district(e: dict) -> str:
@@ -629,230 +703,6 @@ def _to_date(val: object) -> _date | None:
         return _date.fromisoformat(str(val)[:10])
     except (ValueError, TypeError):
         return None
-
-
-async def _events_impact_seasonal_corrected(
-    data: DataServiceProtocol,
-    window_weeks: int = 3,
-) -> list[dict[str, Any]]:
-    """Corrected impact: baseline по weekday в окне ±N недель, исключая другие event-дни."""
-    if not data.is_connected:
-        raise HTTPException(503, "БД не подключена")
-
-    events = await data.get_events()
-    if not events:
-        return []
-
-    # Карта occupancy по районам (резолвим район через _resolve_district)
-    districts = {_resolve_district(e) for e in events if e.get("date_start")}
-    districts_list = list(districts)
-    fetched_rows = await asyncio.gather(
-        *(data.get_occupancy_by_district(d) for d in districts_list),
-        return_exceptions=False,
-    )
-    history_per_district: dict[str, list[tuple[_date, float]]] = {
-        d: [(r["date"], r["avg_occupancy"]) for r in rows if r.get("avg_occupancy") is not None]
-        for d, rows in zip(districts_list, fetched_rows)
-    }
-
-    # Множество дат-событий для исключения из baseline (с поддержкой многодневных событий)
-    event_dates_per_district: dict[str, set[_date]] = {}
-    for e in events:
-        d = _resolve_district(e)
-        ds = _to_date(e.get("date_start"))
-        de = _to_date(e.get("date_end")) or ds
-        if not ds:
-            continue
-        cur = ds
-        while cur <= de:
-            event_dates_per_district.setdefault(d, set()).add(cur)
-            cur += timedelta(days=1)
-
-    result: list[dict[str, Any]] = []
-    for e in events:
-        d = _resolve_district(e)
-        ds = _to_date(e.get("date_start"))
-        if not ds:
-            continue
-        history = history_per_district.get(d, [])
-        observed = next((occ for dd, occ in history if dd == ds), None)
-        if observed is None:
-            continue
-        baseline = methodology_service.compute_seasonal_baseline(
-            target_date=ds,
-            target_weekday=ds.weekday(),
-            occupancy_history=history,
-            event_dates=event_dates_per_district.get(d, set()),
-            window_weeks=window_weeks,
-        )
-        impact = methodology_service.corrected_impact(observed=observed, baseline=baseline)
-        result.append({
-            "event": e.get("title"),
-            "date": ds.isoformat(),
-            "district": d,
-            "event_type": e.get("event_type") or "event",
-            "occupancy_on_day": round(observed, 2),
-            **impact,
-        })
-
-    # Сортировка по модулю delta_pct убыв.
-    result.sort(key=lambda r: abs(r.get("delta_pct") or 0), reverse=True)
-    return result
-
-
-async def _events_impact_upcoming(
-    data: DataServiceProtocol,
-    window_weeks: int = 3,
-) -> list[dict[str, Any]]:
-    """Прогнозный impact для ПРЕДСТОЯЩИХ событий.
-
-    Измеренный impact бывает только у прошедших событий (нужен факт загрузки).
-    Для предстоящих оцениваем влияние как СРЕДНИЙ historical impact прошедших
-    событий того же типа (concert/festival/...), с fallback на общий средний.
-    Результат помечается ``is_forecast=True`` — это оценка, не факт.
-    """
-    if not data.is_connected:
-        raise HTTPException(503, "БД не подключена")
-
-    past = await _events_impact_seasonal_corrected(data, window_weeks=window_weeks)
-    by_type: dict[str, list[float]] = defaultdict(list)
-    all_deltas: list[float] = []
-    for r in past:
-        dp = r.get("delta_pct")
-        if dp is None:
-            continue
-        by_type[r.get("event_type") or "event"].append(dp)
-        all_deltas.append(dp)
-    global_avg = mean(all_deltas) if all_deltas else None
-
-    today = _date.today()
-    events = await data.get_events()
-    upcoming: list[dict[str, Any]] = []
-    for e in events:
-        ds = _to_date(e.get("date_start"))
-        if not ds or ds < today:
-            continue
-        et = e.get("event_type") or "event"
-        samples = by_type.get(et, [])
-        if samples:
-            fd, n, basis = mean(samples), len(samples), f"средний impact прошедших событий типа «{et}»"
-        elif global_avg is not None:
-            fd, n, basis = global_avg, len(all_deltas), "средний impact всех прошедших событий"
-        else:
-            continue
-        conf = (
-            "high" if n >= BASELINE_CONFIDENCE_HIGH else
-            "medium" if n >= BASELINE_CONFIDENCE_MEDIUM else
-            "low"
-        )
-        upcoming.append({
-            "event": e.get("title"),
-            "date": ds.isoformat(),
-            "district": _resolve_district(e),
-            "event_type": et,
-            "delta_pct": round(fd, 2),
-            "confidence": conf,
-            "n_samples": n,
-            "method": "forecast_by_type",
-            "is_forecast": True,
-            "forecast_basis": basis,
-        })
-
-    upcoming.sort(key=lambda r: abs(r.get("delta_pct") or 0), reverse=True)
-    return upcoming
-
-
-async def _events_impact_naive(data: DataServiceProtocol) -> list[dict[str, Any]]:
-    """Наивный расчёт влияния событий: разница загруженности в день события vs среднее."""
-    if not data.is_connected:
-        raise HTTPException(503, "БД не подключена")
-
-    default_occ = await data.get_occupancy_by_district(DEFAULT_DISTRICT)
-    if not default_occ:
-        return []
-    occ_dates = [row["date"] for row in default_occ if row.get("date")]
-    if not occ_dates:
-        return []
-    data_start = min(occ_dates)
-    data_end = max(occ_dates)
-
-    events = await data.get_events(date_from=data_start, date_to=data_end)
-    if not events:
-        return []
-
-    district_occupancy_cache: dict[str, list[dict]] = {DEFAULT_DISTRICT: default_occ}
-
-    async def _get_district_occupancy(district: str) -> list[dict]:
-        if district not in district_occupancy_cache:
-            district_occupancy_cache[district] = await data.get_occupancy_by_district(district)
-        return district_occupancy_cache[district]
-
-    def _find_nearest_occupancy(occ_map: dict, target: date, max_delta: int = 3) -> float | None:
-        for delta in range(max_delta + 1):
-            for d in (target + timedelta(days=delta), target - timedelta(days=delta)):
-                if d in occ_map:
-                    return occ_map[d]
-        return None
-
-    seen_dates: set[date] = set()
-    diverse_events = []
-    for event in events:
-        ds = event.get("date_start")
-        if isinstance(ds, str):
-            try:
-                ds = date.fromisoformat(ds[:10])
-            except ValueError:
-                continue
-        if ds and ds not in seen_dates:
-            seen_dates.add(ds)
-            diverse_events.append(event)
-        if len(diverse_events) >= 30:
-            break
-
-    result = []
-    for event in diverse_events:
-        title = event.get("title", "")
-        date_start = event.get("date_start")
-
-        if not date_start:
-            continue
-
-        district = _resolve_district(event)
-
-        if isinstance(date_start, str):
-            try:
-                date_start = date.fromisoformat(date_start[:10])
-            except ValueError:
-                continue
-
-        date_str = date_start.strftime("%d.%m") if isinstance(date_start, date) else str(date_start)[:10]
-
-        occupancy_data = await _get_district_occupancy(district)
-        occupancy_map = {row["date"]: row["avg_occupancy"] for row in occupancy_data}
-
-        event_day_occ = occupancy_map.get(date_start) or _find_nearest_occupancy(occupancy_map, date_start)
-        all_values = [v for v in occupancy_map.values() if v is not None]
-        avg_occ = round(sum(all_values) / len(all_values), 1) if all_values else None
-
-        impact = None
-        if event_day_occ is not None and avg_occ is not None:
-            impact = round(event_day_occ - avg_occ, 1)
-
-        if impact is None:
-            continue
-
-        result.append({
-            "event": title[:50] if title else "Событие",
-            "date": date_str,
-            "district": district,
-            "source": event.get("source_id", ""),
-            "occupancy_on_day": round(event_day_occ, 1) if event_day_occ else None,
-            "avg_occupancy": avg_occ,
-            "impact": impact,
-        })
-
-    result.sort(key=lambda x: abs(x.get("impact") or 0), reverse=True)
-    return result
 
 
 @router.get("/hotels-by-city", response_model=list[CityHotels])

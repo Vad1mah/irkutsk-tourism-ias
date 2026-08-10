@@ -327,24 +327,29 @@ export type ForecastValidationResponse = {
   actual: Array<{ date: string; occupancy: number }>
 }
 
-export type CorrectedEventsImpact = Array<{
-  event: string
-  date: string
-  district: string
-  occupancy_on_day?: number
-  delta_pct: number | null
-  baseline_mean?: number | null
-  ci_lower?: number | null
-  ci_upper?: number | null
-  n_samples: number
-  confidence: 'high' | 'medium' | 'low'
-  method: string
-  event_type?: string
-  is_forecast?: boolean
-  forecast_basis?: string
-}>
+export type EventEffectEntry = {
+  district: string | null
+  identifiable: boolean
+  reason?: string
+  episodes?: number
+  event_days?: number
+  observations?: number
+  cells?: number
+  effect_pp?: number
+  ci_lower?: number
+  ci_upper?: number
+  placebo_p?: number | null
+  detected?: boolean
+}
 
-export type EventsImpactHorizon = 'past' | 'upcoming'
+export type EventsEffect = {
+  method: string
+  unit: string
+  period: { from: string | null; to: string | null }
+  overall: EventEffectEntry
+  by_district: EventEffectEntry[]
+  min_episodes: number
+}
 
 export type MapHotel = {
   id: string; name: string; city: string; district: string
@@ -547,7 +552,6 @@ export const api = {
   }>('/health'),
 
 
-  getEventsImpact: () => request<EventImpact[]>('/api/analytics/events-impact'),
 
   getHotelsMap: (district?: string, snapshotDate?: string) => {
     const qs = new URLSearchParams()
@@ -671,10 +675,7 @@ export const api = {
     })
   },
 
-  getEventsImpactCorrected: (windowWeeks = 3, horizon: EventsImpactHorizon = 'past') => {
-    const params = new URLSearchParams({ method: 'seasonal_corrected', horizon, window_weeks: String(windowWeeks) })
-    return request<CorrectedEventsImpact>(`/api/analytics/events-impact?${params}`)
-  },
+  getEventsEffect: () => request<EventsEffect>('/api/analytics/events-effect'),
 
   exportUrl: (
     type: 'occupancy' | 'events' | 'hotels',

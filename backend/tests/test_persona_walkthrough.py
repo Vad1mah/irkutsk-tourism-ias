@@ -31,13 +31,10 @@ async def test_persona_hotelier_workflow(client):
     assert fc["ensemble"], "Прогноз пуст"
     assert "occupancy" in fc["ensemble"][0], "В точке прогноза нет поля occupancy"
 
-    # 4. События в горизонте — corrected impact
-    events_impact = await client.get(
-        "/api/analytics/events-impact",
-        params={"method": "seasonal_corrected"},
-    )
-    assert events_impact.status_code == 200
-    assert isinstance(events_impact.json(), list)
+    # 4. Измеренный эффект событий на загрузку
+    events_effect = await client.get("/api/analytics/events-effect")
+    assert events_effect.status_code == 200
+    assert "by_district" in events_effect.json()
 
     # 5. Темп бронирований (proxy-pickup)
     booking = await client.get(
@@ -84,12 +81,9 @@ async def test_persona_administration_workflow(client):
     )
     assert heat.status_code == 200
 
-    # 4. Событийный календарь с corrected impact
-    impact = await client.get(
-        "/api/analytics/events-impact",
-        params={"method": "seasonal_corrected"},
-    )
-    assert impact.status_code == 200
+    # 4. Измеренный эффект событий на загрузку
+    effect = await client.get("/api/analytics/events-effect")
+    assert effect.status_code == 200
 
     # 5. Сегменты — распределение объектов
     segments = await client.get("/api/analytics/segments")

@@ -10,7 +10,7 @@ import { api } from '../api/client'
 import { Card, Button, Badge, Dropdown } from '../components/ui'
 import { MethodologyTooltip } from '../components/MethodologyTooltip'
 import { ALL_DISTRICT_NAMES, DEFAULT_DISTRICT } from '../constants/districts'
-import { localizeConfidence, localizeSeries, FORECAST_HEADER_TEXT, FORECAST_METHODOLOGY_TEXT } from '../utils/localize'
+import { localizeSeries, FORECAST_HEADER_TEXT, FORECAST_METHODOLOGY_TEXT } from '../utils/localize'
 import { formatRuDate, formatRuDateRange } from '../utils/format'
 import { RECHARTS_TOOLTIP_PROPS, BAR_CURSOR_TRANSPARENT } from '../utils/chartTheme'
 import {
@@ -65,12 +65,6 @@ function Home() {
     staleTime: 60_000,
   })
 
-  const { data: eventsImpact } = useQuery({
-    queryKey: ['events-impact-upcoming'],
-    queryFn: () => api.getEventsImpactCorrected(3, 'upcoming'),
-    staleTime: 5 * 60_000,
-  })
-
   const { data: occupancyTimeseries } = useQuery({
     queryKey: ['occupancy-timeseries', district, 14],
     queryFn: () => api.getOccupancyTimeseries(district, 14),
@@ -102,14 +96,6 @@ function Home() {
     if (forecastSeries.length === 0) return null
     return Math.round(forecastSeries.reduce((s, p) => s + p.occupancy, 0) / forecastSeries.length * 10) / 10
   }, [forecastSeries])
-
-  const upcomingImpact = useMemo(() => {
-    if (!eventsImpact) return []
-    return [...eventsImpact]
-      .filter(e => e.delta_pct != null)
-      .sort((a, b) => Math.abs(b.delta_pct ?? 0) - Math.abs(a.delta_pct ?? 0))
-      .slice(0, 5)
-  }, [eventsImpact])
 
   // Combined factual + forecast series for chart
   const combinedSeries = useMemo(() => {
@@ -356,48 +342,6 @@ function Home() {
           )}
         </Card>
 
-        <Card variant="glass" padding="lg">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Calendar size={18} className="text-[hsl(var(--accent))]" />
-              <h2 className="text-base font-semibold">Предстоящие события — прогноз влияния</h2>
-            </div>
-            <Button variant="secondary" size="sm" onClick={() => navigate('/events')}>
-              Все события
-              <ArrowRight size={14} />
-            </Button>
-          </div>
-          {upcomingImpact.length > 0 ? (
-            <div className="space-y-2">
-              {upcomingImpact.map((e, i) => (
-                <div key={i} className="flex items-center gap-3 p-2 rounded-lg bg-[hsl(var(--secondary))/0.4]">
-                  <div className="w-9 h-9 rounded-lg bg-[hsl(var(--accent)/0.1)] flex items-center justify-center flex-shrink-0">
-                    <span className="text-xs text-[hsl(var(--accent))] font-bold">{e.date.slice(5)}</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{e.event}</p>
-                    <p className="text-xs text-[hsl(var(--muted-foreground))]">{e.district}</p>
-                  </div>
-                  <div className="flex flex-col items-end gap-1">
-                    <span className="flex items-center gap-1">
-                      <Badge variant="outline" size="sm">прогноз</Badge>
-                      <Badge variant={(e.delta_pct ?? 0) > 0 ? 'success' : 'danger'} size="sm">
-                        ~{(e.delta_pct ?? 0) > 0 ? '+' : ''}{(e.delta_pct ?? 0).toFixed(1)}%
-                      </Badge>
-                      <MethodologyTooltip text="Прогнозная оценка влияния на спрос: средний измеренный impact прошедших событий того же типа. Точное значение станет известно после события (по факту загрузки)." />
-                    </span>
-                    <span className={`text-xs font-medium flex items-center gap-1 ${e.confidence === 'high' ? 'text-[hsl(var(--success))]' : e.confidence === 'medium' ? 'text-[hsl(var(--accent))]' : 'text-[hsl(var(--muted-foreground))]'}`}>
-                      {localizeConfidence(e.confidence)}
-                      <MethodologyTooltip text="Надёжность прогноза: сколько прошедших событий того же типа легло в оценку. Высокая — 5 и более; средняя — 2-4; низкая — одно, оценка ориентировочная." />
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-[hsl(var(--muted-foreground))] py-6 text-center">Нет предстоящих событий для прогноза влияния на спрос.</p>
-          )}
-        </Card>
       </div>
 
       {/* AI Quick prompts */}

@@ -13,7 +13,6 @@ import {
 } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardContent, Badge, Button, Dropdown } from '../components/ui'
 import { ErrorState } from '../components/ErrorState'
-import { MethodologyTooltip } from '../components/MethodologyTooltip'
 import { RECHARTS_TOOLTIP_PROPS, BAR_CURSOR_TRANSPARENT } from '../utils/chartTheme'
 import { usePageTitle } from '../hooks/usePageTitle'
 
@@ -73,26 +72,6 @@ function Events() {
     queryKey: ['events'],
     queryFn: api.getEvents,
   })
-
-  // Прогнозный impact для предстоящих событий (events показывает будущее, а
-  // измеренный seasonal_corrected существует только для прошедших дат).
-  const { data: correctedImpactData } = useQuery({
-    queryKey: ['events-impact-upcoming'],
-    queryFn: () => api.getEventsImpactCorrected(3, 'upcoming'),
-    staleTime: 10 * 60 * 1000,
-  })
-
-  const correctedImpactMap = useMemo(() => {
-    const map = new Map<string, number>()
-    if (correctedImpactData) {
-      for (const item of correctedImpactData) {
-        if (item.delta_pct !== null) {
-          map.set(`${item.event.slice(0, 50)}|${item.date}`, item.delta_pct)
-        }
-      }
-    }
-    return map
-  }, [correctedImpactData])
 
   const sourceStats = useMemo(() => {
     const counts: Record<string, number> = {}
@@ -468,7 +447,6 @@ function Events() {
                 key={event.event_id}
                 event={event}
                 onClick={() => setSelectedEvent(event)}
-                correctedDeltaPct={correctedImpactMap.get(`${event.title.slice(0, 50)}|${event.date_start}`)}
               />
             ))}
           </div>
@@ -631,11 +609,9 @@ function EventMiniCard({
 function EventCard({
   event,
   onClick,
-  correctedDeltaPct,
 }: {
   event: EventData
   onClick: () => void
-  correctedDeltaPct?: number
 }) {
   const type = getEventTypeKey(event)
   const { icon: Icon, label, color, bgColor } = EVENT_TYPES[type]
@@ -688,17 +664,6 @@ function EventCard({
         {/* Impact + Hover hint */}
         <div className="mt-3 pt-3 border-t border-[hsl(var(--border))] flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-1.5 flex-wrap">
-            {correctedDeltaPct !== undefined && (
-              <span className={`text-xs font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 ${
-                correctedDeltaPct >= 0
-                  ? 'bg-[hsl(var(--success)/0.12)] text-[hsl(var(--success))]'
-                  : 'bg-[hsl(var(--destructive)/0.1)] text-[hsl(var(--destructive))]'
-              }`}>
-                Прогноз {correctedDeltaPct >= 0 ? '↑' : '↓'}~{Math.abs(correctedDeltaPct).toFixed(1)}%
-                <MethodologyTooltip text="Прогнозная оценка влияния на спрос: средний измеренный impact прошедших событий того же типа. Точное значение станет известно после события." />
-              </span>
-            )}
-            {correctedDeltaPct === undefined && <span />}
           </div>
           <span className="text-xs text-[hsl(var(--primary))] opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
             <Info size={12} />

@@ -35,6 +35,8 @@ class DataServiceProtocol(Protocol):
         date_to: date | None = None,
         source: str | None = None,
         city: str | None = None,
+        limit: int = 200,
+        skip: int = 0,
     ) -> list[dict]: ...
 
     async def get_events_by_district(

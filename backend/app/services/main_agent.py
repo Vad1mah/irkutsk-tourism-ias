@@ -294,19 +294,21 @@ async def get_weather(location: str = "Иркутск") -> str:
 
 @tool
 async def forecast_occupancy(district: str, days: int = 7) -> str:
-    """Прогноз загрузки средств размещения по району на основе ансамбля ML-моделей.
+    """Прогноз загрузки по району. Точность не подтверждена — см. дисклеймер ниже.
 
-    Используй когда B2B-пользователь (отельер, администрация, исследователь) запрашивает:
-    - Прогноз загрузки района на 7/14/30 дней
-    - Ожидаемый спрос для планирования цен и промо
-    - Прогнозную картину для региональной отчётности
+    Вызывай ТОЛЬКО если пользователь прямо просит прогноз. Не подставляй его
+    по своей инициативе в ответы про загрузку, цены или события.
 
-    Под капотом: Prophet + XGBoost (weighted ensemble),
-    учитываются календарь, праздники, лаги, погода, события.
+    Контролируемый бэктест (31 origin, rolling origin, парный бутстрэп против
+    наивного «завтра как вчера») показал, что модель не обыгрывает этот
+    тривиальный базлайн ни на одном горизонте, а в текущем сезонном режиме
+    проигрывает ему. Причина установлена: провал сбора данных 24.06-25.10.2025
+    оставил модель без наблюдений высокого сезона. Поэтому число выдаётся
+    вместе с оговоркой, и оговорку из ответа убирать нельзя.
 
     Args:
         district: Район Иркутской области (Иркутский, Ольхонский, Слюдянский, Ангарский)
-        days: Горизонт прогноза в днях (7, 14, 30)
+        days: Горизонт прогноза в днях (до 14)
     """
     district = CITY_TO_DISTRICT.get(district.lower(), district)
     
@@ -327,7 +329,14 @@ async def forecast_occupancy(district: str, days: int = 7) -> str:
         forecast_values = result.get("forecasts", {}).get(result.get("best_model", ""), [])
         explanation = result.get("explanation", "")
         
-        parts = [f"Прогноз загрузки для {district} района на {days} дней:\n"]
+        parts = [
+            f"Прогноз загрузки для {district} района на {days} дней:\n",
+            "ВАЖНО, обязательно передай это пользователю: точность прогноза не "
+            "подтверждена. На контролируемом бэктесте модель не обыгрывает наивное "
+            "правило «завтра как вчера» — из-за провала сбора данных за высокий "
+            "сезон 2025 года. Использовать как ориентир, не как основание для "
+            "тарифного решения.\n",
+        ]
         
         if forecast_values:
             avg_occupancy = sum(f.get("occupancy", 0) for f in forecast_values) / len(forecast_values)
@@ -496,66 +505,61 @@ async def _agent_get(path: str, params: dict | None = None) -> tuple[int, dict |
 # =============================================================================
 
 @tool
-async def get_top_events_by_impact(
-    n: int = 5,
-    min_impact: float = 0.0,
-    district: str | None = None,
-) -> str:
-    """Топ событий по измеренному влиянию на загрузку средств размещения.
+async def get_event_effect(district: str | None = None) -> str:
+    """Измеренный эффект событий на загрузку средств размещения.
 
-    Используй когда B2B-пользователь запрашивает:
-    - Какие события исторически давали максимальный прирост загрузки
-    - Рейтинг событий по силе эффекта на спрос
-    - Факторы событийного влияния для планирования ценообразования
+    Используй когда B2B-пользователь спрашивает:
+    - Влияют ли события на загрузку и насколько
+    - Стоит ли поднимать цену под событие
+    - Какой прирост загрузки дало конкретное событие
+
+    Отвечай ровно то, что вернул инструмент. Отдельному событию прирост
+    приписывать нельзя: система измеряет средний эффект и честно сообщает,
+    по каким районам данных не хватает.
 
     Args:
-        n: Количество топ-событий для вывода (по умолчанию 5)
-        min_impact: Минимальный порог влияния в % (абсолютное значение delta_pct)
-        district: Район Иркутской области для фильтрации (опционально)
+        district: Район Иркутской области; без него — сводка по всем районам.
     """
-    logger.info(f"[Tool] get_top_events_by_impact: n={n}, min_impact={min_impact}, district={district}")
+    logger.info(f"[Tool] get_event_effect: district={district}")
 
-    status, data = await _agent_get(
-        "/api/analytics/events-impact",
-        params={"method": "seasonal_corrected"},
-    )
-
+    status, data = await _agent_get("/api/analytics/events-effect")
     if status == 0:
-        return "Сервис событийного влияния временно недоступен."
-    if status != 200 or data is None:
-        return f"Не удалось получить данные о влиянии событий (HTTP {status})."
+        return "Сервис событийного эффекта временно недоступен."
+    if status != 200 or not isinstance(data, dict):
+        return f"Не удалось получить оценку событийного эффекта (HTTP {status})."
 
-    events = data if isinstance(data, list) else data.get("events", data.get("data", []))
-    if not events:
-        return "Данные о влиянии событий пока не накоплены."
+    period = data.get("period") or {}
+    unit = data.get("unit", "процентные пункты загрузки")
 
-    if district:
-        events = [e for e in events if e.get("district", "").lower() == district.lower()]
-        if not events:
-            return f"Нет данных о событийном влиянии для района «{district}»."
-
-    events = [e for e in events if abs(e.get("delta_pct", 0) or 0) >= min_impact]
-    events.sort(key=lambda e: abs(e.get("delta_pct", 0) or 0), reverse=True)
-    events = events[:n]
-
-    if not events:
-        return f"Нет событий с влиянием ≥{min_impact}%."
-
-    lines = [f"Топ-{len(events)} событий по влиянию на загрузку:"]
-    for i, e in enumerate(events, 1):
-        delta = e.get("delta_pct", 0) or 0
-        sign = "+" if delta >= 0 else ""
-        baseline = e.get("baseline_mean", 0) or 0
-        confidence = e.get("confidence", e.get("confidence_level", "—"))
-        n_obs = e.get("n_samples", "—")
-        event_name = e.get("event", e.get("event_name", e.get("name", "—")))
-        event_date = e.get("date", e.get("event_date", "—"))
-        dist = e.get("district", "—")
-        lines.append(
-            f"{i}. [{event_date}] {event_name} ({dist}): "
-            f"{sign}{delta:.1f}% (baseline {baseline:.1f}%, n={n_obs}, доверие: {confidence})"
+    def _line(entry: dict) -> str:
+        name = entry.get("district") or "все районы"
+        if not entry.get("identifiable"):
+            return f"- {name}: оценка невозможна — {entry.get('reason', 'недостаточно данных')}"
+        effect = entry.get("effect_pp")
+        low, high = entry.get("ci_lower"), entry.get("ci_upper")
+        verdict = "эффект обнаружен" if entry.get("detected") else "эффект НЕ обнаружен"
+        return (
+            f"- {name}: {effect:+.1f} {unit}, интервал [{low:+.1f}, {high:+.1f}], "
+            f"{verdict} (независимых эпизодов {entry.get('episodes')})"
         )
 
+    entries = list(data.get("by_district") or [])
+    if district:
+        entries = [e for e in entries if (e.get("district") or "").lower() == district.lower()]
+        if not entries:
+            return f"Нет данных о событийном эффекте для района «{district}»."
+
+    lines = [
+        f"Эффект событий на загрузку, период {period.get('from')} — {period.get('to')}.",
+        "Метод: сравнение с обычными днями того же месяца в том же районе.",
+    ]
+    if not district:
+        lines.append(_line(data.get("overall") or {}))
+    lines.extend(_line(e) for e in entries)
+    lines.append(
+        "Оценка считается по независимым эпизодам, а не по числу событийных дней: "
+        "месячный фестиваль — это один случай."
+    )
     return "\n".join(lines)
 
 
@@ -848,7 +852,7 @@ ALL_TOOLS = [
     forecast_occupancy,
     get_statistics,
     get_revenue_metrics,
-    get_top_events_by_impact,
+    get_event_effect,
     get_booking_pace,
     compare_districts,
     compare_forecast_models,
