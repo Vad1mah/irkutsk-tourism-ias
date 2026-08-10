@@ -1,7 +1,9 @@
 """Unit-тесты MethodologyService."""
 from datetime import date
+from math import sqrt
 
 import pytest
+from scipy.stats import t as student_t
 
 from app.services.methodology_service import (
     MethodologyService,
@@ -78,3 +80,41 @@ def test_corrected_impact_baseline_zero_returns_none_delta():
     baseline = SeasonalBaseline(mean=0.0, std=0.0, n_samples=5, confidence="high")
     result = svc.corrected_impact(observed=50.0, baseline=baseline)
     assert result["delta_pct"] is None
+
+
+def test_corrected_impact_ci_accounts_for_single_observation_spread():
+    """Полуширина интервала = t(0.975, n-1) * std * sqrt(1 + 1/n), в процентах от baseline.
+
+    Прежняя формула 1.96*std/sqrt(n) учитывала только погрешность среднего и на
+    безсобытийных днях давала покрытие 63.5% вместо номинальных 95%
+    (замер: scripts/check_impact_ci_calibration.py).
+    """
+    svc = MethodologyService()
+    n, std, base = 4, 10.0, 50.0
+    baseline = SeasonalBaseline(mean=base, std=std, n_samples=n, confidence="medium")
+
+    result = svc.corrected_impact(observed=base, baseline=baseline)
+
+    expected_half = float(student_t.ppf(0.975, n - 1)) * std * sqrt(1 + 1 / n) / base * 100
+    assert result["delta_pct"] == 0.0
+    assert result["ci_upper"] == pytest.approx(expected_half, abs=0.01)
+    assert result["ci_lower"] == pytest.approx(-expected_half, abs=0.01)
+
+    old_formula_half = 1.96 * std / sqrt(n) / base * 100
+    assert result["ci_upper"] > old_formula_half * 2, (
+        "интервал обязан быть заметно шире прежнего — иначе фикс не применён"
+    )
+
+
+def test_corrected_impact_ci_widens_as_sample_shrinks():
+    """Чем меньше похожих дней, тем шире интервал — на n=2 особенно."""
+    svc = MethodologyService()
+    wide = svc.corrected_impact(
+        observed=50.0,
+        baseline=SeasonalBaseline(mean=50.0, std=10.0, n_samples=2, confidence="low"),
+    )
+    narrow = svc.corrected_impact(
+        observed=50.0,
+        baseline=SeasonalBaseline(mean=50.0, std=10.0, n_samples=6, confidence="high"),
+    )
+    assert wide["ci_upper"] > narrow["ci_upper"] * 3

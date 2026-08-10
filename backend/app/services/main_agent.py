@@ -10,7 +10,6 @@ LangGraph Agent для туристической аналитики Байка�
 Документация: docs/research/LANGGRAPH_AGENT.md
 """
 import asyncio
-import json
 import logging
 import uuid
 from datetime import date
@@ -60,6 +59,106 @@ class AgentState(TypedDict):
 # TOOLS DEFINITION (LangChain @tool decorator)
 # =============================================================================
 
+async def _search_hotels_in_db(location: str) -> str:
+    """Реестр объектов размещения напрямую из PostgreSQL.
+
+    Векторный поиск обслуживает только два инструмента из двенадцати, и при
+    недоступных эмбеддингах коллекция пуста. Тогда ответ строится по той же
+    таблице, которую показывают страницы «Карта» и «Аналитика» — иначе чат
+    противоречит остальному интерфейсу.
+
+    Args:
+        location: Город или район, по которому спрашивали.
+
+    Returns:
+        Человекочитаемый список объектов либо сообщение об отсутствии данных.
+    """
+    from app.services.data_service import data_service
+
+    if not data_service.is_connected:
+        return "База данных временно недоступна."
+
+    loc = (location or "").strip()
+    hotels: list = []
+    try:
+        if loc and loc.lower() != "байкал":
+            hotels, _ = await data_service.get_hotels(city=loc, limit=AGENT_SEARCH_RESULTS)
+            if not hotels:
+                district = CITY_TO_DISTRICT.get(loc.lower(), loc)
+                hotels, _ = await data_service.get_hotels(
+                    district=district, limit=AGENT_SEARCH_RESULTS
+                )
+        if not hotels:
+            hotels, _ = await data_service.get_hotels(limit=AGENT_SEARCH_RESULTS)
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"[Tool] _search_hotels_in_db error: {exc}")
+        return "Не удалось получить реестр объектов размещения."
+
+    if not hotels:
+        return f"В реестре нет объектов по локации «{location}»."
+
+    parts = [f"Объекты размещения ({location or 'регион'}), {len(hotels)} шт.:\n"]
+    for h in hotels:
+        bits = [h.name]
+        if h.city:
+            bits.append(h.city)
+        if h.accommodation_type:
+            bits.append(h.accommodation_type)
+        if h.min_price:
+            bits.append(f"от {h.min_price} руб.")
+        parts.append("- " + ", ".join(str(b) for b in bits))
+    return "\n".join(parts)
+
+
+async def _search_events_in_db(query: str, month: int | None = None) -> str:
+    """Предстоящие события напрямую из PostgreSQL — фоллбэк пустого векторного индекса.
+
+    Args:
+        query: Поисковый запрос пользователя.
+        month: Месяц (1-12), если нужно сузить период.
+
+    Returns:
+        Список ближайших событий либо сообщение об отсутствии подходящих.
+    """
+    from app.services.data_service import data_service
+
+    if not data_service.is_connected:
+        return "База данных временно недоступна."
+
+    try:
+        events = await data_service.get_events(date_from=date.today(), limit=200)
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"[Tool] _search_events_in_db error: {exc}")
+        return "Не удалось получить календарь событий."
+
+    if month:
+        events = [e for e in events if e.get("date_start") and e["date_start"].month == month]
+
+    tokens = [t for t in (query or "").lower().split() if len(t) > 3]
+    if tokens:
+        matched = [
+            e for e in events
+            if any(
+                t[:5] in f"{e.get('title', '')} {e.get('event_type', '')} "
+                         f"{e.get('location', '')}".lower()
+                for t in tokens
+            )
+        ]
+        events = matched or events
+
+    events = events[:AGENT_SEARCH_RESULTS]
+    if not events:
+        return f"Не найдено предстоящих событий по запросу «{query}»."
+
+    parts = ["Предстоящие события:\n"]
+    for e in events:
+        parts.append(
+            f"- [{e.get('date_start')}] {e.get('title')} "
+            f"({e.get('event_type')}, {e.get('location')})"
+        )
+    return "\n".join(parts)
+
+
 @tool
 async def search_hotels(location: str = "Байкал", query: str = "") -> str:
     """Реестр объектов размещения по локации Иркутской области.
@@ -101,13 +200,13 @@ async def search_hotels(location: str = "Байкал", query: str = "") -> str:
         )
     
     if not docs:
-        return f"Не найдено отелей по запросу '{location}'. Попробуйте другой район."
-    
+        return await _search_hotels_in_db(location)
+
     result_parts = [f"Найдено {len(docs)} отелей в районе {location}:\n"]
     for doc in docs:
         text = doc.get("text", "")
         result_parts.append(f"- {text}")
-    
+
     return "\n".join(result_parts)
 
 
@@ -152,15 +251,15 @@ async def search_events(query: str, month: int | None = None) -> str:
         docs = [d for d in docs if d.get("metadata", {}).get("type") == "event"]
     
     if not docs:
-        return f"Не найдено событий по запросу '{query}'. Попробуйте другой период."
-    
+        return await _search_events_in_db(query, month)
+
     result_parts = ["Предстоящие события:\n"]
     for doc in docs:
         meta = doc.get("metadata", {})
         text = doc.get("text", "")
         date_str = meta.get("date_start", "")
         result_parts.append(f"- [{date_str}] {text}")
-    
+
     return "\n".join(result_parts)
 
 
@@ -202,7 +301,7 @@ async def forecast_occupancy(district: str, days: int = 7) -> str:
     - Ожидаемый спрос для планирования цен и промо
     - Прогнозную картину для региональной отчётности
 
-    Под капотом: Prophet + NeuralProphet + XGBoost (weighted ensemble),
+    Под капотом: Prophet + XGBoost (weighted ensemble),
     учитываются календарь, праздники, лаги, погода, события.
 
     Args:
@@ -351,7 +450,7 @@ ADR — прокси-оценка по минимальным публичным
         if not districts_stat:
             return "Нет данных для расчёта RMS-метрик."
 
-        lines = [f"RMS-метрики по регионам Иркутской области (последний день данных):"]
+        lines = ["RMS-метрики по регионам Иркутской области (последний день данных):"]
         for row in districts_stat:
             occ = row.get("avg_occupancy", 0)
             adr_v = row.get("avg_price", 0)
@@ -594,8 +693,6 @@ async def compare_forecast_models(district: str = "Иркутский", days: in
 
     model_names = {
         "prophet": "Prophet",
-        "neuralprophet": "NeuralProphet",
-        "neural_prophet": "NeuralProphet",
         "xgboost": "XGBoost",
         "ensemble": "Ensemble",
     }

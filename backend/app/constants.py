@@ -231,7 +231,20 @@ LOW_PRECIPITATION_THRESHOLD: float = 5.0
 EVENT_SEARCH_RANGE_DAYS: tuple[int, int] = (-3, 7)
 HOLIDAY_SEARCH_RANGE_DAYS: int = 14
 
-MAJOR_EVENT_TYPES: list[str] = ["концерт", "фестиваль", "спорт"]
+MAJOR_EVENT_TYPES: list[str] = ["concert", "festival", "sport"]
+
+# Пороги размера выборки для показа районной статистики.
+# Ниже DISTRICT_SAMPLE_MIN район не выводится вовсе: на 1-3 объектах «средняя
+# загрузка района» — это загрузка одного отеля, выданная за рынок. Ориентир
+# отрасли: STR/CoStar требует минимум 4 объекта в конкурентном наборе.
+DISTRICT_SAMPLE_HIGH: int = 10
+DISTRICT_SAMPLE_MIN: int = 4
+
+# Дальше 14 дней ошибка модели превышает ошибку наивного «завтра как вчера»
+# (замер: backend/scripts/backtest_forecast.py). Прогнозы длиннее не отдаём:
+# они не несут информации и засоряют таблицу forecasts точками, по которым
+# потом считается самовалидация.
+MAX_FORECAST_HORIZON_DAYS: int = 14
 
 
 # ---------------------------------------------------------------------------
@@ -263,6 +276,9 @@ SCHEDULER_TELEGRAM_HOURS: int = 1
 
 SCHEDULER_EVENTS_TIMEOUT_S: int = 1200
 SCHEDULER_HOTELS_TIMEOUT_S: int = 600
+# Полный обход городов идёт по 31 слагу вместо двух региональных, поэтому
+# и интервал суточный, и таймаут кратно больше двухчасового job'а.
+SCHEDULER_HOTELS_FULL_TIMEOUT_S: int = 2400
 SCHEDULER_WEATHER_TIMEOUT_S: int = 120
 SCHEDULER_TELEGRAM_TIMEOUT_S: int = 300
 SCHEDULER_RECLASSIFY_TIMEOUT_S: int = 600
@@ -270,6 +286,7 @@ SCHEDULER_RECLASSIFY_TIMEOUT_S: int = 600
 SCHEDULER_JOB_INTERVALS_HOURS: dict[str, float] = {
     "events": SCHEDULER_EVENTS_HOURS,
     "hotels": SCHEDULER_HOTELS_HOURS,
+    "hotels_full": 24,
     "weather": SCHEDULER_WEATHER_HOURS,
     "telegram": SCHEDULER_TELEGRAM_HOURS,
 }

@@ -10,7 +10,7 @@ import asyncio
 import logging
 import hashlib
 from abc import ABC, abstractmethod
-from datetime import datetime, date
+from datetime import datetime, date, time
 from typing import Any
 from dataclasses import dataclass, field
 
@@ -56,6 +56,15 @@ class ParsedEvent(BaseModel):
             return None
         if isinstance(v, date):
             return str(v)
+        return v
+
+    @field_validator('time_start', mode='before')
+    @classmethod
+    def validate_time(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, time):
+            return v.strftime("%H:%M")
         return v
 
 

@@ -44,7 +44,6 @@ const MODEL_COLORS: Record<string, string> = {
 
 const MODEL_LABELS: Record<string, string> = {
   prophet: 'Prophet',
-  neuralprophet: 'NeuralProphet',
   xgboost: 'XGBoost',
 }
 
@@ -195,11 +194,9 @@ function Forecast() {
                 value={String(daysAhead)}
                 onChange={(v) => setDaysAhead(Number(v))}
                 options={[
-                  { value: '7', label: '7 дней' },
-                  { value: '14', label: '14 дней' },
-                  { value: '30', label: '30 дней' },
-                  { value: '60', label: '60 дней', hint: 'низкая точность' },
-                  { value: '90', label: '90 дней', hint: 'низкая точность' },
+                  { value: '3', label: '3 дня' },
+                  { value: '7', label: '7 дней', hint: 'ошибка сопоставима с наивным прогнозом' },
+                  { value: '14', label: '14 дней', hint: 'ошибка выше наивного прогноза' },
                 ]}
                 compact
                 className="w-40"
@@ -901,16 +898,6 @@ function Forecast() {
                       <p className="text-[hsl(var(--muted-foreground))] leading-relaxed">
                         Декомпозиция ряда на тренд + годовая/недельная сезонность + праздники.
                         Использует погоду как regressor. Консервативна, хороша на спокойных рядах.
-                      </p>
-                    </div>
-                    <div className="rounded-lg border border-[hsl(var(--border))] p-3">
-                      <p className="font-semibold text-[hsl(var(--foreground))] mb-1 inline-flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: MODEL_COLORS.neuralprophet }} />
-                        NeuralProphet
-                      </p>
-                      <p className="text-[hsl(var(--muted-foreground))] leading-relaxed">
-                        Нейросетевая надстройка над Prophet с lagged-регрессорами.
-                        Лучше ловит автокорреляции на коротких горизонтах, но требует больше данных.
                       </p>
                     </div>
                     <div className="rounded-lg border border-[hsl(var(--border))] p-3">

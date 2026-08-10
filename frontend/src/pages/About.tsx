@@ -25,7 +25,6 @@ const TECH_STACK = [
     icon: Brain,
     items: [
       { name: 'Prophet', desc: 'Классическое прогнозирование' },
-      { name: 'NeuralProphet', desc: 'Нейросетевой + авторегрессия' },
       { name: 'XGBoost', desc: 'Градиентный бустинг, 25+ фичей' },
       { name: 'Ensemble', desc: 'Взвешенное объединение моделей' },
     ],
@@ -105,7 +104,7 @@ function About() {
             {[
               { label: 'Командный центр', desc: 'B2B-сводка региона: RevPAR, ADR, прогноз 14 дней, события с impact' },
               { label: 'Аналитика рынка', desc: 'KPI, RMS-метрики, тепловая карта, динамика бронирований, экспорт CSV' },
-              { label: 'Прогноз спроса', desc: 'Ансамбль Prophet + NeuralProphet + XGBoost с факторами' },
+              { label: 'Прогноз спроса', desc: 'Ансамбль Prophet + XGBoost с факторами' },
               { label: 'События и спрос', desc: 'Каталог событий с расчётом impact на загрузку' },
               { label: 'Региональная карта', desc: 'GeoMap по 15 районам с цветовой шкалой загрузки' },
               { label: 'AI-агент', desc: 'B2B-аналитик: запросы RMS-метрик и прогнозов в режиме диалога' },
@@ -159,7 +158,7 @@ function About() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {[
               { icon: BarChart3, title: 'Мониторинг в реальном времени', desc: 'Загруженность отелей, цены и свободные номера по 15 районам' },
-              { icon: Brain, title: 'Прогнозирование (Ensemble)', desc: 'Prophet + NeuralProphet + XGBoost с доверительными интервалами' },
+              { icon: Brain, title: 'Прогнозирование (Ensemble)', desc: 'Prophet + XGBoost, горизонт до 14 дней' },
               { icon: Cpu, title: 'AI-агент с инструментами', desc: 'LangGraph + Mistral: поиск отелей, событий, погода, прогнозы' },
               { icon: Layers, title: 'Сбор данных из 8 источников', desc: 'Автоматические парсеры с расписанием (APScheduler)' },
               { icon: Shield, title: 'Безопасность', desc: 'Rate Limiting, API Key auth, SQL injection protection' },

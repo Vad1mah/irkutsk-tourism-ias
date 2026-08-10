@@ -150,6 +150,35 @@ class DataCollectorScheduler:
             self.stats["errors"] = self.stats["errors"][-50:]
             return 0
 
+    async def collect_hotels_full(self) -> int:
+        """Суточный обход всех городов из CITY_SLUG_TO_NAME.
+
+        Двухчасовой job ходит только по двум региональным слагам 101hotels и
+        упирается в потолок ~290 объектов: мелких населённых пунктов в этих
+        категориях нет. Полный обход городов даёт широту реестра, но он
+        тяжелее, поэтому запускается раз в сутки, а не каждые два часа.
+        """
+        logger.info("Запуск полного сбора отелей по городам...")
+        try:
+            from app.parsers.hotels_101hotels import parse_and_save_hotels
+
+            result = await parse_and_save_hotels(use_regions=False)
+            count = result.get("hotels_count", 0)
+            self.stats["hotels_collected"] += count
+            self.stats["last_run"]["hotels_full"] = datetime.now().isoformat()
+            logger.info(
+                f"Полный обход: собрано {count} отелей, "
+                f"сохранено {result.get('hotels_saved', 0)}"
+            )
+            return count
+        except Exception as e:
+            logger.error(f"Ошибка полного сбора отелей: {e}")
+            self.stats["errors"].append(
+                {"task": "hotels_full", "error": str(e), "time": datetime.now().isoformat()}
+            )
+            self.stats["errors"] = self.stats["errors"][-50:]
+            return 0
+
     async def collect_weather(self) -> int:
         """Собрать прогноз погоды (кэш weather_service обновляется автоматически)."""
         logger.info("Запуск сбора погоды...")
@@ -245,6 +274,7 @@ class DataCollectorScheduler:
             SCHEDULER_TELEGRAM_HOURS,
             SCHEDULER_EVENTS_TIMEOUT_S,
             SCHEDULER_HOTELS_TIMEOUT_S,
+            SCHEDULER_HOTELS_FULL_TIMEOUT_S,
             SCHEDULER_WEATHER_TIMEOUT_S,
             SCHEDULER_TELEGRAM_TIMEOUT_S,
             SCHEDULER_RECLASSIFY_TIMEOUT_S,
@@ -269,6 +299,20 @@ class DataCollectorScheduler:
             IntervalTrigger(hours=SCHEDULER_HOTELS_HOURS),
             id="collect_hotels",
             name="Сбор отелей",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+
+        self.scheduler.add_job(
+            self._wrap_with_timeout(
+                self.collect_hotels_full,
+                task_label="hotels_full",
+                timeout_s=SCHEDULER_HOTELS_FULL_TIMEOUT_S,
+            ),
+            CronTrigger(hour=4, minute=30),
+            id="collect_hotels_full",
+            name="Полный сбор отелей по городам",
             replace_existing=True,
             max_instances=1,
             coalesce=True,

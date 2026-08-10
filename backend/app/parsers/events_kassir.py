@@ -225,11 +225,12 @@ class KassirParser(BaseParser):
         for url in urls_to_parse:
             self.logger.info(f"Парсинг: {url}")
             
-            if use_ai:
+            # JSON-LD из обычного HTML — самый дешёвый и надёжный источник:
+            # один GET без браузера и без Jina. AI-путь остаётся запасным.
+            events = await self._fetch_events_html(url)
+            if not events and use_ai:
                 events = await self._fetch_events_ai(url)
-            else:
-                events = await self._fetch_events_html(url)
-            
+
             for event in events:
                 if event.id not in seen_ids:
                     all_events.append(event)

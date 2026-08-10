@@ -1,19 +1,28 @@
 """Корреляция должна игнорировать месяцы с малой выборкой (gap-периоды)."""
 import pytest
 
+from app.constants import MIN_SAMPLES_PER_MONTH
+
 
 @pytest.mark.asyncio
 async def test_correlation_is_gap_flag_matches_samples_threshold(client):
+    """Порог берётся из константы, а не из литерала.
+
+    Раньше тест сравнивал с зашитой пятёркой, хотя эндпоинт считает
+    `is_gap = samples < MIN_SAMPLES_PER_MONTH`, а константа для пилота на
+    14 месяцев равна 1. Расхождение не всплывало, потому что тест никогда
+    не выполнялся против реальной БД.
+    """
     response = await client.get("/api/analytics/correlation")
     assert response.status_code == 200
     data = response.json()
     for m in data.get("months", []):
         if m.get("is_gap"):
-            assert m.get("samples", 0) < 5, (
+            assert m.get("samples", 0) < MIN_SAMPLES_PER_MONTH, (
                 f"Month {m.get('month')} has is_gap=True but samples={m.get('samples')}"
             )
         else:
-            assert m.get("samples", 0) >= 5, (
+            assert m.get("samples", 0) >= MIN_SAMPLES_PER_MONTH, (
                 f"Month {m.get('month')} has is_gap=False but samples={m.get('samples')}"
             )
     # missing_periods should still be a list

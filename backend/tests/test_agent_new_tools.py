@@ -83,8 +83,7 @@ COMPARE_MODELS_PAYLOAD = {
     "test_days": 14,
     "metrics": {
         "prophet": {"rmse": 8.5, "mae": 6.1, "r2": 0.72},
-        "neuralprophet": {"rmse": 7.8, "mae": 5.9, "r2": 0.76},
-        "xgboost": {"rmse": 9.2, "mae": 7.0, "r2": 0.68},
+        "xgboost": {"rmse": 7.8, "mae": 5.9, "r2": 0.76},
     },
     "feature_importance": {},
 }
@@ -306,10 +305,9 @@ class TestCompareForecastModels:
 
         assert "Иркутский" in result
         assert "Prophet" in result
-        assert "NeuralProphet" in result
         assert "XGBoost" in result
         assert "Лучшая модель" in result
-        assert "NeuralProphet" in result
+        assert "NeuralProphet" not in result
 
     @pytest.mark.asyncio
     async def test_shows_rmse_mae_r2(self):

@@ -116,7 +116,7 @@ class DataServiceProtocol(Protocol):
 
 @runtime_checkable
 class ForecastServiceProtocol(Protocol):
-    """Общий интерфейс для Prophet / NeuralProphet / XGBoost."""
+    """Общий интерфейс для моделей прогноза (Prophet / XGBoost)."""
 
     def forecast_occupancy(
         self,

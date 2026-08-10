@@ -212,7 +212,7 @@ class EnsembleResponse(BaseModel):
 
 
 class CompareModelsResponse(BaseModel):
-    """Ответ сравнения Prophet и NeuralProphet."""
+    """Ответ сравнения моделей прогноза."""
     district: str
     history_points: int
     prophet: list[CompareForecast]

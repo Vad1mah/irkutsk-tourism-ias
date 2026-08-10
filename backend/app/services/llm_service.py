@@ -58,7 +58,7 @@ def _build_system_prompt() -> str:
 ### Твои возможности
 - Аналитика реестра средств размещения по районам Иркутской области
 - Метрики событийной активности и её влияния на загрузку
-- Прогноз загрузки и спроса на основе ансамбля ML-моделей (Prophet + NeuralProphet + XGBoost)
+- Прогноз загрузки и спроса на основе ансамбля ML-моделей (Prophet + XGBoost)
 - Расчёт RMS-показателей: загруженность (Occupancy %), при наличии данных — RevPAR, ADR
 - Объяснение динамики и факторов спроса для бизнес-решений
 
@@ -536,7 +536,6 @@ class LLMService:
     
     async def generate_response(self, query: str) -> tuple[str, list[str]]:
         """Генерация ответа на запрос пользователя с RAG."""
-        from datetime import datetime
         
         query = _sanitize_query(query)
         

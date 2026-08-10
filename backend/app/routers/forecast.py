@@ -7,12 +7,11 @@ from typing import Any
 import logging
 
 from app.models.schemas import (
-    ForecastRequest, ForecastResponse, ForecastPoint,
-    EnsembleResponse, CompareAllResponse,
+    ForecastRequest, ForecastResponse, EnsembleResponse, CompareAllResponse,
     ForecastValidationResponse, ValidationPoint,
     HotelValidationResponse, HotelValidationSummaryResponse, HotelValidationSummaryItem,
 )
-from app.constants import DEFAULT_DISTRICT, DISTRICT_CENTERS
+from app.constants import DEFAULT_DISTRICT, DISTRICT_CENTERS, MAX_FORECAST_HORIZON_DAYS
 from app.services.weather_service import IRKUTSK_LAT, IRKUTSK_LON
 from app.dependencies import (
     DataServiceDep,
@@ -226,11 +225,11 @@ async def get_ensemble_forecast(
     weather_svc: WeatherServiceDep,
     ensemble_svc: EnsembleServiceDep,
     district: str = DEFAULT_DISTRICT,
-    days_ahead: int = Query(14, ge=1, le=365),
+    days_ahead: int = Query(14, ge=1, le=MAX_FORECAST_HORIZON_DAYS),
     method: str = "weighted_average",
 ):
     """
-    Ensemble прогноз: Prophet + NeuralProphet + XGBoost.
+    Ensemble прогноз: Prophet + XGBoost.
 
     Методы объединения:
     - simple_average: Простое среднее
@@ -337,7 +336,6 @@ async def compare_all_models(
 
     Возвращает метрики качества (RMSE, MAE) для:
     - Prophet
-    - NeuralProphet
     - XGBoost
     - Ensemble
     """
@@ -514,7 +512,7 @@ async def _explain_with_fallback(
 @router.get("/explain")
 async def get_explained_forecast(
     district: str = DEFAULT_DISTRICT,
-    days_ahead: int = Query(14, ge=1, le=365),
+    days_ahead: int = Query(14, ge=1, le=MAX_FORECAST_HORIZON_DAYS),
     target_date: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
 ):
     """

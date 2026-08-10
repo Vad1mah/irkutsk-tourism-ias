@@ -6,7 +6,7 @@
 """
 import pytest
 import time
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from datetime import date
 
 from app.models.schemas import ForecastPoint
@@ -23,8 +23,9 @@ class TestEnsembleService:
     def test_initial_weights(self):
         """Test initial weights are set correctly."""
         assert "prophet" in self.service._weights
-        assert "neuralprophet" in self.service._weights
         assert "xgboost" in self.service._weights
+        # NeuralProphet исключён из ансамбля: 0 точек прогноза в 96 вызовах из 96
+        assert "neuralprophet" not in self.service._weights
 
         # Сумма весов должна быть ~1
         total = sum(self.service._weights.values())
@@ -91,15 +92,13 @@ class TestEnsembleService:
         """Test weight update based on RMSE."""
         metrics = {
             "prophet": {"rmse": 5.0},
-            "neuralprophet": {"rmse": 4.0},
-            "xgboost": {"rmse": 6.0},
+            "xgboost": {"rmse": 4.0},
         }
 
         self.service._update_weights(metrics)
 
         # Lower RMSE = higher weight
-        assert self.service._weights["neuralprophet"] > self.service._weights["prophet"]
-        assert self.service._weights["prophet"] > self.service._weights["xgboost"]
+        assert self.service._weights["xgboost"] > self.service._weights["prophet"]
 
     def test_should_calibrate(self):
         """Test calibration TTL logic."""

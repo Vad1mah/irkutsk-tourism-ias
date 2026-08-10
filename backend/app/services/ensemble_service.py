@@ -1,4 +1,4 @@
-"""Ensemble сервис — объединение Prophet + NeuralProphet + XGBoost.
+"""Ensemble сервис — объединение Prophet + XGBoost.
 
 Оптимизация (2026-02-28):
 - Параллельный запуск моделей через asyncio.gather
@@ -15,7 +15,6 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
 from app.models.schemas import ForecastPoint
 from app.services.prophet_service import prophet_service
-from app.services.neuralprophet_service import neuralprophet_service
 from app.services.xgboost_service import xgboost_service
 
 logger = logging.getLogger(__name__)
@@ -24,13 +23,12 @@ CALIBRATION_TTL = 3600
 
 
 class EnsembleService:
-    """Ensemble из трёх моделей с адаптивными весами."""
+    """Ensemble из Prophet и XGBoost с адаптивными весами."""
 
     def __init__(self):
         self._weights: dict[str, float] = {
-            "prophet": 0.34,
-            "neuralprophet": 0.33,
-            "xgboost": 0.33,
+            "prophet": 0.5,
+            "xgboost": 0.5,
         }
         self._last_metrics: dict = {}
         self._calibrated_at: float = 0.0
@@ -64,16 +62,6 @@ class EnsembleService:
                 logger.error(f"Prophet error: {e}")
                 return []
 
-        async def run_neuralprophet():
-            try:
-                return await neuralprophet_service.forecast_occupancy_async(
-                    history=history, days_ahead=days_ahead,
-                    weather_data=weather_data, events_data=events_data,
-                )
-            except Exception as e:
-                logger.error(f"NeuralProphet error: {e}")
-                return []
-
         async def run_xgboost():
             try:
                 return await xgboost_service.forecast_occupancy_async(
@@ -87,20 +75,17 @@ class EnsembleService:
 
         # Запуск всех моделей параллельно
         start_time = time.time()
-        prophet_result, neural_result, xgboost_result = await asyncio.gather(
+        prophet_result, xgboost_result = await asyncio.gather(
             run_prophet(),
-            run_neuralprophet(),
             run_xgboost(),
         )
         elapsed = time.time() - start_time
         logger.info(f"Ensemble: все модели выполнены за {elapsed:.2f}s")
 
         results["models"]["prophet"] = prophet_result
-        results["models"]["neuralprophet"] = neural_result
         results["models"]["xgboost"] = xgboost_result
 
         logger.info(f"Prophet: {len(prophet_result)} точек")
-        logger.info(f"NeuralProphet: {len(neural_result)} точек")
         logger.info(f"XGBoost: {len(xgboost_result)} точек")
 
         if not self._calibrating and self._should_calibrate() and len(history) >= 60:
@@ -166,16 +151,10 @@ class EnsembleService:
             logger.error(f"Prophet error: {e}")
             results["models"]["prophet"] = []
 
-        # NeuralProphet
-        try:
-            results["models"]["neuralprophet"] = neuralprophet_service.forecast_occupancy(
-                history=history, days_ahead=days_ahead,
-                weather_data=weather_data, events_data=events_data,
-            )
-            logger.info(f"NeuralProphet: {len(results['models']['neuralprophet'])} точек")
-        except Exception as e:
-            logger.error(f"NeuralProphet error: {e}")
-            results["models"]["neuralprophet"] = []
+        # NeuralProphet в ансамбль не входит: извлечение прогноза из raw-датафрейма
+        # даёт 0 точек (96 вызовов из 96 в логах прода), при этом обучение torch-модели
+        # выполняется на каждом запросе и является основным потребителем памяти —
+        # на VM 3.8 GiB без swap это уже приводило к отказу хоста.
 
         # XGBoost
         try:
@@ -264,7 +243,7 @@ class EnsembleService:
 
         CI = weighted average of individual model half-widths + inter-model disagreement.
         Not a calibrated statistical interval; treated as an uncertainty band.
-        Individual sources: Prophet (80% PI), NeuralProphet (residual-based), XGBoost (1.28*RMSE ~ 80%).
+        Individual sources: Prophet (80% PI), XGBoost (1.28*RMSE ~ 80%).
         """
         all_dates = sorted({fp.date for fcs in models.values() for fp in fcs})[:days_ahead]
         result = []
@@ -341,10 +320,9 @@ class EnsembleService:
         Возвращает dict:
             {
               "prophet":   {"rmse": ..., "mae": ..., "r2": ..., "rmse_std": ..., "fold_count": N, "points": ...},
-              "neuralprophet": {...},
               "xgboost":   {...},
               "ensemble":  {...},
-              "best_model": "prophet" | "neuralprophet" | "xgboost",
+              "best_model": "prophet" | "xgboost",
               "cv_strategy": "walk_forward_5fold",
             }
 
@@ -482,7 +460,7 @@ class EnsembleService:
     def _update_weights(self, metrics: dict) -> None:
         """Обновляет веса по inverse-RMSE."""
         rmses = {}
-        for name in ["prophet", "neuralprophet", "xgboost"]:
+        for name in ["prophet", "xgboost"]:
             if name in metrics and "rmse" in metrics[name]:
                 rmses[name] = metrics[name]["rmse"]
 

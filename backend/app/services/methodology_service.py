@@ -18,6 +18,8 @@ from math import sqrt
 from statistics import mean, stdev
 from typing import Iterable, Literal
 
+from scipy.stats import t as student_t
+
 from app.constants import BASELINE_CONFIDENCE_HIGH, BASELINE_CONFIDENCE_MEDIUM
 
 
@@ -91,9 +93,19 @@ class MethodologyService:
                 "method": "naive_fallback",
             }
         delta = (observed - baseline.mean) / baseline.mean * 100.0
-        # 95% CI (упрощённо: ±1.96 * std/sqrt(n) в %)
-        if baseline.std is not None and baseline.n_samples >= 2:
-            ci_half = 1.96 * baseline.std / sqrt(baseline.n_samples)
+        # Интервал строится вокруг разности «одно наблюдение минус среднее по
+        # похожим дням», поэтому в него входят обе составляющие разброса:
+        # погрешность самого среднего (sigma/sqrt(n)) и собственный разброс
+        # единичного наблюдения (sigma). Отсюда множитель sqrt(1 + 1/n).
+        # Квантиль берётся из t-распределения: n здесь обычно 2-6, и нормальный
+        # множитель 1.96 на таких выборках даёт заведомо узкий интервал.
+        # Замер покрытия на безсобытийных днях (истинный impact = 0):
+        # прежняя формула 1.96*sigma/sqrt(n) — 63.5% при номинале 95%,
+        # текущая — 98.9%. Скрипт: scripts/check_impact_ci_calibration.py.
+        n = baseline.n_samples
+        if baseline.std is not None and n >= 2:
+            t_crit = float(student_t.ppf(0.975, n - 1))
+            ci_half = t_crit * baseline.std * sqrt(1.0 + 1.0 / n)
             ci_pct = ci_half / baseline.mean * 100.0
         else:
             ci_pct = None

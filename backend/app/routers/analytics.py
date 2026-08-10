@@ -5,13 +5,13 @@ import io
 import time
 from datetime import date, date as _date, timedelta
 from typing import Any, Literal
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from collections import defaultdict
 import logging
 
 from statistics import mean
-from app.constants import VALID_DISTRICTS, CITY_TO_DISTRICT, DEFAULT_DISTRICT, DISTRICT_CENTERS, SEASON_MONTHS, MIN_SAMPLES_PER_MONTH, MIN_SAMPLES_FOR_HIGH_CONFIDENCE, BASELINE_CONFIDENCE_HIGH, BASELINE_CONFIDENCE_MEDIUM
+from app.constants import VALID_DISTRICTS, CITY_TO_DISTRICT, DEFAULT_DISTRICT, DISTRICT_CENTERS, SEASON_MONTHS, MIN_SAMPLES_PER_MONTH, MIN_SAMPLES_FOR_HIGH_CONFIDENCE, BASELINE_CONFIDENCE_HIGH, BASELINE_CONFIDENCE_MEDIUM, DISTRICT_SAMPLE_HIGH, DISTRICT_SAMPLE_MIN
 from app.services.methodology_service import methodology_service
 from app.dependencies import (
     DataServiceDep, WeatherServiceDep, EnsembleServiceDep, CacheServiceDep,
@@ -394,6 +394,10 @@ async def get_districts_data(
         avg_price = row.get("avg_price", 0) or 0
         
         count = row.get("hotels_count", 0) or 0
+        # Район с выборкой меньше порога не показываем: «средняя загрузка» по
+        # 1-3 объектам — это загрузка одного отеля, выданная за рынок района.
+        if count < DISTRICT_SAMPLE_MIN:
+            continue
         result.append({
             "district": district,
             "occupancy": round(avg_occupancy, 1),
@@ -401,7 +405,7 @@ async def get_districts_data(
             "totalRooms": int(total_rooms),
             "avgPrice": round(avg_price),
             "hotelsCount": count,
-            "confidence": "high" if count >= 10 else "medium" if count >= 3 else "low",
+            "confidence": "high" if count >= DISTRICT_SAMPLE_HIGH else "medium",
         })
     
     await cache.set(cache_key, result, ttl=120)
@@ -1622,7 +1626,7 @@ async def get_price_recommendation(
         "current_occupancy": current_occ,
         "forecast_occupancy": forecast_occ,
         "adjustments": adjustments,
-        "methodology": "Ценовая рекомендация основана на прогнозе загрузки Ensemble (Prophet+NeuralProphet+XGBoost). При загрузке >75% — повышение до +30%, при <35% — скидка до -25%.",
+        "methodology": "Ценовая рекомендация основана на прогнозе загрузки Ensemble (Prophet+XGBoost). При загрузке >75% — повышение до +30%, при <35% — скидка до -25%.",
     }
     await cache.set(cache_key, response, ttl=1800)
     return response
