@@ -72,6 +72,11 @@ services:
       # парсеры пишут hotel_statistics; иначе UTC-сдвиг даёт даты «завтра» в БД
       # и новейший день то появляется, то пропадает из выдачи.
       - TZ=Asia/Irkutsk
+      # Путь обязан совпадать с точкой монтирования тома ниже. Дефолт в config.py
+      # (./chroma_db) указывает внутрь контейнера, и при таком значении индекс
+      # RAG стирался на каждом `up -d --force-recreate`: том оставался пустым,
+      # `chroma_docs` падал в 0, а чат молча уходил на PostgreSQL-фоллбэк.
+      - CHROMA_PERSIST_DIR=/app/chroma_data
     depends_on:
       postgres:
         condition: service_healthy
