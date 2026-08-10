@@ -84,7 +84,14 @@ class DataCollectorScheduler:
         }
 
     async def _reindex_chroma(self):
-        """Переиндексировать ChromaDB после обновления данных."""
+        """Переиндексировать ChromaDB целиком.
+
+        Вызывается раз в сутки, а не после каждого прогона парсеров.
+        Индексация переэмбеддит весь корпус заново (инкрементального режима
+        нет), а эмбеддинги идут во внешний платный сервис — при вызове после
+        каждого сбора это давало до 6+ полных прогонов в сутки и выбивало
+        квоту (402 Payment Required) независимо от свежести ключа.
+        """
         try:
             from app.services.chroma_service import chroma_service
             from app.services.data_service import data_service
@@ -109,7 +116,6 @@ class DataCollectorScheduler:
             if events:
                 saved = await data_service.upsert_events_batch(events)
                 logger.info(f"Собрано {count} событий, сохранено {saved}")
-                await self._reindex_chroma()
             else:
                 saved = 0
                 logger.info("Нет новых событий")
@@ -139,8 +145,6 @@ class DataCollectorScheduler:
                 f"Собрано {count} отелей, "
                 f"сохранено {result.get('hotels_saved', 0)}"
             )
-            if count > 0:
-                await self._reindex_chroma()
             return count
         except Exception as e:
             logger.error(f"Ошибка сбора отелей: {e}")
@@ -215,7 +219,6 @@ class DataCollectorScheduler:
             if events:
                 saved = await data_service.upsert_events_batch(events)
                 logger.info(f"Собрано {count} событий из Telegram, сохранено {saved}")
-                await self._reindex_chroma()
             else:
                 logger.info("Нет новых событий из Telegram")
 
@@ -278,6 +281,7 @@ class DataCollectorScheduler:
             SCHEDULER_WEATHER_TIMEOUT_S,
             SCHEDULER_TELEGRAM_TIMEOUT_S,
             SCHEDULER_RECLASSIFY_TIMEOUT_S,
+            SCHEDULER_REINDEX_TIMEOUT_S,
         )
 
         self.scheduler.add_job(
@@ -313,6 +317,20 @@ class DataCollectorScheduler:
             CronTrigger(hour=4, minute=30),
             id="collect_hotels_full",
             name="Полный сбор отелей по городам",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+
+        self.scheduler.add_job(
+            self._wrap_with_timeout(
+                self._reindex_chroma,
+                task_label="reindex_chroma",
+                timeout_s=SCHEDULER_REINDEX_TIMEOUT_S,
+            ),
+            CronTrigger(hour=5, minute=30),
+            id="reindex_chroma",
+            name="Переиндексация ChromaDB",
             replace_existing=True,
             max_instances=1,
             coalesce=True,
