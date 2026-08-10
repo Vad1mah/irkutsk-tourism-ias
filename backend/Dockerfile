@@ -18,10 +18,14 @@ ENV PYTHONUNBUFFERED=1
 
 # Build deps нужны для компиляции C-расширений некоторых пакетов (numpy/pandas
 # обычно binary wheels, но holidays и пара других могут требовать).
-# Runtime deps: curl для healthcheck, libstdc++6 для XGBoost/LightGBM.
+# Runtime deps: curl для healthcheck, libstdc++6 и libgomp1 для XGBoost/LightGBM.
+# libgomp1 указана ЯВНО, хотя её же тянет за собой gcc: ниже идёт
+# `apt-get purge --auto-remove gcc g++`, и без явной установки apt считает
+# libgomp1 осиротевшей зависимостью компилятора и удаляет её. Тогда
+# `import lightgbm` падает с `libgomp.so.1: cannot open shared object file`.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         gcc g++ libffi-dev libssl-dev \
-        curl libstdc++6 \
+        curl libstdc++6 libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
