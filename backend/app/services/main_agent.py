@@ -13,6 +13,7 @@ import asyncio
 import logging
 import uuid
 from datetime import date
+from statistics import median
 from typing import Annotated, Any, Literal, TypedDict
 
 import httpx
@@ -59,13 +60,38 @@ class AgentState(TypedDict):
 # TOOLS DEFINITION (LangChain @tool decorator)
 # =============================================================================
 
+def _fmt_number(value: Any, suffix: str = "", digits: int = 0) -> str:
+    """Число с суффиксом либо «н/д», если значение не рассчитано.
+
+    Args:
+        value: Значение метрики; None и нечисловые значения дают «н/д».
+        suffix: Единица измерения, приписываемая к числу.
+        digits: Число знаков после запятой.
+
+    Returns:
+        Готовая для вывода строка.
+    """
+    if isinstance(value, (int, float)):
+        return f"{value:.{digits}f}{suffix}"
+    return "н/д"
+
+
+def _size_bucket(rooms: int) -> str:
+    """Размерная категория объекта: mini (≤15), mid (16-50), large (51+)."""
+    if rooms <= 15:
+        return "mini"
+    if rooms <= 50:
+        return "mid"
+    return "large"
+
+
 async def _search_hotels_in_db(location: str) -> str:
     """Реестр объектов размещения напрямую из PostgreSQL.
 
-    Векторный поиск обслуживает только два инструмента из двенадцати, и при
-    недоступных эмбеддингах коллекция пуста. Тогда ответ строится по той же
-    таблице, которую показывают страницы «Карта» и «Аналитика» — иначе чат
-    противоречит остальному интерфейсу.
+    Векторный поиск обслуживает лишь часть инструментов, и при недоступных
+    эмбеддингах коллекция пуста. Тогда ответ строится по той же таблице,
+    которую показывают страницы «Карта» и «Аналитика» — иначе чат противоречит
+    остальному интерфейсу.
 
     Args:
         location: Город или район, по которому спрашивали.
@@ -97,7 +123,10 @@ async def _search_hotels_in_db(location: str) -> str:
     if not hotels:
         return f"В реестре нет объектов по локации «{location}»."
 
-    parts = [f"Объекты размещения ({location or 'регион'}), {len(hotels)} шт.:\n"]
+    parts = [
+        f"Объекты размещения из справочника ({location or 'весь макрорегион'}), "
+        f"показано {len(hotels)}:\n"
+    ]
     for h in hotels:
         bits = [h.name]
         if h.city:
@@ -161,7 +190,7 @@ async def _search_events_in_db(query: str, month: int | None = None) -> str:
 
 @tool
 async def search_hotels(location: str = "Байкал", query: str = "") -> str:
-    """Реестр объектов размещения по локации Иркутской области.
+    """Реестр объектов размещения по локации Байкальского макрорегиона.
 
     Используй когда B2B-пользователь запрашивает:
     - Реестр / список средств размещения по району или городу
@@ -202,7 +231,7 @@ async def search_hotels(location: str = "Байкал", query: str = "") -> str:
     if not docs:
         return await _search_hotels_in_db(location)
 
-    result_parts = [f"Найдено {len(docs)} отелей в районе {location}:\n"]
+    result_parts = [f"Найдено в справочнике {len(docs)} объектов по локации {location}:\n"]
     for doc in docs:
         text = doc.get("text", "")
         result_parts.append(f"- {text}")
@@ -307,7 +336,7 @@ async def forecast_occupancy(district: str, days: int = 7) -> str:
     вместе с оговоркой, и оговорку из ответа убирать нельзя.
 
     Args:
-        district: Район Иркутской области (Иркутский, Ольхонский, Слюдянский, Ангарский)
+        district: Район Байкальского макрорегиона (Иркутский, Ольхонский, Слюдянский, Ангарский)
         days: Горизонт прогноза в днях (до 14)
     """
     district = CITY_TO_DISTRICT.get(district.lower(), district)
@@ -380,13 +409,13 @@ async def get_statistics() -> str:
             occupancies = [d.get("avg_occupancy", 0) or 0 for d in districts if d.get("avg_occupancy")]
             avg_occupancy = round(sum(occupancies) / len(occupancies), 1) if occupancies else 0
 
-        result = f"""Статистика системы (по данным на сегодня):
-- Всего отелей: {metrics.get('total_hotels', 0)}
+        result = f"""KPI системы:
+- Объектов размещения в справочнике: {metrics.get('total_hotels', 0)}
 - Населённых пунктов: {metrics.get('total_cities', 0)}
 - Событий в календаре: {metrics.get('total_events', 0)}
-- Всего номеров: {total_rooms}
-- Свободных номеров: {free_rooms}
-- Средняя загрузка: {avg_occupancy}%"""
+- Номерной фонд по последнему снимку: {total_rooms}
+- Свободных номеров по последнему снимку: {free_rooms}
+- Средняя загрузка районов по последнему снимку: {avg_occupancy}%"""
 
         return result
 
@@ -405,15 +434,15 @@ async def get_revenue_metrics(district: str = "", days: int = 30) -> str:
     - Сравнение районов по бизнес-показателям
 
     Расчёт:
-    - Occupancy % = средняя загрузка номерного фонда
-    - ADR (Average Daily Rate) ≈ средняя минимальная цена номера за период (прокси по min_price)
-    - RevPAR (Revenue per Available Room) = ADR × Occupancy / 100
+    - Occupancy % = средняя дневная загрузка номерного фонда за окно
+    - прокси-ADR = медиана min_price по всем снимкам объектов района за окно
+    - прокси-RevPAR (Revenue per Available Room) = прокси-ADR × Occupancy / 100
 
-    ADR — прокси-оценка по минимальной цене публичных тарифов (не средневзвешенная по реализованным),
-    точные значения требуют интеграции с PMS отельеров.
+    ADR — прокси-оценка по минимальным публичным тарифам, а не средневзвешенная
+    цена реализации: точные значения требуют интеграции с PMS отельеров.
 
     Args:
-        district: Район Иркутской области (Иркутский, Ольхонский, Слюдянский, Ангарский). Пусто = по всему региону.
+        district: Район Байкальского макрорегиона (Иркутский, Ольхонский, Слюдянский, Ангарский). Пусто = по всему региону.
         days: Окно расчёта в днях (по умолчанию 30)
     """
     from datetime import timedelta
@@ -436,11 +465,11 @@ async def get_revenue_metrics(district: str = "", days: int = 30) -> str:
                 return f"Нет данных по району «{district_norm}» за последние {days} дней."
 
             occupancies = [r["avg_occupancy"] for r in history if r.get("avg_occupancy") is not None]
-            prices = [r["avg_price"] for r in history if r.get("avg_price")]
+            occupancy = round(sum(occupancies) / len(occupancies), 1) if occupancies else None
 
-            occupancy = round(sum(occupancies) / len(occupancies), 1) if occupancies else 0.0
-            adr = round(sum(prices) / len(prices)) if prices else 0
-            revpar = round(adr * occupancy / 100) if (adr and occupancy) else 0
+            prices = await data_service.collect_min_prices(district=district_norm, days=days)
+            adr = round(median(prices)) if prices else None
+            revpar = round(adr * occupancy / 100) if (adr and occupancy) else None
 
             last_date = history[-1]["date"] if history else None
             staleness = ""
@@ -448,26 +477,33 @@ async def get_revenue_metrics(district: str = "", days: int = 30) -> str:
                 staleness = f"\n- ВНИМАНИЕ: последняя точка данных — {last_date}, актуальность снижена."
 
             return f"""RMS-метрики района «{district_norm}» за последние {days} дней:
-- Occupancy %: {occupancy}
-- ADR (прокси по min_price): {adr} ₽
-- RevPAR: {revpar} ₽
-- Точек данных: {len(history)}{staleness}
+- Occupancy %: {_fmt_number(occupancy, digits=1)}
+- прокси-ADR (медиана min_price): {_fmt_number(adr, ' ₽')}
+- прокси-RevPAR: {_fmt_number(revpar, ' ₽')}
+- Дней с данными в окне: {len(history)}{staleness}
 
-ADR — прокси-оценка по минимальным публичным тарифам, не средневзвешенная по реализации."""
+Прокси-ADR — медиана минимальных публичных тарифов за окно, а не средневзвешенная
+цена реализации. Если тарифов в окне нет, значение не рассчитывается."""
 
         districts_stat = await data_service.get_districts_statistics()
         if not districts_stat:
             return "Нет данных для расчёта RMS-метрик."
 
-        lines = ["RMS-метрики по регионам Иркутской области (последний день данных):"]
+        lines = ["RMS-метрики по районам Байкальского макрорегиона (последний день данных):"]
         for row in districts_stat:
-            occ = row.get("avg_occupancy", 0)
-            adr_v = row.get("avg_price", 0)
-            revpar = round(adr_v * occ / 100) if (adr_v and occ) else 0
+            occ = row.get("avg_occupancy")
+            adr_v = row.get("median_price")
+            revpar = round(adr_v * occ / 100) if (adr_v and occ) else None
+            as_of = row.get("as_of_date") or "последний снимок"
             lines.append(
-                f"- {row['district']}: Occupancy {occ}%, ADR {adr_v} ₽ (прокси), RevPAR {revpar} ₽, объектов: {row['hotels_count']}"
+                f"- {row['district']}: Occupancy {_fmt_number(occ, '%', 1)}, "
+                f"прокси-ADR {_fmt_number(adr_v, ' ₽')} (медиана min_price), "
+                f"прокси-RevPAR {_fmt_number(revpar, ' ₽')}, "
+                f"объектов со снимком за {as_of}: {row['hotels_count']}"
             )
-        lines.append("\nADR — прокси-оценка по минимальным публичным тарифам, не средневзвешенная.")
+        lines.append(
+            "\nПрокси-ADR — медиана минимальных публичных тарифов, не средневзвешенная цена реализации."
+        )
         return "\n".join(lines)
 
     except Exception as e:
@@ -481,21 +517,35 @@ ADR — прокси-оценка по минимальным публичным
 
 _BACKEND_URL = "http://localhost:8000"
 _HTTP_TIMEOUT = 10.0
+# Сравнение моделей обучает Prophet и XGBoost на пяти фолдах walk-forward CV.
+# В десять секунд такой расчёт не укладывается: на холодном кэше он идёт минуты.
+_MODEL_COMPARE_TIMEOUT = 120.0
 
 
-async def _agent_get(path: str, params: dict | None = None) -> tuple[int, dict | list | None]:
+async def _agent_get(
+    path: str,
+    params: dict | None = None,
+    timeout: float = _HTTP_TIMEOUT,
+) -> tuple[int, dict | list | None]:
     """GET-запрос к локальному бэкенду.
+
+    Args:
+        path: Путь эндпоинта относительно бэкенда.
+        params: Query-параметры запроса.
+        timeout: Предел ожидания ответа в секундах.
 
     Returns:
         tuple[int, dict | list | None]: (status_code, json_body | None).
-        Status 0 означает сетевую/таймаут ошибку.
+        Status 408 — истёк timeout, 0 — сетевая ошибка.
     """
     try:
-        async with httpx.AsyncClient(base_url=_BACKEND_URL, timeout=_HTTP_TIMEOUT) as client:
+        async with httpx.AsyncClient(base_url=_BACKEND_URL, timeout=timeout) as client:
             response = await client.get(path, params=params)
             if response.status_code == 200:
                 return response.status_code, response.json()
             return response.status_code, None
+    except httpx.TimeoutException:
+        return 408, None
     except Exception:
         return 0, None
 
@@ -518,7 +568,7 @@ async def get_event_effect(district: str | None = None) -> str:
     по каким районам данных не хватает.
 
     Args:
-        district: Район Иркутской области; без него — сводка по всем районам.
+        district: Район Байкальского макрорегиона; без него — сводка по всем районам.
     """
     logger.info(f"[Tool] get_event_effect: district={district}")
 
@@ -565,16 +615,20 @@ async def get_event_effect(district: str | None = None) -> str:
 
 @tool
 async def get_booking_pace(district: str = "Иркутский", days_ahead: int = 14) -> str:
-    """Темп и динамика бронирований на горизонт планирования.
+    """Динамика наблюдённой загрузки на прошедших датах (proxy-pickup).
 
     Используй когда B2B-пользователь (отельер, администрация) спрашивает:
-    - Насколько активно идут бронирования по сравнению с обычным темпом
-    - Pickup-метрику: прирост бронирований по мере приближения к дате заезда
-    - Является ли текущий темп бронирований выше/ниже нормы
+    - Как менялась загрузка района в последние дни
+    - Ускоряется набор загрузки или замедляется
+
+    Это НЕ pickup из RMS: hotel_statistics не хранит время снимка, поэтому
+    считается разница загрузки между датой и датой минус lookback по последним
+    датам С ДАННЫМИ. Будущие бронирования инструмент не видит — не описывай его
+    результат как «прирост брони по мере приближения к заезду».
 
     Args:
-        district: Район Иркутской области (Иркутский, Ольхонский, Слюдянский и др.)
-        days_ahead: Горизонт анализа в днях (по умолчанию 14)
+        district: Район Байкальского макрорегиона (Иркутский, Ольхонский, Слюдянский и др.)
+        days_ahead: Сколько последних дат с данными взять (по умолчанию 14)
     """
     logger.info(f"[Tool] get_booking_pace: district={district}, days_ahead={days_ahead}")
 
@@ -589,22 +643,21 @@ async def get_booking_pace(district: str = "Иркутский", days_ahead: int
         return f"Не удалось получить данные о темпе бронирований для «{district}» (HTTP {status})."
 
     summary = data.get("summary", {})
-    points = data.get("points", data.get("data", []))
+    points = data.get("points", [])
     method = data.get("method", "—")
 
-    avg_pickup = summary.get("avg_proxy_pickup_pct", summary.get("avg_pickup_pct", summary.get("avg_pickup", "—")))
-    trend = summary.get("trend", "—")
-    min_pickup = summary.get("min_proxy_pickup_pct", summary.get("min_pickup_pct", summary.get("min_pickup", "—")))
-    max_pickup = summary.get("max_proxy_pickup_pct", summary.get("max_pickup_pct", summary.get("max_pickup", "—")))
-
     lines = [
-        f"Темп бронирований по району «{district}» (next {days_ahead} days):",
-        f"- Средний pickup: {avg_pickup}%",
-        f"- Тренд: {trend}",
-        f"- Min/Max: {min_pickup}% / {max_pickup}%",
+        f"Динамика загрузки района «{district}» за последние {len(points)} дат с данными:",
+        f"- Средний proxy-pickup (не RMS-pickup): "
+        f"{_fmt_number(summary.get('avg_proxy_pickup_pct'), '%', 1)}",
+        f"- Тренд: {summary.get('trend', '—')}",
+        f"- Min/Max: {_fmt_number(summary.get('min_proxy_pickup_pct'), '%', 1)} / "
+        f"{_fmt_number(summary.get('max_proxy_pickup_pct'), '%', 1)}",
         f"- Метод: {method}",
-        f"- Точек данных: {len(points)}",
     ]
+    methodology = data.get("methodology")
+    if methodology:
+        lines.append(f"- Методология: {methodology}")
 
     return "\n".join(lines)
 
@@ -637,30 +690,34 @@ async def compare_districts(districts: list[str] | None = None, days: int = 30) 
     if status != 200 or data is None:
         return f"Не удалось получить данные для сравнения районов (HTTP {status})."
 
-    rows = data if isinstance(data, list) else data.get("districts", data.get("data", []))
+    rows = data if isinstance(data, list) else data.get("districts", [])
     if not rows:
         return f"Нет данных для сравнения районов за {days} дней."
 
     header = f"Сравнение районов за {days} дней:"
-    sep = f"| {'Район':<18} | {'Загрузка':>8} | {'прокси-ADR':>10} | {'прокси-RevPAR':>13} | {'Объектов':>8} |"
-    divider = f"|{'-'*20}|{'-'*10}|{'-'*12}|{'-'*15}|{'-'*10}|"
+    sep = (
+        f"| {'Район':<18} | {'Загрузка':>8} | {'прокси-ADR':>10} | "
+        f"{'прокси-RevPAR':>13} | {'Дней данных':>11} |"
+    )
+    divider = f"|{'-'*20}|{'-'*10}|{'-'*12}|{'-'*15}|{'-'*13}|"
 
     table_lines = [header, sep, divider]
     for row in rows:
-        name = row.get("district", row.get("name", "—"))
-        occupancy = row.get("occupancy", row.get("avg_occupancy", "—"))
-        adr = row.get("adr_proxy", row.get("adr", row.get("avg_price", "—")))
-        revpar = row.get("revpar_proxy", row.get("revpar", "—"))
-        samples = row.get("samples", row.get("count", row.get("hotels_count", "—")))
-
-        occ_str = f"{occupancy:.1f}%" if isinstance(occupancy, (int, float)) else f"{occupancy}%"
-        adr_str = f"{adr:.0f} ₽" if isinstance(adr, (int, float)) else f"{adr} ₽"
-        revpar_str = f"{revpar:.0f} ₽" if isinstance(revpar, (int, float)) else f"{revpar} ₽"
+        name = row.get("district", "—")
+        occ_str = _fmt_number(row.get("occupancy"), "%", 1)
+        adr_str = _fmt_number(row.get("adr_proxy"), " ₽")
+        revpar_str = _fmt_number(row.get("revpar_proxy"), " ₽")
+        days_with_data = row.get("samples", "—")
 
         table_lines.append(
-            f"| {name:<18} | {occ_str:>8} | {adr_str:>10} | {revpar_str:>13} | {samples!s:>8} |"
+            f"| {name:<18} | {occ_str:>8} | {adr_str:>10} | "
+            f"{revpar_str:>13} | {days_with_data!s:>11} |"
         )
 
+    table_lines.append(
+        "прокси-ADR — медиана min_price за окно. «Дней данных» — число дат со снимками "
+        "в окне, а не число объектов размещения."
+    )
     return "\n".join(table_lines)
 
 
@@ -673,17 +730,26 @@ async def compare_forecast_models(district: str = "Иркутский", days: in
     - Метрики качества моделей (RMSE, MAE, R²)
     - Обоснование выбора модели для прогнозного отчёта
 
+    Ансамбль — взвешенное среднее двух моделей (Prophet + XGBoost).
+
     Args:
-        district: Район Иркутской области (Иркутский, Ольхонский, Слюдянский и др.)
-        days: Горизонт прогноза в днях (по умолчанию 14)
+        district: Район Байкальского макрорегиона (Иркутский, Ольхонский, Слюдянский и др.)
+        days: Размер тестового окна в днях (по умолчанию 14)
     """
     logger.info(f"[Tool] compare_forecast_models: district={district}, days={days}")
 
     status, data = await _agent_get(
         "/api/forecast/compare-all",
         params={"district": district, "test_days": days},
+        timeout=_MODEL_COMPARE_TIMEOUT,
     )
 
+    if status == 408:
+        return (
+            f"Расчёт точности моделей для «{district}» не уложился в "
+            f"{_MODEL_COMPARE_TIMEOUT:.0f} секунд: обучение идёт на сервере и результат "
+            "кэшируется — повторите запрос через пару минут."
+        )
     if status == 0:
         return "Сервис сравнения моделей временно недоступен."
     if status != 200 or data is None:
@@ -737,7 +803,7 @@ async def get_occupancy_timeseries(district: str = "Иркутский", days: i
     - Исторический профиль загрузки для анализа сезонности
 
     Args:
-        district: Район Иркутской области (Иркутский, Ольхонский, Слюдянский и др.)
+        district: Район Байкальского макрорегиона (Иркутский, Ольхонский, Слюдянский и др.)
         days: Количество дней для анализа (по умолчанию 30)
     """
     logger.info(f"[Tool] get_occupancy_timeseries: district={district}, days={days}")
@@ -803,7 +869,7 @@ async def get_price_distribution(district: str = "Иркутский", days: int
     - Ценовые ориентиры для тарифного планирования
 
     Args:
-        district: Район Иркутской области (Иркутский, Ольхонский, Слюдянский и др.)
+        district: Район Байкальского макрорегиона (Иркутский, Ольхонский, Слюдянский и др.)
         days: Период анализа в днях (по умолчанию 30)
     """
     logger.info(f"[Tool] get_price_distribution: district={district}, days={days}")
@@ -833,7 +899,8 @@ async def get_price_distribution(district: str = "Иркутский", days: int
     p90 = _fmt(dist_data.get("p90", dist_data.get("percentile_90", "—")))
 
     lines = [
-        f"Распределение мин. цен в районе «{district}» (samples={samples}):",
+        f"Распределение мин. цен в районе «{district}» "
+        f"(наблюдений тарифов за {days} дней: {samples}):",
         f"- p10 (бюджетный): {p10} ₽",
         f"- p25 (нижний квартиль): {p25} ₽",
         f"- p50 (медиана): {p50} ₽",
@@ -841,6 +908,75 @@ async def get_price_distribution(district: str = "Иркутский", days: int
         f"- p90 (премиум): {p90} ₽",
     ]
 
+    return "\n".join(lines)
+
+
+@tool
+async def get_segment_benchmark(district: str = "Иркутский", rooms: int = 0) -> str:
+    """Сегменты внутри района: размерные категории и типы размещения.
+
+    Используй, когда отельер просит сравнить свой объект с сегментом. Районный
+    агрегат для этого не годится: в нём мини-отели смешаны с крупными базами,
+    и их загрузка отличается на десятки процентных пунктов. Передай число
+    номеров объекта в `rooms` — инструмент отметит его размерную категорию.
+
+    Args:
+        district: Район Байкальского макрорегиона (Иркутский, Ольхонский, Слюдянский и др.)
+        rooms: Номерной фонд объекта; 0 — категорию не выделять.
+    """
+    logger.info(f"[Tool] get_segment_benchmark: district={district}, rooms={rooms}")
+
+    status, data = await _agent_get(
+        "/api/analytics/district-segments",
+        params={"district": district},
+    )
+
+    if status == 0:
+        return "Сервис сегментов временно недоступен."
+    if status != 200 or not isinstance(data, dict):
+        return f"Не удалось получить сегменты района «{district}» (HTTP {status})."
+
+    by_size = data.get("by_size") or []
+    by_type = data.get("by_accommodation_type") or []
+    if not by_size and not by_type:
+        return f"Нет данных по сегментам района «{district}»."
+
+    size_labels = {
+        "mini": "мини (≤15 номеров)",
+        "mid": "средние (16-50 номеров)",
+        "large": "крупные (51+ номеров)",
+    }
+    own_bucket = _size_bucket(rooms) if rooms > 0 else None
+
+    lines = [
+        f"Сегменты района «{district}», объектов со снимком за 14 дней: "
+        f"{data.get('total_objects', 0)}.",
+        "По размеру:",
+    ]
+    for bucket in by_size:
+        size = bucket.get("size")
+        mark = " ← сегмент объекта" if size == own_bucket else ""
+        lines.append(
+            f"- {size_labels.get(size, size)}: объектов {bucket.get('count')}, "
+            f"загрузка {_fmt_number(bucket.get('avg_occupancy'), '%', 1)}{mark}"
+        )
+
+    lines.append("По типу размещения:")
+    for row in by_type:
+        lines.append(
+            f"- {row.get('type')}: объектов {row.get('count')}, "
+            f"загрузка {_fmt_number(row.get('avg_occupancy'), '%', 1)}"
+        )
+
+    if own_bucket:
+        lines.append(
+            f"Объект на {rooms} номеров относится к категории «{size_labels[own_bucket]}» — "
+            "сравнивай его именно с этой строкой, а не с районом целиком."
+        )
+    lines.append(
+        "Тарифный ориентир по сегменту не рассчитывается: медиана min_price доступна "
+        "только по району целиком — бери её из get_price_distribution."
+    )
     return "\n".join(lines)
 
 
@@ -858,6 +994,7 @@ ALL_TOOLS = [
     compare_forecast_models,
     get_occupancy_timeseries,
     get_price_distribution,
+    get_segment_benchmark,
 ]
 TOOLS_BY_NAME = {tool.name: tool for tool in ALL_TOOLS}
 
@@ -1003,7 +1140,9 @@ def _build_system_prompt() -> str:
     return f"""Ты — B2B-аналитик информационной системы «Прибайкалье».
 Сегодня: {date.today().strftime("%d.%m.%Y")}
 
-Твои пользователи — профессионалы туристической отрасли Иркутской области:
+География системы — Байкальский макрорегион: Иркутская область и прибайкальские районы Бурятии.
+
+Твои пользователи — профессионалы туристической отрасли макрорегиона:
 - отельеры (владельцы и менеджеры средств размещения),
 - региональная администрация,
 - исследователи туристического рынка.
@@ -1025,6 +1164,7 @@ def _build_system_prompt() -> str:
 - "Реестр объектов в Листвянке" → search_hotels(location="Листвянка")
 - "Погода как фактор спроса" → get_weather()
 - "RevPAR / ADR / занятость по району за период" → get_revenue_metrics(district="Иркутский")
+- "Сравни мой мини-отель на 12 номеров с сегментом" → get_segment_benchmark(district="Иркутский", rooms=12)
 
 ФОРМАТ ОТВЕТА (обязателен):
 {METHODOLOGY_PROMPT_RULES}"""

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Query, HTTPException
 from datetime import date
-from typing import Any
+from pydantic import ValidationError
 import logging
 
 from app.models.schemas import (
@@ -13,7 +13,7 @@ from app.models.schemas import (
     SegmentAvgMetrics,
 )
 from app.dependencies import DataServiceDep, CacheServiceDep
-from app.constants import VALID_DISTRICTS
+from app.constants import SEGMENT_WINDOW_DAYS, VALID_DISTRICTS
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/hotels", tags=["hotels"])
@@ -93,11 +93,19 @@ async def hotel_segment_benchmark(
     data_svc: DataServiceDep,
     cache_svc: CacheServiceDep,
 ) -> HotelSegmentBenchmarkResponse:
-    """Сравнение отеля с сегментом «район × размерная категория»."""
+    """Сравнение отеля с сегментом «район × размерная категория».
+
+    Метрики объекта берутся из его последнего снимка (`as_of`), метрики сегмента —
+    из последних снимков соседей за окно `segment_window_days` дней. Снимок объекта
+    может быть заметно старше окна сегмента, поэтому дата возвращается явно.
+    """
     cache_key = f"hotels:segment-benchmark:{hotel_id}"
     cached = await cache_svc.get(cache_key)
     if cached:
-        return HotelSegmentBenchmarkResponse(**cached)
+        try:
+            return HotelSegmentBenchmarkResponse(**cached)
+        except ValidationError:
+            logger.warning("Corrupted segment-benchmark cache for %s, recalculating", hotel_id)
 
     hotel = await data_svc.get_hotel_by_id(hotel_id)
     if not hotel:
@@ -138,6 +146,8 @@ async def hotel_segment_benchmark(
             avg_price=segment.get("avg_price"),
         ),
         n_in_segment=segment.get("n", 0),
+        as_of=own_stats.get("date"),
+        segment_window_days=segment.get("window_days", SEGMENT_WINDOW_DAYS),
     )
     await cache_svc.set(cache_key, response.model_dump(), ttl=600)
     return response

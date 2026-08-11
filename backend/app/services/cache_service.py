@@ -1,6 +1,8 @@
 """Сервис кэширования через Redis."""
+import hashlib
 import json
 import logging
+from collections.abc import Sequence
 from typing import Any
 import redis.asyncio as redis
 
@@ -122,29 +124,88 @@ class CacheService:
 
 cache_service = CacheService()
 
-# Версия модели ensemble — бампать при изменении весов или признаков.
-ENSEMBLE_MODEL_VERSION = "ens-v2-2026-05"
+# Версия схемы ключа и семантики ответа ансамбля.
+ENSEMBLE_MODEL_VERSION = "ens-v3-2026-08"
+
+
+def compute_ensemble_data_hash(
+    history: list[dict],
+    weather_data: dict | None = None,
+    events_data: list[dict] | None = None,
+    model_version: str = ENSEMBLE_MODEL_VERSION,
+) -> str:
+    """Хэш входных данных ансамбля.
+
+    Устроен по образцу ``xgboost_service._compute_data_hash``: берёт длину истории и её
+    края, календарные ключи погоды и сводку событий — то есть всё, от чего зависит
+    результат, и ничего, что меняется от одной лишь перестановки элементов.
+
+    Args:
+        history: Ряд наблюдений загрузки.
+        weather_data: Погода по датам прогноза.
+        events_data: События, поданные моделям как регрессор.
+        model_version: Версия семантики ансамбля.
+
+    Returns:
+        Первые 16 hex-символов sha256.
+    """
+    weather_keys: list[str] = []
+    if weather_data:
+        sorted_keys = sorted(str(k) for k in weather_data)
+        weather_keys = sorted_keys[:3] + sorted_keys[-3:] if len(sorted_keys) >= 6 else sorted_keys
+
+    events_summary: dict = {}
+    if events_data:
+        dates = sorted(
+            (e.get("date_start") for e in events_data if e.get("date_start")),
+            key=str,
+        )
+        events_summary = {
+            "count": len(events_data),
+            "first_date": str(dates[0]) if dates else None,
+            "last_date": str(dates[-1]) if dates else None,
+        }
+
+    payload = json.dumps(
+        {
+            "len": len(history),
+            "first_3": history[:3],
+            "last_5": history[-5:],
+            "weather_keys": weather_keys,
+            "events": events_summary,
+            "version": model_version,
+        },
+        default=str,
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
 
 def build_ensemble_cache_key(
     district: str,
     days: int,
+    data_hash: str,
+    models: Sequence[str],
     method: str = "weighted_average",
     model_version: str = ENSEMBLE_MODEL_VERSION,
 ) -> str:
     """Cache key для ensemble forecast.
 
-    Включает model_version (для invalidation на retrain) и method (для разделения weighted_average / best_model / simple_average).
-    Старые ключи без model_version естественно истекут по TTL.
+    Ключ зависит от данных (``data_hash``) и от состава ансамбля (``models``), поэтому
+    свежий импорт статистики, новый прогон парсеров событий или изменение набора моделей
+    дают другой ключ, а не подмешивают старый ответ к новым условиям.
 
     Args:
         district: Название района.
         days: Горизонт прогноза в днях.
+        data_hash: Результат :func:`compute_ensemble_data_hash` по тем же входам,
+            на которых будет считаться прогноз.
+        models: Имена моделей, которые ансамбль пытается запускать.
         method: Метод объединения моделей.
-        model_version: Версия модели; отличная версия → отдельный ключ,
-            что исключает возврат устаревших данных после переобучения.
+        model_version: Версия семантики ансамбля.
 
     Returns:
-        Строка вида ``forecast:ensemble:<version>:<district>:<days>:<method>``.
+        Строка вида ``forecast:ensemble:<version>:<модели>:<район>:<дней>:<метод>:<хэш>``.
     """
-    return f"forecast:ensemble:{model_version}:{district}:{days}:{method}"
+    roster = "-".join(sorted(models)) or "none"
+    return f"forecast:ensemble:{model_version}:{roster}:{district}:{days}:{method}:{data_hash}"

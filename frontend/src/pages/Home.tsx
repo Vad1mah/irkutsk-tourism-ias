@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { usePageTitle } from '../hooks/usePageTitle'
+import type { LucideIcon } from 'lucide-react'
 import {
   TrendingUp, Banknote, Activity, Calendar, MapPin,
   BarChart3, MessageSquare, ArrowRight, Sparkles, Database, Building2,
@@ -10,7 +11,14 @@ import { api } from '../api/client'
 import { Card, Button, Badge, Dropdown } from '../components/ui'
 import { MethodologyTooltip } from '../components/MethodologyTooltip'
 import { ALL_DISTRICT_NAMES, DEFAULT_DISTRICT } from '../constants/districts'
-import { localizeSeries, FORECAST_HEADER_TEXT, FORECAST_METHODOLOGY_TEXT } from '../utils/localize'
+import {
+  localizeSeries,
+  FORECAST_HEADER_TEXT,
+  FORECAST_FACTUAL_ONLY_TEXT,
+  FORECAST_METHODOLOGY_TEXT,
+  PICKUP_TREND_METHODOLOGY_TEXT,
+  PICKUP_PANEL_CAVEAT_TEXT,
+} from '../utils/localize'
 import { formatRuDate, formatRuDateRange } from '../utils/format'
 import { RECHARTS_TOOLTIP_PROPS, BAR_CURSOR_TRANSPARENT } from '../utils/chartTheme'
 import {
@@ -19,33 +27,42 @@ import {
 
 const FORECAST_HORIZON = 14
 
-const B2B_QUICK_PROMPTS = [
-  {
-    icon: TrendingUp,
-    short: 'Лучший район по RevPAR',
-    prompt: 'Какой район показал лучший RevPAR за последние 30 дней?',
-  },
-  {
-    icon: Calendar,
-    short: 'События с пиком спроса',
-    prompt: 'Топ-5 событий с наибольшим положительным влиянием на спрос',
-  },
-  {
-    icon: Building2,
-    short: 'Сравни два загруженных района',
-    prompt: 'Сравни два самых загруженных района по RMS-метрикам',
-  },
-  {
-    icon: Activity,
-    short: 'Темп бронирований 14 дней',
-    prompt: 'Темп бронирований за последние 14 дней — ускоряется или замедляется?',
-  },
-]
+type QuickPrompt = {
+  icon: LucideIcon
+  short: string
+  prompt: string
+}
+
+function buildQuickPrompts(district: string): QuickPrompt[] {
+  return [
+    {
+      icon: TrendingUp,
+      short: 'Лучший район по RevPAR',
+      prompt: 'Какой район показал лучший RevPAR за последние 30 дней?',
+    },
+    {
+      icon: Calendar,
+      short: 'События с пиком спроса',
+      prompt: 'Топ-5 событий с наибольшим положительным влиянием на спрос',
+    },
+    {
+      icon: Building2,
+      short: 'Сравни два загруженных района',
+      prompt: 'Сравни два самых загруженных района по RMS-метрикам',
+    },
+    {
+      icon: Activity,
+      short: 'Занятые номера за 30 дней',
+      prompt: `Как менялось число занятых номеров в районе «${district}» за последние 30 дней?`,
+    },
+  ]
+}
 
 function Home() {
   usePageTitle('Командный центр')
   const navigate = useNavigate()
   const [district, setDistrict] = useState(DEFAULT_DISTRICT)
+  const [forecastRequested, setForecastRequested] = useState(false)
 
   const { data: revenueSummary } = useQuery({
     queryKey: ['revenue-summary'],
@@ -57,6 +74,7 @@ function Home() {
     queryKey: ['ensemble-forecast', district, FORECAST_HORIZON],
     queryFn: () => api.ensembleForecast(district, FORECAST_HORIZON),
     staleTime: 5 * 60_000,
+    enabled: forecastRequested,
   })
 
   const { data: pickup } = useQuery({
@@ -106,7 +124,7 @@ function Home() {
       lower: number | undefined
       upper: number | undefined
     }
-    const today = new Date().toISOString().slice(0, 10)
+    const today = new Date().toLocaleDateString('sv-SE')
     const allDates = new Map<string, CombinedPoint>()
     for (const p of occupancyTimeseries?.points ?? []) {
       allDates.set(p.date, { date: p.date, factual: p.occupancy, forecast: undefined, lower: undefined, upper: undefined })
@@ -122,6 +140,12 @@ function Home() {
     return { series: Array.from(allDates.values()).sort((a, b) => a.date.localeCompare(b.date)), today }
   }, [occupancyTimeseries, forecastSeries])
 
+  const quickPrompts = useMemo(() => buildQuickPrompts(district), [district])
+
+  const asOfLabel = revenueSummary?.as_of_date
+    ? new Date(revenueSummary.as_of_date).toLocaleDateString('ru-RU')
+    : 'последнюю доступную дату'
+
   return (
     <div className="animate-fade-in space-y-8">
       {/* Hero */}
@@ -135,10 +159,11 @@ function Home() {
           </div>
           <h1 className="text-3xl lg:text-4xl font-bold mb-2">
             Рынок размещения{' '}
-            <span className="gradient-text">Иркутской области</span>
+            <span className="gradient-text">Байкальского макрорегиона</span>
           </h1>
           <p className="text-sm text-[hsl(var(--muted-foreground))] max-w-xl">
-            RMS-метрики, прогноз спроса и влияние событий — для отельеров, региональной администрации и исследователей.
+            Иркутская область и прибайкальские районы Бурятии. RMS-метрики, прогноз спроса и влияние
+            событий — для отельеров, региональной администрации и исследователей.
           </p>
         </div>
 
@@ -173,15 +198,19 @@ function Home() {
           icon={Activity}
           label="Текущая загрузка"
           value={districtKpi ? `${districtKpi.occupancy}%` : '—'}
-          sub={`Последний срез по району «${district}»`}
+          sub={districtKpi
+            ? `${districtKpi.hotels_count} объектов со снимком за ${asOfLabel}`
+            : `Нет снимка по району «${district}»`}
           accent="primary"
+          tooltip="Доля занятых номеров по району: сумма занятых номеров делится на сумму номеров объектов, попавших в снимок последней доступной даты. Достоверность метрики: высокая — от 10 объектов в снимке, средняя — 3–9, низкая — 2 и меньше."
         />
         <KPITile
           icon={TrendingUp}
-          label="Прогноз на 14 дней"
+          label="Прогноз загрузки, 14 дней"
           value={forecastAvg != null ? `${forecastAvg}%` : '—'}
-          sub="Средневзвешенный ансамбль"
+          sub={forecastRequested ? 'Среднее по горизонту, ансамбль 2 моделей' : 'Считается по кнопке «Показать прогноз»'}
           accent="success"
+          tooltip="Средняя загрузка по всем 14 дням горизонта, а не значение на 14-й день. Ансамбль — взвешенное среднее двух моделей (Prophet и XGBoost). Модели обучаются в момент запроса, поэтому прогноз считается по кнопке под графиком."
         />
         <KPITile
           icon={Banknote}
@@ -209,16 +238,28 @@ function Home() {
               <MethodologyTooltip text={FORECAST_METHODOLOGY_TEXT} />
             </div>
             <p className="text-sm text-[hsl(var(--muted-foreground))]">
-              {FORECAST_HEADER_TEXT} Вертикальная линия — сегодня.
+              {forecastRequested ? FORECAST_HEADER_TEXT : FORECAST_FACTUAL_ONLY_TEXT} Вертикальная линия — сегодня.
             </p>
           </div>
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1.5 text-xs text-[hsl(var(--muted-foreground))]">
               <span className="inline-block w-3 h-0.5 bg-[hsl(var(--success))] rounded" />
               Факт
-              <span className="inline-block w-3 h-0.5 bg-[hsl(var(--primary))] rounded ml-2" />
-              Прогноз
+              {forecastRequested && (
+                <>
+                  <span className="inline-block w-3 h-0.5 bg-[hsl(var(--primary))] rounded ml-2" />
+                  Прогноз
+                </>
+              )}
             </div>
+            {!forecastRequested ? (
+              <Button variant="primary" size="sm" onClick={() => setForecastRequested(true)}>
+                <TrendingUp size={14} />
+                Показать прогноз
+              </Button>
+            ) : loadingForecast ? (
+              <span className="text-xs text-[hsl(var(--muted-foreground))]">Считаем прогноз…</span>
+            ) : null}
             <Button variant="secondary" size="sm" onClick={() => navigate(`/forecast?district=${encodeURIComponent(district)}`)}>
               <TrendingUp size={14} />
               Подробнее
@@ -227,7 +268,7 @@ function Home() {
           </div>
         </div>
 
-        {loadingForecast ? (
+        {combinedSeries.series.length === 0 && loadingForecast ? (
           <div className="h-56 skeleton rounded-xl" />
         ) : combinedSeries.series.length > 0 ? (
           <ResponsiveContainer width="100%" height={220}>
@@ -270,18 +311,18 @@ function Home() {
           </ResponsiveContainer>
         ) : (
           <p className="text-sm text-[hsl(var(--muted-foreground))] py-8 text-center">
-            Недостаточно истории для прогноза по выбранному району.
+            По выбранному району нет дневных снимков загрузки за последние две недели.
           </p>
         )}
       </Card>
 
-      {/* Pickup + Events impact */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card variant="glass" padding="lg">
+      {/* Темп бронирований */}
+      <Card variant="glass" padding="lg">
           <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <Activity size={18} className="text-[hsl(var(--primary))]" />
-              <h2 className="text-base font-semibold">Динамика бронирований за 30 дней</h2>
+              <h2 className="text-base font-semibold">Динамика занятых номеров</h2>
+              <MethodologyTooltip text={PICKUP_PANEL_CAVEAT_TEXT} />
             </div>
             <div className="inline-flex items-center gap-2">
               {pickup?.summary && (
@@ -292,7 +333,7 @@ function Home() {
                   >
                     {pickup.summary.trend}
                   </Badge>
-                  <MethodologyTooltip text="Сравнение последних 3 дней с первыми 3 в окне 30 дней. «Ускорение» — рост бронирований более чем на 20%, «замедление» — спад более чем на 20%, иначе — «стабильно»." />
+                  <MethodologyTooltip text={PICKUP_TREND_METHODOLOGY_TEXT} />
                 </span>
               )}
               <Button variant="secondary" size="sm" onClick={() => navigate('/analytics?tab=seasonality')} title="Полная динамика с накоплением и тепловой картой">
@@ -303,6 +344,9 @@ function Home() {
           </div>
           {pickup && pickup.points.length > 0 ? (
             <>
+              <p className="text-xs text-[hsl(var(--muted-foreground))] mb-2">
+                Окно: {formatRuDateRange(pickup.period.start, pickup.period.end)} · дневных снимков: {pickup.summary.samples}
+              </p>
               <ResponsiveContainer width="100%" height={140}>
                 <AreaChart data={pickup.points}>
                   <XAxis dataKey="date" hide />
@@ -310,39 +354,42 @@ function Home() {
                   <Tooltip
                     {...RECHARTS_TOOLTIP_PROPS}
                     cursor={BAR_CURSOR_TRANSPARENT}
-                    formatter={(v: number) => [v > 0 ? `+${v}` : `${v}`, 'Изменение бронирований за сутки']}
+                    formatter={(v: number) => [v > 0 ? `+${v}` : `${v}`, 'Изменение занятых номеров за сутки']}
                   />
                   <Area type="monotone" dataKey="pickup" stroke="hsl(var(--accent))" fill="hsl(var(--accent)/0.2)" />
                 </AreaChart>
               </ResponsiveContainer>
               <div className="grid grid-cols-3 gap-2 mt-2 text-xs">
                 <div>
-                  <span className="text-[hsl(var(--muted-foreground))]">Ср/день</span>
+                  <span className="text-[hsl(var(--muted-foreground))] inline-flex items-center gap-1">
+                    Ср. за день с движением
+                    <MethodologyTooltip text="Среднее изменение по дням, в которые занятость менялась. Дни без движения в среднее не входят, поэтому модуль числа выше, чем среднее по всем дням окна." />
+                  </span>
                   <p className="font-semibold tabular-nums">{pickup.summary.avg_pickup > 0 ? '+' : ''}{pickup.summary.avg_pickup}</p>
                 </div>
                 <div>
-                  <span className="text-[hsl(var(--muted-foreground))]">Лучший день</span>
-                  <p className="font-semibold tabular-nums text-[hsl(var(--success))]">+{pickup.summary.max_pickup}</p>
+                  <span className="text-[hsl(var(--muted-foreground))]">Макс. прирост</span>
+                  <p className="font-semibold tabular-nums text-[hsl(var(--success))]">{pickup.summary.max_pickup > 0 ? '+' : ''}{pickup.summary.max_pickup}</p>
                 </div>
                 <div>
-                  <span className="text-[hsl(var(--muted-foreground))]">Худший день</span>
-                  <p className="font-semibold tabular-nums text-[hsl(var(--destructive))]">{pickup.summary.min_pickup}</p>
+                  <span className="text-[hsl(var(--muted-foreground))]">Макс. спад</span>
+                  <p className="font-semibold tabular-nums text-[hsl(var(--destructive))]">{pickup.summary.min_pickup > 0 ? '+' : ''}{pickup.summary.min_pickup}</p>
                 </div>
               </div>
               <p className="text-xs text-[hsl(var(--muted-foreground))] mt-2 leading-snug">
                 {pickup.summary.trend === 'ускорение'
-                  ? 'Спрос ускоряется: за последние 3 дня бронируют активнее, чем в начале окна. Имеет смысл удержать или поднять тариф на ближайшие даты.'
+                  ? 'Занятых номеров прибавляется быстрее, чем в начале окна. Имеет смысл удержать или поднять тариф на ближайшие даты.'
                   : pickup.summary.trend === 'замедление'
-                    ? 'Спрос ослабевает: бронирований сейчас меньше, чем в начале окна. Рассмотрите промо или скидку на нечувствительные даты.'
-                    : 'Спрос стабилен: значимых сдвигов в темпе бронирований за окно не зафиксировано.'}
+                    ? 'Занятых номеров прибавляется медленнее, чем в начале окна. Рассмотрите промо или скидку на нечувствительные даты.'
+                    : pickup.summary.trend === 'стабильно'
+                      ? 'Значимых сдвигов в темпе за окно не зафиксировано.'
+                      : 'Дневных снимков с движением в окне слишком мало, чтобы судить о тренде.'}
               </p>
             </>
           ) : (
             <p className="text-sm text-[hsl(var(--muted-foreground))] py-6 text-center">Недостаточно дневных снимков, чтобы рассчитать темп бронирований по этому району.</p>
           )}
-        </Card>
-
-      </div>
+      </Card>
 
       {/* AI Quick prompts */}
       <div>
@@ -354,7 +401,7 @@ function Home() {
           AI-агент использует те же данные, что и дашборды: прогноз спроса, события, RMS-метрики по районам.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {B2B_QUICK_PROMPTS.map(({ icon: Icon, short, prompt }) => (
+          {quickPrompts.map(({ icon: Icon, short, prompt }) => (
             <button
               key={short}
               onClick={() => navigate(`/chat?context=${encodeURIComponent(prompt)}`)}
@@ -383,11 +430,17 @@ function Home() {
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
-              <p className="text-xs text-[hsl(var(--muted-foreground))]">Отелей в базе</p>
+              <p className="text-xs text-[hsl(var(--muted-foreground))] inline-flex items-center gap-1">
+                Объектов в справочнике
+                <MethodologyTooltip text="Все объекты размещения, когда-либо собранные парсерами. В дневной снимок попадает меньше: часть объектов в конкретный день недоступна на источниках." />
+              </p>
               <p className="text-sm font-semibold tabular-nums">{metadata.hotels_count}</p>
             </div>
             <div>
-              <p className="text-xs text-[hsl(var(--muted-foreground))]">Предстоящих событий</p>
+              <p className="text-xs text-[hsl(var(--muted-foreground))] inline-flex items-center gap-1">
+                Предстоящих событий в БД
+                <MethodologyTooltip text="События с датой начала от сегодняшней, все источники, до фильтрации спама и склейки дублей. На экране «События» число меньше — там применены фильтры и дедупликация." />
+              </p>
               <p className="text-sm font-semibold tabular-nums">{metadata.upcoming_events_count ?? metadata.events_count}</p>
             </div>
             <div>
@@ -424,7 +477,7 @@ function Home() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { label: 'Аналитика рынка', desc: 'RMS-метрики, heatmap, события', icon: BarChart3, path: `/analytics?district=${encodeURIComponent(district)}` },
-          { label: 'Прогноз спроса', desc: 'Среднее по 3 моделям + факторы', icon: TrendingUp, path: `/forecast?district=${encodeURIComponent(district)}` },
+          { label: 'Прогноз спроса', desc: 'Взвешенное среднее 2 моделей + факторы', icon: TrendingUp, path: `/forecast?district=${encodeURIComponent(district)}` },
           { label: 'Региональная карта', desc: 'Объекты + загрузка', icon: MapPin, path: '/map' },
           { label: 'Спросить AI', desc: 'Свой запрос в чат', icon: MessageSquare, path: '/chat' },
         ].map(item => (

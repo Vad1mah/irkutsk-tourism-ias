@@ -77,8 +77,10 @@ class TestEventSchema:
 class TestForecastRequest:
 
     def test_default_days(self):
+        from app.constants import MAX_FORECAST_HORIZON_DAYS
+
         r = ForecastRequest(district="Иркутский")
-        assert r.days_ahead == 30
+        assert r.days_ahead == MAX_FORECAST_HORIZON_DAYS
 
     def test_district_optional(self):
         r = ForecastRequest()

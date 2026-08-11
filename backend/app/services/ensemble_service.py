@@ -34,6 +34,11 @@ class EnsembleService:
         self._calibrated_at: float = 0.0
         self._calibrating: bool = False
 
+    @property
+    def model_names(self) -> list[str]:
+        """Состав ансамбля — имена моделей, которые сервис пытается запускать."""
+        return sorted(self._weights)
+
     async def forecast_ensemble_async(
         self,
         history: list[dict],

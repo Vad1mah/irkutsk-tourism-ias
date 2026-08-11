@@ -14,7 +14,6 @@ import {
 } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardContent, Badge, Dropdown } from '../components/ui'
 import { ErrorState } from '../components/ErrorState'
-import { MethodologyTooltip } from '../components/MethodologyTooltip'
 import { exportChartPng } from '../utils/export'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { DEFAULT_DISTRICTS } from '../constants/districts'
@@ -28,6 +27,7 @@ type SeasonData = {
   events: number
   season: string
   hasData?: boolean
+  samples?: number
 }
 
 type MissingPeriod = {
@@ -38,13 +38,14 @@ type MissingPeriod = {
 
 const MODEL_COLORS: Record<string, string> = {
   prophet: 'hsl(199 89% 48%)',
-  neuralprophet: 'hsl(280 67% 50%)',
   xgboost: 'hsl(142 76% 36%)',
+  ensemble: 'hsl(var(--foreground))',
 }
 
 const MODEL_LABELS: Record<string, string> = {
   prophet: 'Prophet',
   xgboost: 'XGBoost',
+  ensemble: 'Ансамбль',
 }
 
 function Forecast() {
@@ -95,13 +96,6 @@ function Forecast() {
     staleTime: 10 * 60 * 1000,
   })
 
-  const { data: validationData, isLoading: loadingValidation } = useQuery({
-    queryKey: ['forecast-validation', district],
-    queryFn: () => api.getForecastValidation(district, 14),
-    retry: 1,
-    staleTime: 30 * 60 * 1000,
-  })
-
   const isLoading = loadingEnsemble || loadingCompare
 
   const [viewMode, setViewMode] = useState<'simple' | 'expert' | 'seasonality'>('simple')
@@ -111,10 +105,17 @@ function Forecast() {
   const { data: compareDistrictData } = useQuery({
     queryKey: ['compareDistricts', compareDistricts, daysAhead],
     queryFn: async () => {
-      const results = await Promise.all(
-        compareDistricts.map(d => api.ensembleForecast(d, daysAhead).then(r => ({ district: d, data: r })).catch(() => null))
-      )
-      return results.filter(Boolean) as { district: string; data: typeof ensembleData }[]
+      // Каждый ensemble-запрос синхронно обучает Prophet и XGBoost на бэкенде,
+      // поэтому районы обходятся строго по одному.
+      const results: { district: string; data: typeof ensembleData }[] = []
+      for (const d of compareDistricts) {
+        try {
+          results.push({ district: d, data: await api.ensembleForecast(d, daysAhead) })
+        } catch {
+          continue
+        }
+      }
+      return results
     },
     enabled: compareDistricts.length > 0,
     staleTime: 5 * 60 * 1000,
@@ -122,7 +123,7 @@ function Forecast() {
 
   const { data: eventsData } = useQuery({
     queryKey: ['events'],
-    queryFn: api.getEvents,
+    queryFn: () => api.getEvents(),
     staleTime: 10 * 60 * 1000,
   })
 
@@ -194,8 +195,8 @@ function Forecast() {
                 value={String(daysAhead)}
                 onChange={(v) => setDaysAhead(Number(v))}
                 options={[
-                  { value: '3', label: '3 дня' },
-                  { value: '7', label: '7 дней', hint: 'ошибка сопоставима с наивным прогнозом' },
+                  { value: '3', label: '3 дня', hint: 'ошибка сопоставима с наивным прогнозом' },
+                  { value: '7', label: '7 дней', hint: 'ошибка выше наивного прогноза' },
                   { value: '14', label: '14 дней', hint: 'ошибка выше наивного прогноза' },
                 ]}
                 compact
@@ -329,22 +330,17 @@ function Forecast() {
               <CardHeader>
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div>
-                    <CardTitle>События и загруженность</CardTitle>
+                    <CardTitle>События и загруженность по месяцам</CardTitle>
                     <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
-                      Как события статистически связаны с заполняемостью (корреляция, не причинность)
+                      Число событий за месяц и средняя загрузка того же месяца. Это связь месячных
+                      итогов, а не эффект отдельного события: регрессия по дням прироста загрузки
+                      в дни событий не показала.
                     </p>
                   </div>
                   {correlationCoeff !== null && correlationCoeff !== undefined && (
-                    <Badge variant="accent">
+                    <Badge variant="secondary">
                       <Zap size={12} />
-                      Корреляция: {correlationCoeff}{' '}
-                      {Math.abs(Number(correlationCoeff)) >= 0.7
-                        ? '(сильная связь)'
-                        : Math.abs(Number(correlationCoeff)) >= 0.4
-                          ? '(умеренная связь)'
-                          : Math.abs(Number(correlationCoeff)) >= 0.2
-                            ? '(слабая связь)'
-                            : '(связь не выявлена)'}
+                      Коэффициент Пирсона: {correlationCoeff} по {validMonthsCount} мес.
                     </Badge>
                   )}
                 </div>
@@ -423,7 +419,9 @@ function Forecast() {
               <Card variant="glass">
                 <CardHeader>
                   <CardTitle>Динамика цен</CardTitle>
-                  <p className="text-sm text-[hsl(var(--muted-foreground))]">Средняя цена по месяцам</p>
+                  <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                    Медиана минимальной цены номера по месяцам (прокси-ADR)
+                  </p>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={200}>
@@ -441,7 +439,7 @@ function Forecast() {
                         {...RECHARTS_TOOLTIP_PROPS}
                         formatter={(value) => {
                           const v = value as number | null
-                          return v === null ? ['Нет данных'] : [`${v?.toLocaleString()}₽`, 'Ср. цена']
+                          return v === null ? ['Нет данных'] : [`${v?.toLocaleString()} ₽`, 'Медиана цены']
                         }}
                       />
                       <Area
@@ -489,7 +487,7 @@ function Forecast() {
         <>
           {/* Weights summary (expert only) */}
           {viewMode === 'expert' && Object.keys(weights).length > 0 && (
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {Object.entries(weights).map(([model, weight]) => (
                 <Card key={model} hover className="text-center">
                   <div className="flex items-center justify-center gap-2 mb-1">
@@ -510,11 +508,11 @@ function Forecast() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Layers className="w-5 h-5 text-[hsl(var(--primary))]" />
-                    <CardTitle>Прогноз заполняемости с интервалом уверенности</CardTitle>
+                    <CardTitle>Прогноз заполняемости с полосой неопределённости</CardTitle>
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge variant="primary" size="sm">
-                      {ensembleData?.history_points} точек данных
+                      {ensembleData?.history_points} точек истории
                     </Badge>
                     <button
                       onClick={() => navigate(`/chat?context=${encodeURIComponent(`Объясни прогноз заполняемости для ${district} района на ${daysAhead} дней`)}`)}
@@ -629,16 +627,13 @@ function Forecast() {
 
           {/* Simple view: компактный обзор прогноза + события горизонта */}
           {viewMode === 'simple' && ensemblePoints.length > 0 && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {(() => {
                 const occs = ensemblePoints.map(p => p.occupancy)
                 const minOcc = Math.min(...occs)
                 const maxOcc = Math.max(...occs)
                 const minDay = ensemblePoints[occs.indexOf(minOcc)]
                 const maxDay = ensemblePoints[occs.indexOf(maxOcc)]
-                const ciAvg = Math.round(
-                  ensemblePoints.reduce((a, p) => a + (p.upper - p.lower), 0) / ensemblePoints.length
-                )
                 const fmt = (d: string) =>
                   new Date(d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
                 return (
@@ -658,16 +653,6 @@ function Forecast() {
                       </div>
                       <p className="text-2xl font-bold tabular-nums">{Math.round(minOcc)}%</p>
                       <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">{fmt(minDay.date)}</p>
-                    </Card>
-                    <Card variant="glass" padding="md">
-                      <div className="flex items-center gap-2 mb-2 text-[hsl(var(--muted-foreground))]">
-                        <Layers size={14} />
-                        <span className="text-xs uppercase tracking-wider">Доверительный интервал</span>
-                      </div>
-                      <p className="text-2xl font-bold tabular-nums">±{Math.round(ciAvg / 2)} п.п.</p>
-                      <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">
-                        {ciAvg < 15 ? 'высокая уверенность' : ciAvg < 30 ? 'средняя уверенность' : 'низкая уверенность'}
-                      </p>
                     </Card>
                   </>
                 )
@@ -715,29 +700,6 @@ function Forecast() {
                   </button>
                 )}
               </CardContent>
-            </Card>
-          )}
-
-          {/* Confidence indicator (expert: доп. контекст к интервалу) */}
-          {viewMode === 'expert' && ensemblePoints.length > 0 && (
-            <Card variant="glass" padding="md">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Layers size={18} className="text-[hsl(var(--primary))]" />
-                  <div>
-                    <p className="text-sm font-medium">Уверенность прогноза</p>
-                    <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                      На основе ширины доверительного интервала: узкий (&lt;15 п.п.) = высокая, средний (15–30 п.п.) = средняя, широкий (&gt;30 п.п.) = низкая
-                    </p>
-                  </div>
-                </div>
-                {(() => {
-                  const avgWidth = ensemblePoints.reduce((a, p) => a + (p.upper - p.lower), 0) / ensemblePoints.length
-                  if (avgWidth < 15) return <Badge variant="success">Высокая</Badge>
-                  if (avgWidth < 30) return <Badge variant="warning">Средняя</Badge>
-                  return <Badge variant="danger">Низкая</Badge>
-                })()}
-              </div>
             </Card>
           )}
 
@@ -840,7 +802,7 @@ function Forecast() {
                         </tr>
                       </thead>
                       <tbody>
-                        {['prophet', 'neuralprophet', 'xgboost']
+                        {['prophet', 'xgboost', 'ensemble']
                           .filter(m => metrics[m] && typeof metrics[m] === 'object')
                           .map(model => {
                             const m = metrics[model] as { rmse: number; mae: number; r2: number; rmse_std?: number; fold_count?: number }
@@ -870,15 +832,16 @@ function Forecast() {
                           })}
                       </tbody>
                     </table>
-                    {/* Phase 9: warning при R²<0 у любой модели */}
                     {Object.values(metrics).some(m => typeof m === 'object' && m !== null && 'r2' in m && (m as {r2:number}).r2 < 0) && (
                       <div className="mt-3 p-3 rounded-lg border border-[hsl(var(--warning)/0.4)] bg-[hsl(var(--warning)/0.08)] text-xs">
                         <p className="font-semibold text-[hsl(var(--warning))] mb-1">⚠ R² отрицательный у одной или нескольких моделей</p>
                         <p className="text-[hsl(var(--muted-foreground))] leading-relaxed">
-                          На этом горизонте модель работает хуже простого предсказания «всегда выводить среднее».
-                          Это нормально для долгосрочных прогнозов (≥30 дней) на ограниченной истории — мы располагаем
-                          ~14 месяцами данных с gap-периодом летом 2025. Используйте ensemble для горизонтов ≤7-14 дней,
-                          где он стабильно положителен.
+                          Отрицательный R² означает, что на тестовых окнах модель объясняет ряд хуже, чем константа
+                          «среднее за период». Отдельно измерено сравнение с наивным прогнозом «завтра как вчера»:
+                          устойчивого преимущества модели нет — на горизонтах 7 и 14 дней она проигрывает наивному,
+                          на 1–3 днях ошибка сопоставима. История ограничена и содержит пробел данных
+                          24.06.2025 – 25.10.2025 (123 дня). Прогноз показан как предмет пилота, а не как готовая
+                          основа для тарифных решений.
                         </p>
                       </div>
                     )}
@@ -889,7 +852,7 @@ function Forecast() {
                     )}
                   </div>
 
-                  <div className="mt-5 grid md:grid-cols-3 gap-3 text-xs">
+                  <div className="mt-5 grid md:grid-cols-2 gap-3 text-xs">
                     <div className="rounded-lg border border-[hsl(var(--border))] p-3">
                       <p className="font-semibold text-[hsl(var(--foreground))] mb-1 inline-flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full" style={{ backgroundColor: MODEL_COLORS.prophet }} />
@@ -907,12 +870,16 @@ function Forecast() {
                       </p>
                       <p className="text-[hsl(var(--muted-foreground))] leading-relaxed">
                         Градиентный бустинг на 38 признаках (календарь, лаги, погода, события).
-                        Ловит нелинейные взаимодействия. Quantile-режим даёт интервал уверенности.
+                        Ловит нелинейные взаимодействия. Quantile-режим даёт верхнюю и нижнюю границы прогноза.
                       </p>
                     </div>
                   </div>
                   <p className="mt-3 text-xs text-[hsl(var(--muted-foreground))] italic">
-                    Ансамбль выбирает лучшую модель по минимальному RMSE на тестовом окне. Метка <Badge variant="success" size="sm">лучшая</Badge> — это победитель.
+                    Ансамбль — взвешенное среднее прогнозов Prophet и XGBoost; вес каждой модели обратно
+                    пропорционален её RMSE на walk-forward CV (текущие веса — в карточках «вклад модели»).
+                    Метка <Badge variant="success" size="sm">лучшая</Badge> отмечает одиночную модель с
+                    минимальным RMSE и на состав ансамбля не влияет: строка «Ансамбль» показывает его
+                    собственную ошибку.
                   </p>
                 </CardContent>
               </Card>
@@ -999,78 +966,6 @@ function Forecast() {
               </Card>
             )}
           </div>}
-
-          {/* Forecast Self-Validation */}
-          {viewMode === 'expert' && (
-            <Card variant="glass">
-              <CardHeader className="pb-2">
-                <div className="flex items-center gap-2">
-                  <BarChart3 className="w-5 h-5 text-[hsl(var(--success))]" />
-                  <CardTitle>Самовалидация модели</CardTitle>
-                </div>
-                <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                  Сравнение прошлых прогнозов с реальными данными за 14 дней
-                </p>
-              </CardHeader>
-              <CardContent>
-                {loadingValidation ? (
-                  <div className="h-32 skeleton rounded-xl" />
-                ) : !validationData || validationData.samples === 0 ? (
-                  <div className="flex items-start gap-3 p-4 rounded-xl bg-[hsl(var(--secondary))]">
-                    <AlertCircle className="w-5 h-5 text-[hsl(var(--muted-foreground))] flex-shrink-0 mt-0.5" />
-                    <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                      Прогнозы за прошлые периоды ещё не сохранены. Запустите ensemble-эндпоинт несколько раз — далее самовалидация заработает.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="p-3 rounded-xl bg-[hsl(var(--secondary))] text-center">
-                        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-1">RMSE</p>
-                        <p className="text-2xl font-bold tabular-nums">{validationData.rmse?.toFixed(2) ?? '—'}</p>
-                        <p className="text-xs text-[hsl(var(--muted-foreground))]">п.п. средняя ошибка</p>
-                      </div>
-                      <div className="p-3 rounded-xl bg-[hsl(var(--secondary))] text-center">
-                        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-1">MAE</p>
-                        <p className="text-2xl font-bold tabular-nums">{validationData.mae?.toFixed(2) ?? '—'}</p>
-                        <p className="text-xs text-[hsl(var(--muted-foreground))]">п.п. среднее отклонение</p>
-                      </div>
-                    </div>
-                    {validationData.mae_per_day && validationData.mae_per_day.length > 0 && (
-                      <div>
-                        <div className="flex items-center gap-1.5 mb-2">
-                          <p className="text-xs font-medium text-[hsl(var(--muted-foreground))]">MAE по дням</p>
-                          <MethodologyTooltip text="Средняя ошибка по абсолютной величине для каждого дня горизонта. Чем больше дней до прогноза — тем выше MAE. Идеальный график: ровный или слабо растущий вправо." />
-                        </div>
-                        <ResponsiveContainer width="100%" height={150}>
-                          <BarChart data={validationData.mae_per_day.map((mae, i) => {
-                            const iso = validationData.forecasted?.[i]?.date
-                            const label = iso
-                              ? new Date(iso).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })
-                              : `Д${i + 1}`
-                            return { day: label, mae: Number(mae.toFixed(2)) }
-                          })}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                            <XAxis dataKey="day" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} interval={validationData.mae_per_day.length > 8 ? 1 : 0} />
-                            <YAxis tick={{ fontSize: 10 }} axisLine={false} tickLine={false} label={{ value: 'MAE, п.п.', angle: -90, position: 'insideLeft', fontSize: 10 }} />
-                            <Tooltip
-                              {...RECHARTS_TOOLTIP_PROPS}
-                              cursor={BAR_CURSOR_TRANSPARENT}
-                              formatter={(v: number) => [`${v} п.п.`, 'MAE']}
-                            />
-                            <Bar dataKey="mae" fill="hsl(var(--success))" radius={[4, 4, 0, 0]} />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                    )}
-                    <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                      На основе {validationData.samples} сохранённых прогнозов
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
 
           {/* AI Explanation */}
           {viewMode !== 'simple' && (
@@ -1387,12 +1282,16 @@ function _calculateInsights(months: SeasonData[]) {
 
   return {
     bestMonth: bestMonth?.month || null,
-    bestReason: bestMonth ? `Заполняемость ${Math.round(bestMonth.occupancy)}% — окно для тех. работ, промо-тарифов, event-маркетинга` : 'Нет данных',
+    bestReason: bestMonth ? `Загрузка ${Math.round(bestMonth.occupancy)}%${_sampleWindow(bestMonth)} — окно для тех. работ, промо-тарифов, event-маркетинга` : 'Нет данных',
     peakMonth: peakMonth?.month || null,
-    peakReason: peakMonth ? `Заполняемость ${Math.round(peakMonth.occupancy)}% — потенциал для динамического pricing и LOS-фильтров` : 'Нет данных',
+    peakReason: peakMonth ? `Загрузка ${Math.round(peakMonth.occupancy)}%${_sampleWindow(peakMonth)} — потенциал для динамического pricing и LOS-фильтров` : 'Нет данных',
     cheapestMonth: cheapestMonth?.month || null,
-    cheapestReason: cheapestMonth ? `Ср. цена ${Math.round(cheapestMonth.avgPrice).toLocaleString()}₽` : 'Нет данных',
+    cheapestReason: cheapestMonth ? `Медиана цены ${Math.round(cheapestMonth.avgPrice).toLocaleString()} ₽${_sampleWindow(cheapestMonth)}` : 'Нет данных',
   }
+}
+
+function _sampleWindow(month: SeasonData): string {
+  return month.samples ? ` (по ${month.samples} датам наблюдения)` : ''
 }
 
 function _seasonDesc(months: SeasonData[], prefixes: string[]): string {
@@ -1401,7 +1300,11 @@ function _seasonDesc(months: SeasonData[], prefixes: string[]): string {
   if (valid.length === 0) return 'Нет данных за период'
   const avgOcc = Math.round(valid.reduce((a, b) => a + b.occupancy, 0) / valid.length)
   const avgPrice = Math.round(valid.reduce((a, b) => a + b.avgPrice, 0) / valid.length)
-  return avgPrice > 0 ? `Заполняемость ~${avgOcc}%, ср. цена ${avgPrice.toLocaleString()}₽` : `Заполняемость ~${avgOcc}%`
+  const days = valid.reduce((a, b) => a + (b.samples || 0), 0)
+  const window = days > 0 ? `, по ${days} датам наблюдения` : ''
+  return avgPrice > 0
+    ? `Загрузка ~${avgOcc}%, медиана цены ${avgPrice.toLocaleString()} ₽${window}`
+    : `Загрузка ~${avgOcc}%${window}`
 }
 
 export default Forecast

@@ -8,7 +8,7 @@ import {
 } from 'recharts'
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui'
 import { MethodologyTooltip } from '../components/MethodologyTooltip'
-import { YandexMap, type HotelPin } from '../components/YandexMap'
+import { YandexMap, occupancyColor, type HotelPin } from '../components/YandexMap'
 import { ErrorState } from '../components/ErrorState'
 import { api } from '../api/client'
 import { usePageTitle } from '../hooks/usePageTitle'
@@ -39,8 +39,26 @@ const PERIOD_OPTIONS: { value: number; label: string }[] = [
   { value: 365, label: '365 дн' },
 ]
 
+// Данные собираются по времени региона: календарный день считается в Asia/Irkutsk,
+// иначе с 00:00 до 08:00 по Иркутску UTC-дата ещё вчерашняя и свежий снимок недоступен.
+const REGION_TIME_ZONE = 'Asia/Irkutsk'
+
+// Пробел сбора данных: парсеры были отключены, дозабор невозможен.
+const DATA_GAP_FROM = '2025-06-24'
+const DATA_GAP_TO = '2025-10-25'
+const DATA_GAP_LABEL = '24.06.2025 – 25.10.2025 (123 дня)'
+
 function isoToday(): string {
-  return new Date().toISOString().slice(0, 10)
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: REGION_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date())
+}
+
+function overlapsDataGap(from: string, to: string): boolean {
+  return from <= DATA_GAP_TO && to >= DATA_GAP_FROM
 }
 
 function isValidIsoDate(s: string): boolean {
@@ -218,11 +236,10 @@ function MapPage() {
   })
   const districts = useMemo(() => districtsQ.data ?? [], [districtsQ.data])
 
-  // Районы для графиков: все выбранные. При пустом фильтре — ТОП-3 по
-  // hotelsCount. Полный aggregate всех 15 районов даёт 30+ параллельных
-  // запросов (occupancy+price на каждый), что упирается в backend rate limit
-  // 60 RPM и роняет страницу с 429 Too Many Requests. Top-3 = 6 запросов,
-  // покрывает ~90% объёма (Иркутский + Улан-Удэ + Ольхонский).
+  // Районы для графиков: все выбранные. При пустом фильтре — крупнейшие по
+  // hotelsCount. Полный aggregate всех районов даёт 20+ параллельных запросов
+  // (occupancy+price на каждый), что упирается в backend rate limit 60 RPM на
+  // /api/analytics/* и роняет страницу с 429 Too Many Requests.
   const queryDistricts = useMemo<string[]>(() => {
     const arr = Array.from(selectedDistricts).sort()
     if (arr.length > 0) return arr
@@ -235,12 +252,12 @@ function MapPage() {
   }, [selectedDistricts, districts])
   // Стабильный ключ для подзаголовков графиков
   const queryDistrictsLabel = useMemo(() => {
+    const names = queryDistricts.map(d => d.replace(' район', ''))
     if (selectedDistricts.size === 0) {
-      return `Топ-3: ${queryDistricts.map(d => d.replace(' район', '')).join(', ')}`
+      return names.length === 1 ? names[0] : `Топ-${names.length}: ${names.join(', ')}`
     }
-    if (queryDistricts.length === 1) return queryDistricts[0]
-    if (queryDistricts.length <= 3) return queryDistricts.join(', ')
-    return `${queryDistricts.length} районов`
+    if (names.length <= 3) return names.join(', ')
+    return `${names.length} районов`
   }, [selectedDistricts, queryDistricts])
   // Параллельные запросы occupancy и price по каждому выбранному району
   const occQueries = useQueries({
@@ -258,20 +275,19 @@ function MapPage() {
 
   const hotelsMap = hotelsMapQ.data
 
-  // Агрегация по дате: occupancy/price = AVG, rooms/capacity = SUM по выбранным районам
+  // Агрегация по дате: occupancy/price = AVG, rooms = SUM по выбранным районам
   const merged = useMemo(() => {
     type Bucket = {
       date: string
       occSum: number; occN: number
       priceSum: number; priceN: number
       rooms: number; roomsN: number
-      capacity: number; capacityN: number
     }
     const bucket = new globalThis.Map<string, Bucket>()
     const init = (date: string): Bucket => {
       let b = bucket.get(date)
       if (!b) {
-        b = { date, occSum: 0, occN: 0, priceSum: 0, priceN: 0, rooms: 0, roomsN: 0, capacity: 0, capacityN: 0 }
+        b = { date, occSum: 0, occN: 0, priceSum: 0, priceN: 0, rooms: 0, roomsN: 0 }
         bucket.set(date, b)
       }
       return b
@@ -281,7 +297,6 @@ function MapPage() {
         const b = init(p.date)
         if (p.occupancy != null) { b.occSum += p.occupancy; b.occN += 1 }
         if (p.total_rooms != null) { b.rooms += p.total_rooms; b.roomsN += 1 }
-        if (p.total_capacity != null) { b.capacity += p.total_capacity; b.capacityN += 1 }
       }
     }
     for (const q of priceQueries) {
@@ -296,7 +311,6 @@ function MapPage() {
         occupancy: b.occN ? +(b.occSum / b.occN).toFixed(2) : undefined,
         price: b.priceN ? Math.round(b.priceSum / b.priceN) : undefined,
         total_rooms: b.roomsN ? b.rooms : null,
-        total_capacity: b.capacityN ? b.capacity : null,
       }))
       .sort((a, b) => a.date.localeCompare(b.date))
   }, [occQueries, priceQueries])
@@ -316,6 +330,7 @@ function MapPage() {
       city: h.city, district: h.district,
       rooms_num: h.rooms_num, free_rooms: h.free_rooms,
       max_capacity: h.max_capacity, occupancy: h.occupancy,
+      district_occupancy: h.district_occupancy,
       min_price: h.min_price, rating: h.rating,
     })),
     [hotelsMap],
@@ -326,23 +341,40 @@ function MapPage() {
     return allHotelPins.filter(h => h.district && selectedDistricts.has(h.district))
   }, [allHotelPins, selectedDistricts])
 
+  // Загрузка считается из номерного фонда (room-nights), а не как среднее по
+  // объектам: иначе хостел на 5 номеров весит столько же, сколько отель на 150.
   const filteredKpi = useMemo(() => {
     const total_hotels = filteredPins.length
-    let total_rooms = 0, free_rooms = 0, occ_sum = 0, occ_n = 0
+    let total_rooms = 0, free_rooms = 0
     for (const h of filteredPins) {
       if (h.rooms_num != null) total_rooms += h.rooms_num
       if (h.free_rooms != null) free_rooms += h.free_rooms
-      if (h.occupancy != null) { occ_sum += h.occupancy; occ_n += 1 }
     }
     return {
       total_hotels, total_rooms, free_rooms,
-      avg_occupancy: occ_n > 0 ? Math.round(occ_sum / occ_n) : 0,
+      occupancy: total_rooms > 0 ? Math.round((100 * (total_rooms - free_rooms)) / total_rooms) : null,
     }
   }, [filteredPins])
 
+  // Районы, доступные в фильтре: /api/analytics/districts не отдаёт районы
+  // с выборкой меньше 4 объектов, поэтому список короче набора пинов на карте.
+  const districtOptions = useMemo<DistrictOption[]>(
+    () => districts
+      .filter(d => (d.hotelsCount ?? 0) > 0)
+      .map(d => ({ name: d.district, hotels: d.hotelsCount ?? 0 })),
+    [districts],
+  )
+
+  const pinsOutsideFilter = useMemo(() => {
+    const known = new Set(districtOptions.map(o => o.name))
+    return allHotelPins.filter(h => !h.district || !known.has(h.district)).length
+  }, [allHotelPins, districtOptions])
+
+  // occupancy === 0 при totalRooms === 0 — это fallback-ветка backend'а «статистики
+  // нет, отдаём хотя бы количество объектов», а не измеренный ноль загрузки.
   const districtsBar = useMemo(() => {
     return [...districts]
-      .filter(d => (d.hotelsCount ?? 0) > 0 && d.occupancy != null)
+      .filter(d => (d.hotelsCount ?? 0) > 0 && d.occupancy != null && (d.totalRooms ?? 0) > 0)
       .sort((a, b) => (b.occupancy ?? 0) - (a.occupancy ?? 0))
       .map(d => ({
         district: d.district.replace(' район', ''),
@@ -406,7 +438,8 @@ function MapPage() {
         <div className="flex-1 min-w-0">
           <h1 className="text-xl font-bold leading-tight">Региональная карта</h1>
           <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">
-            Карта объектов, агрегаты по районам и динамика цен / загрузки за сезон или произвольный период.
+            Байкальский макрорегион: Иркутская область и прибайкальские районы Бурятии. Объекты, агрегаты
+            по районам и динамика цен / загрузки.
           </p>
         </div>
         <button
@@ -426,7 +459,11 @@ function MapPage() {
           <Calendar size={14} />
           <span>
             За <strong>{fmtDateRu(focusDate)}</strong> нет данных от парсеров
-            {focusDate === isoToday() ? ' — снимок за сегодня ещё не собран (отели обновляются каждые 2 ч).' : '. Выберите другую дату.'}
+            {focusDate === isoToday()
+              ? ' — снимок за сегодня ещё не собран (отели обновляются каждые 2 ч).'
+              : overlapsDataGap(focusDate, focusDate)
+                ? `: дата попадает в пробел сбора данных ${DATA_GAP_LABEL}.`
+                : '. Выберите другую дату.'}
           </span>
         </div>
       )}
@@ -438,9 +475,10 @@ function MapPage() {
             <CardContent className="p-4">
               <div className="flex items-center gap-2 text-[hsl(var(--muted-foreground))] text-sm font-medium uppercase tracking-wider mb-1.5">
                 <Building2 size={16} /> Объектов
+                <MethodologyTooltip text="Объекты, у которых есть снимок парсера ровно за выбранную дату. Каталог целиком больше: часть объектов в этот день не отдала данные. Счётчик в фильтре «Районы» считает другое окно — весь выбранный период." />
               </div>
               <p className="text-3xl font-bold tabular-nums leading-tight">{filteredKpi.total_hotels.toLocaleString('ru-RU')}</p>
-              <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">на {fmtDateRu(focusDate)}</p>
+              <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">со снимком за {fmtDateRu(focusDate)}</p>
             </CardContent>
           </Card>
           <Card variant="glass">
@@ -449,14 +487,16 @@ function MapPage() {
                 <BedDouble size={16} /> Всего номеров
               </div>
               <p className="text-3xl font-bold tabular-nums leading-tight">{filteredKpi.total_rooms.toLocaleString('ru-RU')}</p>
-              <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">в выбранных районах</p>
+              <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
+                по объектам со снимком за {fmtDateRu(focusDate)}
+              </p>
             </CardContent>
           </Card>
           <Card variant="glass">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 text-[hsl(var(--muted-foreground))] text-sm font-medium uppercase tracking-wider mb-1.5">
                 <BedDouble size={16} /> Свободных номеров
-                <MethodologyTooltip text="Сумма свободных номеров по выбранным районам на дату среза. Высокое значение означает низкую загрузку — не путать с бизнес-успехом." />
+                <MethodologyTooltip text="Сумма свободных номеров по объектам со снимком за выбранную дату. Высокое значение означает низкую загрузку — не путать с бизнес-успехом." />
               </div>
               <p className="text-3xl font-bold tabular-nums leading-tight text-[hsl(var(--foreground))]">
                 {filteredKpi.free_rooms.toLocaleString('ru-RU')}
@@ -469,10 +509,15 @@ function MapPage() {
           <Card variant="glass">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 text-[hsl(var(--muted-foreground))] text-sm font-medium uppercase tracking-wider mb-1.5">
-                <Activity size={16} /> Ср. загрузка
+                <Activity size={16} /> Загрузка
+                <MethodologyTooltip text="Считается по номерному фонду: (все номера − свободные) / все номера. Крупные объекты весят пропорционально своему инвентарю, поэтому число не равно среднему по объектам." />
               </div>
-              <p className="text-3xl font-bold tabular-nums leading-tight">{filteredKpi.avg_occupancy}%</p>
-              <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">по выбранным районам</p>
+              <p className="text-3xl font-bold tabular-nums leading-tight">
+                {filteredKpi.occupancy != null ? `${filteredKpi.occupancy}%` : '—'}
+              </p>
+              <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
+                по номерному фонду за {fmtDateRu(focusDate)}
+              </p>
             </CardContent>
           </Card>
         </div>
@@ -497,17 +542,17 @@ function MapPage() {
                   <span className="w-2.5 h-2.5 rounded-full bg-[#22c55e]" /> низкая &lt;40%
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-[#f59e0b]" /> средняя 40–70%
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#f59e0b]" /> средняя 40–69%
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-[#ef4444]" /> высокая &gt;70%
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#ef4444]" /> высокая 70% и выше
                 </span>
                 <span className="flex items-center gap-1.5">
                   <span className="w-2.5 h-2.5 rounded-full bg-[#94a3b8]" /> нет данных
                 </span>
               </div>
               <span className="italic text-[hsl(var(--muted-foreground))]">
-                клик по маркеру — карточка объекта
+                цвет — загрузка объекта за {fmtDateRu(focusDate)} · клик по маркеру — сводка, «Подробнее» — карточка
               </span>
             </div>
           </CardContent>
@@ -585,26 +630,33 @@ function MapPage() {
             </div>
 
             {/* Районы — multi-select dropdown */}
-            {districts.length > 0 && (
+            {districtOptions.length > 0 && (
               <div className="space-y-1.5 pt-2 border-t border-[hsl(var(--border))] flex flex-col flex-1 min-h-0">
                 <p className="text-[11px] uppercase tracking-wider text-[hsl(var(--muted-foreground))] font-semibold flex-shrink-0">
                   Районы
                 </p>
                 <div className="flex-shrink-0">
                   <DistrictMultiSelect
-                    options={districts
-                      .filter(d => (d.hotelsCount ?? 0) > 0)
-                      .map(d => ({ name: d.district, hotels: d.hotelsCount ?? 0 }))}
+                    options={districtOptions}
                     selected={selectedDistricts}
                     onToggle={toggleDistrict}
                     onClear={clearDistricts}
                   />
                 </div>
+                <p className="text-[11px] text-[hsl(var(--muted-foreground))] leading-tight flex-shrink-0">
+                  Число справа — объектов за {periodDays} дн.
+                  {pinsOutsideFilter > 0 && (
+                    <span className="block mt-0.5">
+                      Ещё {pinsOutsideFilter} объектов из снимка за {fmtDateRu(focusDate)} в список не попали:
+                      район не определён либо в нём меньше 4 объектов — такие районы в агрегаты не идут.
+                    </span>
+                  )}
+                </p>
                 <p className="text-[11px] text-[hsl(var(--muted-foreground))] italic leading-tight flex-shrink-0 mt-auto">
                   Графики: <strong className="text-[hsl(var(--foreground))] not-italic">{queryDistrictsLabel}</strong>
                   {queryDistricts.length > 1 && (
                     <span className="block text-xs mt-0.5 not-italic">
-                      Загрузка/цена усреднены, номера/вместимость суммированы по выбранным районам
+                      Загрузка/цена усреднены, номера суммированы по выбранным районам
                     </span>
                   )}
                 </p>
@@ -617,20 +669,26 @@ function MapPage() {
       {/* Charts — 2x2 grid */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
         {/* 1. Загрузка по районам */}
-        {districtsBar.length > 0 && (
-          <Card variant="glass" className="overflow-hidden">
-            <CardHeader className="pb-2 pt-2 px-3">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <div className="flex items-center gap-1.5">
-                  <CardTitle className="text-sm">Загрузка по районам</CardTitle>
-                  <MethodologyTooltip text="Средняя загрузка по району за выбранный период (фильтр «Период»). Цвет — уровень занятости. Невыбранные блёкнут." />
-                </div>
-                <span className="text-xs text-[hsl(var(--muted-foreground))]">
-                  {fmtDateRu(periodRange.from)}–{fmtDateRu(periodRange.to)}
-                </span>
+        <Card variant="glass" className="overflow-hidden">
+          <CardHeader className="pb-2 pt-2 px-3">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5">
+                <CardTitle className="text-sm">Загрузка по районам</CardTitle>
+                <MethodologyTooltip text="Загрузка по району за выбранный период (фильтр «Период»). Районы с выборкой меньше 4 объектов и районы без статистики за период в диаграмму не попадают. Цвет — уровень занятости. Невыбранные блёкнут." />
               </div>
-            </CardHeader>
-            <CardContent className="px-2 pb-2 pt-0">
+              <span className="text-xs text-[hsl(var(--muted-foreground))]">
+                {fmtDateRu(periodRange.from)}–{fmtDateRu(periodRange.to)}
+              </span>
+            </div>
+          </CardHeader>
+          <CardContent className="px-2 pb-2 pt-0">
+            {districtsBar.length === 0 ? (
+              <div className="flex items-center justify-center h-[260px] px-4 text-center text-xs text-[hsl(var(--muted-foreground))]">
+                Нет данных о загрузке за {fmtDateRu(periodRange.from)}–{fmtDateRu(periodRange.to)}.
+                {overlapsDataGap(periodRange.from, periodRange.to) &&
+                  ` Период пересекается с пробелом сбора данных ${DATA_GAP_LABEL}.`}
+              </div>
+            ) : (
               <ResponsiveContainer key={chartKey} width="100%" height={260}>
                 <BarChart data={districtsBar} layout="vertical" margin={{ top: 12, right: 16, left: 4, bottom: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" opacity={0.15} horizontal={false} />
@@ -652,15 +710,20 @@ function MapPage() {
                   <Bar dataKey="occupancy" radius={[0, 3, 3, 0]}>
                     {districtsBar.map(d => {
                       const isHighlighted = selectedDistricts.size === 0 || selectedDistricts.has(d.fullName)
-                      const color = d.occupancy > 70 ? '#ef4444' : d.occupancy > 40 ? '#f59e0b' : '#22c55e'
-                      return <Cell key={d.fullName} fill={color} fillOpacity={isHighlighted ? 1 : 0.25} />
+                      return (
+                        <Cell
+                          key={d.fullName}
+                          fill={occupancyColor(d.occupancy)}
+                          fillOpacity={isHighlighted ? 1 : 0.25}
+                        />
+                      )
                     })}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        )}
+            )}
+          </CardContent>
+        </Card>
 
         {/* 2. Загрузка номерного фонда: occupancy + rooms + capacity */}
         <Card variant="glass" className="overflow-hidden">
@@ -668,7 +731,7 @@ function MapPage() {
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-1.5">
                 <CardTitle className="text-sm">Загрузка номерного фонда</CardTitle>
-                <MethodologyTooltip text="Левая ось — загрузка, %. Правая ось — суммарное количество номеров и максимальная вместимость по выбранному району. Окно — выбранный период." />
+                <MethodologyTooltip text="Левая ось — загрузка, %. Правая ось — суммарное число номеров по выбранным районам. Вместимость в людях не показывается: у большинства объектов состав номеров не раскрыт, и парсер подставляет туда то же число номеров. Окно — выбранный период." />
               </div>
               <span className="text-xs text-[hsl(var(--muted-foreground))]">
                 {queryDistrictsLabel} · {fmtDateRu(periodRange.from)}–{fmtDateRu(periodRange.to)}
@@ -677,8 +740,10 @@ function MapPage() {
           </CardHeader>
           <CardContent className="px-2 pb-2 pt-0">
             {periodData.filter(d => d.occupancy != null).length === 0 ? (
-              <div className="flex items-center justify-center h-[260px] text-xs text-[hsl(var(--muted-foreground))]">
+              <div className="flex items-center justify-center h-[260px] px-4 text-center text-xs text-[hsl(var(--muted-foreground))]">
                 Нет данных за выбранный период.
+                {overlapsDataGap(periodRange.from, periodRange.to) &&
+                  ` Период пересекается с пробелом сбора данных ${DATA_GAP_LABEL}.`}
               </div>
             ) : (
               <ResponsiveContainer key={chartKey} width="100%" height={260}>
@@ -691,7 +756,6 @@ function MapPage() {
                   <Legend wrapperStyle={{ fontSize: 10 }} iconSize={8} />
                   <Line yAxisId="left" type="monotone" dataKey="occupancy" name="Загрузка" stroke="#22c55e" strokeWidth={2} dot={false} connectNulls />
                   <Line yAxisId="right" type="monotone" dataKey="total_rooms" name="Всего номеров" stroke="#3b82f6" strokeWidth={1.5} strokeDasharray="6 3" dot={false} connectNulls />
-                  <Line yAxisId="right" type="monotone" dataKey="total_capacity" name="Вместимость, чел." stroke="#a855f7" strokeWidth={1.5} strokeDasharray="3 3" dot={false} connectNulls />
                 </LineChart>
               </ResponsiveContainer>
             )}
@@ -704,7 +768,7 @@ function MapPage() {
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-1.5">
                 <CardTitle className="text-sm">Цена и загрузка за сезон ({SEASON_LABELS[season]})</CardTitle>
-                <MethodologyTooltip text="Левая ось — средняя минимальная цена номера, ₽. Правая ось — загрузка, %. Окно — выбранный сезон в текущем году." />
+                <MethodologyTooltip text="Левая ось — прокси-ADR: медиана минимальной цены номера по объектам района, ₽. Это цена витрины, а не выручка за проданный номер. Правая ось — загрузка, %. Окно — выбранный сезон." />
               </div>
               <span className="text-xs text-[hsl(var(--muted-foreground))]">
                 {queryDistrictsLabel}{seasonRange && ` · ${fmtDateRu(seasonRange.from)}–${fmtDateRu(seasonRange.to)}`}
@@ -713,8 +777,10 @@ function MapPage() {
           </CardHeader>
           <CardContent className="px-2 pb-2 pt-0">
             {seasonData.length === 0 ? (
-              <div className="flex items-center justify-center h-[220px] text-xs text-[hsl(var(--muted-foreground))]">
+              <div className="flex items-center justify-center h-[220px] px-4 text-center text-xs text-[hsl(var(--muted-foreground))]">
                 Нет данных за выбранный сезон.
+                {seasonRange && overlapsDataGap(seasonRange.from, seasonRange.to) &&
+                  ` Сезон пересекается с пробелом сбора данных ${DATA_GAP_LABEL}.`}
               </div>
             ) : (
               <ResponsiveContainer key={chartKey} width="100%" height={220}>
@@ -739,7 +805,7 @@ function MapPage() {
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-1.5">
                 <CardTitle className="text-sm">Цена и загрузка за период</CardTitle>
-                <MethodologyTooltip text="Окно — последние N дней (фильтр «Период»). Столбцы — цена, линия — загрузка." />
+                <MethodologyTooltip text="Окно — выбранный период до даты среза. Столбцы — прокси-ADR: медиана минимальной цены номера по объектам района, ₽. Линия — загрузка, %." />
               </div>
               <span className="text-xs text-[hsl(var(--muted-foreground))]">
                 {queryDistrictsLabel} · {fmtDateRu(periodRange.from)}–{fmtDateRu(periodRange.to)}
@@ -748,8 +814,10 @@ function MapPage() {
           </CardHeader>
           <CardContent className="px-2 pb-2 pt-0">
             {periodData.length === 0 ? (
-              <div className="flex items-center justify-center h-[220px] text-xs text-[hsl(var(--muted-foreground))]">
+              <div className="flex items-center justify-center h-[220px] px-4 text-center text-xs text-[hsl(var(--muted-foreground))]">
                 Нет данных за выбранный период.
+                {overlapsDataGap(periodRange.from, periodRange.to) &&
+                  ` Период пересекается с пробелом сбора данных ${DATA_GAP_LABEL}.`}
               </div>
             ) : (
               <ResponsiveContainer key={chartKey} width="100%" height={220}>

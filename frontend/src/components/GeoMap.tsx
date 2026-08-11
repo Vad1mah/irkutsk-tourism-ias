@@ -22,13 +22,15 @@ type Props = {
 const IRKUTSK_CENTER: [number, number] = [53.5, 106.0]
 const DEFAULT_ZOOM = 6
 
-function _occColor(occ: number): string {
+function _occColor(occ: number | null): string {
+  if (occ == null) return 'hsl(215, 16%, 47%)'
   if (occ > 70) return 'hsl(0, 84%, 60%)'
   if (occ > 40) return 'hsl(38, 92%, 50%)'
   return 'hsl(142, 71%, 45%)'
 }
 
-function _occRadius(occ: number): number {
+function _occRadius(occ: number | null): number {
+  if (occ == null) return 4
   return Math.max(4, Math.min(12, (occ / 100) * 12))
 }
 
@@ -75,7 +77,10 @@ export function GeoMap({ hotels, onHotelClick }: Props) {
               {h.city && (
                 <div className="text-gray-500 mb-1">{h.city}, {(h.district || '').replace(' район', '')} р-н</div>
               )}
-              <div>Заполняемость: <b>{Math.round(h.occupancy)}%</b></div>
+              <div>
+                Заполняемость:{' '}
+                <b>{h.occupancy != null ? `${Math.round(h.occupancy)}%` : 'нет данных'}</b>
+              </div>
               <div>Номеров: {h.rooms_num || '—'}</div>
               {h.min_price != null && <div>Цена от: {Math.round(h.min_price).toLocaleString()}₽</div>}
               {h.rating != null && <div>Рейтинг: {h.rating}</div>}

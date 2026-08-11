@@ -54,6 +54,9 @@ const SOURCE_LABELS: Record<string, string> = {
   major: 'Крупные события',
 }
 
+// Верхняя граница `limit` у GET /api/events — берём её целиком, иначе хвост месяца обрезается.
+const MONTH_EVENTS_LIMIT = 500
+
 // ============================================================================
 // MAIN COMPONENT
 // ============================================================================
@@ -68,9 +71,19 @@ function Events() {
   const [selectedDay, setSelectedDay] = useState<Date | null>(null)
   const [selectedEvent, setSelectedEvent] = useState<EventData | null>(null)
   
+  const monthRange = useMemo(() => ({
+    from: _dateKey(new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1)),
+    to: _dateKey(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0)),
+  }), [currentMonth])
+
   const { data: events = [], isLoading, isError, refetch } = useQuery({
-    queryKey: ['events'],
-    queryFn: api.getEvents,
+    queryKey: ['events', monthRange.from, monthRange.to],
+    queryFn: () => api.getEvents({
+      date_from: monthRange.from,
+      date_to: monthRange.to,
+      limit: MONTH_EVENTS_LIMIT,
+    }),
+    placeholderData: (previous) => previous,
   })
 
   const sourceStats = useMemo(() => {
@@ -82,8 +95,12 @@ function Events() {
     return Object.entries(counts)
       .map(([source, count]) => ({ source, count }))
       .sort((a, b) => b.count - a.count)
-      .slice(0, 8)
   }, [events])
+
+  const sourceStatsTotal = useMemo(
+    () => sourceStats.reduce((sum, s) => sum + s.count, 0),
+    [sourceStats],
+  )
 
   const availableSources = useMemo(() => {
     const sources = new Set(events.map(e => e.source_id))
@@ -91,27 +108,25 @@ function Events() {
   }, [events])
 
   const filteredEvents = useMemo(() => {
-    const monthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1)
-    const monthEnd = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0)
     const query = searchQuery.toLowerCase().trim()
-    
+
     return events.filter(event => {
-      const eventDate = new Date(event.date_start)
-      const inMonth = eventDate >= monthStart && eventDate <= monthEnd
+      const dayKey = event.date_start.slice(0, 10)
+      const inMonth = dayKey >= monthRange.from && dayKey <= monthRange.to
       const matchesType = !selectedType || getEventTypeKey(event) === selectedType
       const matchesSource = !selectedSource || event.source_id === selectedSource
       const matchesSearch = !query || event.title.toLowerCase().includes(query)
         || event.location?.toLowerCase().includes(query)
         || event.description?.toLowerCase().includes(query)
       return inMonth && matchesType && matchesSource && matchesSearch
-    }).sort((a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime())
-  }, [events, currentMonth, selectedType, selectedSource, searchQuery])
+    }).sort((a, b) => a.date_start.localeCompare(b.date_start))
+  }, [events, monthRange, selectedType, selectedSource, searchQuery])
 
   // Группируем события по дате
   const eventsByDate = useMemo(() => {
     const grouped: Record<string, EventData[]> = {}
     filteredEvents.forEach(event => {
-      const dateKey = event.date_start.split('T')[0]
+      const dateKey = event.date_start.slice(0, 10)
       if (!grouped[dateKey]) grouped[dateKey] = []
       grouped[dateKey].push(event)
     })
@@ -123,13 +138,11 @@ function Events() {
   const typeCounts = useMemo(() => {
     const counts: Record<string, number> = {}
 
-    const monthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1)
-    const monthEnd = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0)
     const query = searchQuery.toLowerCase().trim()
 
     events.filter(event => {
-      const eventDate = new Date(event.date_start)
-      const inMonth = eventDate >= monthStart && eventDate <= monthEnd
+      const dayKey = event.date_start.slice(0, 10)
+      const inMonth = dayKey >= monthRange.from && dayKey <= monthRange.to
       const matchesSource = !selectedSource || event.source_id === selectedSource
       const matchesSearch = !query || event.title.toLowerCase().includes(query)
         || event.location?.toLowerCase().includes(query)
@@ -141,7 +154,7 @@ function Events() {
     })
 
     return counts
-  }, [events, currentMonth, selectedSource, searchQuery])
+  }, [events, monthRange, selectedSource, searchQuery])
 
   // Получаем дни месяца для календаря
   const calendarDays = useMemo(() => {
@@ -160,8 +173,8 @@ function Events() {
     
     for (let d = 1; d <= lastDay.getDate(); d++) {
       const date = new Date(year, month, d)
-      const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-      days.push({ 
+      const dateKey = _dateKey(date)
+      days.push({
         date, 
         isCurrentMonth: true, 
         events: eventsByDate[dateKey] || [] 
@@ -179,8 +192,7 @@ function Events() {
   // События выбранного дня
   const selectedDayEvents = useMemo(() => {
     if (!selectedDay) return []
-    const dateKey = `${selectedDay.getFullYear()}-${String(selectedDay.getMonth() + 1).padStart(2, '0')}-${String(selectedDay.getDate()).padStart(2, '0')}`
-    return eventsByDate[dateKey] || []
+    return eventsByDate[_dateKey(selectedDay)] || []
   }, [selectedDay, eventsByDate])
 
   const monthName = currentMonth.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })
@@ -200,7 +212,7 @@ function Events() {
           <div>
             <h1 className="text-2xl font-bold">События региона</h1>
             <p className="text-sm text-[hsl(var(--muted-foreground))]">
-              {totalMonthEvents} событий в {monthName}
+              {totalMonthEvents} {_pluralize(totalMonthEvents, 'событие', 'события', 'событий')} в {monthName}
             </p>
           </div>
           <button
@@ -321,11 +333,11 @@ function Events() {
               <CardTitle className="text-base">Источники событий</CardTitle>
             </div>
             <p className="text-sm text-[hsl(var(--muted-foreground))]">
-              Распределение {events.length} событий по источникам данных
+              Распределение {sourceStatsTotal} {_pluralize(sourceStatsTotal, 'события', 'событий', 'событий')} за {monthName} по источникам данных
             </p>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={200}>
+            <ResponsiveContainer width="100%" height={Math.max(200, sourceStats.length * 32)}>
               <BarChart data={sourceStats} layout="vertical">
                 <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 10 }} />
                 <YAxis dataKey="source" type="category" width={120} tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
@@ -427,7 +439,9 @@ function Events() {
       <div>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">Все события месяца</h2>
-          <Badge variant="outline">{filteredEvents.length} событий</Badge>
+          <Badge variant="outline">
+            {filteredEvents.length} {_pluralize(filteredEvents.length, 'событие', 'события', 'событий')}
+          </Badge>
         </div>
         
         {filteredEvents.length === 0 ? (
@@ -615,8 +629,8 @@ function EventCard({
 }) {
   const type = getEventTypeKey(event)
   const { icon: Icon, label, color, bgColor } = EVENT_TYPES[type]
-  const date = new Date(event.date_start)
-  
+  const date = _parseLocalDate(event.date_start)
+
   return (
     <button
       onClick={onClick}
@@ -661,10 +675,7 @@ function EventCard({
           </div>
         </div>
         
-        {/* Impact + Hover hint */}
-        <div className="mt-3 pt-3 border-t border-[hsl(var(--border))] flex items-center justify-between gap-2 flex-wrap">
-          <div className="flex items-center gap-1.5 flex-wrap">
-          </div>
+        <div className="mt-3 flex items-center justify-end">
           <span className="text-xs text-[hsl(var(--primary))] opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
             <Info size={12} />
             Подробнее
@@ -689,7 +700,8 @@ function EventModal({
   const navigate = useNavigate()
   const type = getEventTypeKey(event)
   const { icon: Icon, label, color } = EVENT_TYPES[type]
-  const date = new Date(event.date_start)
+  const date = _parseLocalDate(event.date_start)
+  const eventDistrict = _districtFromLocation(event.location)
 
   useEffect(() => {
     const prev = document.body.style.overflow
@@ -776,7 +788,7 @@ function EventModal({
               </p>
               {event.date_end && (
                 <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                  до {new Date(event.date_end).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}
+                  до {_parseLocalDate(event.date_end).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}
                 </p>
               )}
             </div>
@@ -850,16 +862,18 @@ function EventModal({
                 <ExternalLink size={14} />
               </a>
             )}
-            <button
-              onClick={() => {
-                onClose()
-                navigate(`/analytics?district=${encodeURIComponent(_districtFromLocation(event.location))}`)
-              }}
-              className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-[hsl(var(--primary)/0.3)] bg-[hsl(var(--primary)/0.05)] hover:bg-[hsl(var(--primary)/0.1)] text-[hsl(var(--primary))] transition-colors text-sm"
-            >
-              <TrendingUp size={16} />
-              Влияние на заполняемость
-            </button>
+            {eventDistrict && (
+              <button
+                onClick={() => {
+                  onClose()
+                  navigate(`/analytics?tab=events&district=${encodeURIComponent(eventDistrict)}`)
+                }}
+                className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-[hsl(var(--primary)/0.3)] bg-[hsl(var(--primary)/0.05)] hover:bg-[hsl(var(--primary)/0.1)] text-[hsl(var(--primary))] transition-colors text-sm"
+              >
+                <TrendingUp size={16} />
+                Измеренный эффект событий по району «{eventDistrict}»
+              </button>
+            )}
             <button
               onClick={onClose}
               className="px-4 py-3 rounded-xl border border-[hsl(var(--border))] hover:bg-[hsl(var(--secondary))] transition-colors"
@@ -898,19 +912,42 @@ function EventsSkeleton() {
 // HELPERS
 // ============================================================================
 
+// Зеркало CITY_TO_DISTRICT из backend/app/constants.py: расхождение словарей уводит
+// пользователя на чужой район.
 const _CITY_TO_DISTRICT: Record<string, string> = {
-  'иркутск': 'Иркутский', 'листвянк': 'Иркутский', 'хужир': 'Ольхонский',
-  'ольхон': 'Ольхонский', 'байкальск': 'Слюдянский', 'слюдянк': 'Слюдянский',
-  'ангарск': 'Ангарский', 'братск': 'Братский', 'шелехов': 'Шелеховский',
+  'иркутск': 'Иркутский', 'листвянка': 'Иркутский', 'никола': 'Иркутский',
+  'хужир': 'Ольхонский', 'сахюрта': 'Ольхонский', 'куркут': 'Ольхонский',
+  'сарма': 'Ольхонский', 'бугульдейка': 'Ольхонский',
+  'байкальск': 'Слюдянский', 'слюдянка': 'Слюдянский', 'утулик': 'Слюдянский',
+  'мурино': 'Слюдянский', 'мангутай': 'Слюдянский', 'агалуй': 'Слюдянский',
+  'выдрино': 'Кабанский', 'энхалук': 'Кабанский', 'сухая': 'Кабанский',
+  'талое': 'Кабанский',
+  'горячинск': 'Прибайкальский', 'турка': 'Прибайкальский', 'гремячинск': 'Прибайкальский',
+  'максимиха': 'Баргузинский', 'усть-баргузин': 'Баргузинский',
+  'ангарск': 'Ангарский', 'шелехов': 'Шелеховский', 'братск': 'Братский',
+  'нижнеудинск': 'Нижнеудинский', 'усть-кут': 'Усть-Кутский', 'саянск': 'Зиминский',
+  'северобайкальск': 'Северобайкальский', 'улан-удэ': 'Улан-Удэ', 'аршан': 'Тункинский',
 }
 
-function _districtFromLocation(location?: string | null): string {
-  if (!location) return 'Иркутский'
+/** Определить район по месту проведения; null — если сопоставить не удалось. */
+function _districtFromLocation(location?: string | null): string | null {
+  if (!location) return null
   const loc = location.toLowerCase()
   for (const [city, district] of Object.entries(_CITY_TO_DISTRICT)) {
     if (loc.includes(city)) return district
   }
-  return 'Иркутский'
+  return null
+}
+
+/** Ключ дня `YYYY-MM-DD` в локальном времени — сравнение дат идёт строками, не через Date. */
+function _dateKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+/** Разобрать `YYYY-MM-DD` как локальную полночь: `new Date(s)` трактует строку как UTC. */
+function _parseLocalDate(value: string): Date {
+  const [year, month, day] = value.slice(0, 10).split('-').map(Number)
+  return new Date(year, month - 1, day)
 }
 
 function _pluralize(n: number, one: string, few: string, many: string): string {

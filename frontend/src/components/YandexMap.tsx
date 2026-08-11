@@ -10,7 +10,10 @@ export type HotelPin = {
   rooms_num?: number | null
   free_rooms?: number | null
   max_capacity?: number | null
+  /** Загрузка самого объекта: 100*(номера−свободные). null, если число номеров неизвестно. */
   occupancy?: number | null
+  /** Средняя загрузка района объекта — показывается отдельной строкой, не подписывает объект. */
+  district_occupancy?: number | null
   min_price?: number | null
   rating?: number | null
 }
@@ -28,16 +31,18 @@ type Props = {
 const DEFAULT_CENTER: [number, number] = [52.2871, 104.305] // Иркутск
 const APIKEY = import.meta.env.VITE_YANDEX_MAPS_API_KEY as string | undefined
 
-function _colorForOccupancy(occ: number | null | undefined): string {
-  if (occ == null) return '#94a3b8' // gray
-  if (occ < 40) return '#22c55e'   // green
-  if (occ < 70) return '#f59e0b'   // amber
-  return '#ef4444'                  // red
+/** Единая шкала цвета загрузки: <40% зелёный, 40–69% жёлтый, 70% и выше красный, нет данных серый. */
+export function occupancyColor(occ: number | null | undefined): string {
+  if (occ == null) return '#94a3b8'
+  if (occ >= 70) return '#ef4444'
+  if (occ >= 40) return '#f59e0b'
+  return '#22c55e'
 }
 
 function _hintFor(h: HotelPin): string {
   const parts: string[] = [h.name ?? 'Объект']
-  if (h.occupancy != null) parts.push(`загрузка ${h.occupancy.toFixed(0)}%`)
+  if (h.occupancy != null) parts.push(`загрузка объекта ${h.occupancy.toFixed(0)}%`)
+  else parts.push('загрузка объекта неизвестна')
   if (h.free_rooms != null && h.rooms_num != null) parts.push(`свободно ${h.free_rooms}/${h.rooms_num}`)
   if (h.min_price != null) parts.push(`от ${h.min_price.toLocaleString('ru-RU')} ₽`)
   return parts.join(' • ')
@@ -55,9 +60,16 @@ function _balloonBody(h: HotelPin): string {
     const free = h.free_rooms != null ? ` (свободно ${h.free_rooms})` : ''
     rows.push(`Номеров: <b>${h.rooms_num}</b>${free}`)
   }
-  if (h.occupancy != null) rows.push(`Загрузка: <b>${h.occupancy.toFixed(0)}%</b>`)
+  rows.push(
+    h.occupancy != null
+      ? `Загрузка объекта: <b>${h.occupancy.toFixed(0)}%</b>`
+      : 'Загрузка объекта: <b>нет данных</b> (число номеров не указано)',
+  )
+  if (h.district_occupancy != null) rows.push(`По району: ${h.district_occupancy.toFixed(0)}%`)
   if (h.min_price != null) rows.push(`Мин. цена: <b>${h.min_price.toLocaleString('ru-RU')} ₽</b>`)
-  if (h.max_capacity != null) rows.push(`Вместимость: до ${h.max_capacity} чел.`)
+  if (h.max_capacity != null && h.rooms_num != null && h.max_capacity > h.rooms_num) {
+    rows.push(`Вместимость: до ${h.max_capacity} чел.`)
+  }
   if (h.rating != null) rows.push(`Рейтинг: ${h.rating.toFixed(1)} ★`)
   const dark = _isDarkTheme()
   const bg = dark ? '#1a1d2e' : '#ffffff'
@@ -95,7 +107,7 @@ export function YandexMap({ hotels, center = DEFAULT_CENTER, zoom = 7, height = 
               geometry={[h.lat, h.lon]}
               options={{
                 preset: isPinned ? 'islands#circleDotIcon' : 'islands#circleIcon',
-                iconColor: _colorForOccupancy(h.occupancy),
+                iconColor: occupancyColor(h.occupancy),
                 zIndex: isPinned ? 1000 : 100,
               }}
               properties={{

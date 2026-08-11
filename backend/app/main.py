@@ -11,7 +11,11 @@ from app.routers import hotels, events, query, forecast, documents, parser, anal
 from app.services.db_service import db_service
 from app.services.chroma_service import chroma_service
 from app.services.llm_service import llm_service
-from app.services.cache_service import cache_service, build_ensemble_cache_key
+from app.services.cache_service import (
+    cache_service,
+    build_ensemble_cache_key,
+    compute_ensemble_data_hash,
+)
 from app.models.schemas import HealthResponse
 from app.middleware.rate_limit import RateLimitMiddleware
 
@@ -28,7 +32,11 @@ async def _warmup_forecast_cache():
         from app.services.ensemble_service import ensemble_service
         from app.constants import DEFAULT_DISTRICT
         from app.executor import run_sync
-        from datetime import date, timedelta
+        from app.routers.forecast import (
+            FORECAST_CACHE_TTL,
+            FORECAST_DEGRADED_CACHE_TTL,
+            _get_weather_and_events,
+        )
 
         history = await data_service.get_occupancy_by_district(DEFAULT_DISTRICT)
         history_dicts = [
@@ -40,17 +48,34 @@ async def _warmup_forecast_cache():
             return
 
         days = 14
-        forecast_dates = [date.today() + timedelta(days=i) for i in range(days)]
-        weather_data = await weather_service.get_weather_for_dates(forecast_dates)
+        # Те же входы, что у /api/forecast/ensemble: иначе прогретый ответ посчитан на
+        # других данных, чем ключ, под которым он лежит.
+        weather_data, events_data = await _get_weather_and_events(
+            history_dicts, days, weather_service, data_service, district=DEFAULT_DISTRICT
+        )
         result = await run_sync(
             ensemble_service.forecast_ensemble,
-            history_dicts, days, weather_data, None, None, "weighted_average",
+            history=history_dicts,
+            days_ahead=days,
+            weather_data=weather_data,
+            events_data=events_data,
+            method="weighted_average",
+            district=DEFAULT_DISTRICT,
         )
         points = result.get("ensemble", [])
         logger.info(f"Warmup: ensemble прогрев завершён, {len(points)} точек для {DEFAULT_DISTRICT}")
 
-        key = build_ensemble_cache_key(district=DEFAULT_DISTRICT, days=days, method="weighted_average")
+        expected_models = ensemble_service.model_names
+        models_ran = sorted(name for name, fps in result.get("models", {}).items() if fps)
+        key = build_ensemble_cache_key(
+            district=DEFAULT_DISTRICT,
+            days=days,
+            data_hash=compute_ensemble_data_hash(history_dicts, weather_data, events_data),
+            models=expected_models,
+            method="weighted_average",
+        )
         if cache_service.is_connected:
+            ttl = FORECAST_CACHE_TTL if models_ran == expected_models else FORECAST_DEGRADED_CACHE_TTL
             await cache_service.set(key, {
                 "district": DEFAULT_DISTRICT,
                 "history_points": len(history_dicts),
@@ -61,7 +86,7 @@ async def _warmup_forecast_cache():
                     name: [fp.model_dump() if hasattr(fp, "model_dump") else fp for fp in fps]
                     for name, fps in result.get("models", {}).items()
                 },
-            }, ttl=1800)
+            }, ttl=ttl)
             logger.info("Warmup: результат сохранён в Redis")
     except Exception as e:
         logger.warning(f"Warmup failed (non-critical): {e}")

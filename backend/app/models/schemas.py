@@ -2,6 +2,8 @@ from datetime import date, time
 from typing import Any
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
+from app.constants import MAX_FORECAST_HORIZON_DAYS, SEGMENT_WINDOW_DAYS
+
 
 class Hotel(BaseModel):
     """Данные отеля."""
@@ -88,7 +90,12 @@ class ForecastRequest(BaseModel):
     """Запрос на прогноз."""
     hotel_id: str | None = None
     district: str | None = None
-    days_ahead: int = Field(30, ge=1, le=365, description="Горизонт прогноза в днях")
+    days_ahead: int = Field(
+        MAX_FORECAST_HORIZON_DAYS,
+        ge=1,
+        le=MAX_FORECAST_HORIZON_DAYS,
+        description="Горизонт прогноза в днях (3/7/14)",
+    )
 
 
 class ForecastPoint(BaseModel):
@@ -202,7 +209,7 @@ class EnsemblePoint(BaseModel):
 
 
 class EnsembleResponse(BaseModel):
-    """Ответ ensemble прогноза."""
+    """Ответ ансамбля: взвешенное среднее двух моделей (Prophet + XGBoost)."""
     district: str
     history_points: int
     method: str
@@ -211,19 +218,12 @@ class EnsembleResponse(BaseModel):
     models: dict[str, list[CompareForecast]]
 
 
-class CompareModelsResponse(BaseModel):
-    """Ответ сравнения моделей прогноза."""
-    district: str
-    history_points: int
-    prophet: list[CompareForecast]
-    neuralprophet: list[CompareForecast]
-
-
 class CompareAllResponse(BaseModel):
-    """Ответ сравнения всех моделей."""
+    """Ответ сравнения моделей: Prophet, XGBoost и их взвешенное среднее."""
     district: str
     history_points: int
     test_days: int
+    best_model: str = ""
     metrics: dict[str, Any]
     feature_importance: dict[str, dict[str, float]] | None = None
 
@@ -506,4 +506,13 @@ class HotelSegmentBenchmarkResponse(BaseModel):
     hotel_metrics: HotelSegmentMetrics
     segment_metrics: SegmentAvgMetrics
     n_in_segment: int
+    as_of: str | None = Field(
+        None,
+        description="Дата снимка самого объекта; может отставать от окна сегмента на недели",
+    )
+    segment_window_days: int = Field(
+        SEGMENT_WINDOW_DAYS,
+        ge=1,
+        description="Окно, за которое посчитаны метрики сегмента, в днях",
+    )
 

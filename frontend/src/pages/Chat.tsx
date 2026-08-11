@@ -56,20 +56,27 @@ function saveMessages(messages: Message[]) {
 
 const TOOL_LABELS: Record<string, string> = {
   search_hotels: 'Реестр объектов размещения',
-  search_events: 'События как фактор спроса',
-  get_weather: 'Погода как внешний фактор',
+  search_events: 'Календарь событий',
+  get_weather: 'Текущая погода',
   forecast_occupancy: 'Прогноз загрузки',
   get_statistics: 'KPI рынка',
-  get_revenue_metrics: 'RMS-метрики (RevPAR/ADR)',
+  get_revenue_metrics: 'RMS-метрики (загрузка, прокси-ADR, прокси-RevPAR)',
+  get_event_effect: 'Измеренный эффект событий',
+  get_booking_pace: 'Динамика загрузки по последним датам',
+  compare_districts: 'Сравнение районов',
+  compare_forecast_models: 'Точность моделей прогноза',
+  get_occupancy_timeseries: 'Ряд загрузки по дням',
+  get_price_distribution: 'Распределение тарифов',
+  get_segment_benchmark: 'Сегменты внутри района',
 }
 
 const QUICK_QUESTIONS = [
-  { icon: TrendingUp, text: 'Рассчитай RevPAR на майские праздники по Иркутскому району и сравни с прошлой неделей', short: 'RevPAR на майские' },
-  { icon: Calendar, text: 'Какие ближайшие события сильнее всего поднимают спрос на размещение? Топ-5 с расчётом влияния', short: 'События с пиком спроса' },
-  { icon: Building2, text: 'Сравни средний тариф и загрузку по всем районам региона за последние 30 дней. Где RevPAR максимальный?', short: 'Сравни районы по тарифу' },
-  { icon: MapPin, text: 'Покажи динамику бронирований за последние 14 дней по Ольхонскому району. Тренд ускоряется или замедляется?', short: 'Динамика бронирований' },
-  { icon: CloudSun, text: 'Как погода повлияла на загрузку Иркутского района за последний месяц?', short: 'Погода как фактор спроса' },
-  { icon: TrendingUp, text: 'Дай прогноз загрузки и факторов спроса по Слюдянскому району на 14 дней', short: 'Прогноз спроса 14 дней' },
+  { icon: TrendingUp, text: 'Посчитай загрузку, прокси-ADR и прокси-RevPAR по Иркутскому району за последние 30 дней', short: 'RMS-метрики за 30 дней' },
+  { icon: Calendar, text: 'Есть ли измеримый эффект событий на загрузку и по каким районам его удалось оценить?', short: 'Эффект событий' },
+  { icon: Building2, text: 'Сравни загрузку, прокси-ADR и прокси-RevPAR по районам за последние 30 дней', short: 'Сравнение районов' },
+  { icon: MapPin, text: 'Как менялась загрузка Ольхонского района по последним датам с данными — набор ускоряется или замедляется?', short: 'Динамика загрузки' },
+  { icon: Building2, text: 'Сравни объект на 20 номеров с его сегментом в Иркутском районе', short: 'Бенчмарк по сегменту' },
+  { icon: CloudSun, text: 'Какая сейчас погода в Иркутске и как её учитывать в операционных решениях?', short: 'Погода сейчас' },
 ]
 
 function Chat() {
@@ -247,7 +254,7 @@ function Chat() {
                 B2B-аналитика рынка размещения в режиме диалога
               </p>
               <p className="text-xs text-[hsl(var(--muted-foreground)/0.7)] mt-1 max-w-md">
-                Ответы строятся на ансамблевом прогнозе, RMS-метриках (RevPAR, ADR, динамика бронирований) и данных 11 источников. Для отельеров, региональной администрации и исследователей.
+                Ответы строятся на RMS-метриках (загрузка, прокси-ADR, прокси-RevPAR), календаре событий и измеренном эффекте событий по данным парсеров размещения, событий и погоды. Прогноз выдаётся только по прямому запросу и с оговоркой о неподтверждённой точности. Для отельеров, региональной администрации и исследователей.
               </p>
             </div>
           </div>
@@ -330,7 +337,7 @@ function Chat() {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Спросите B2B-аналитика: RevPAR, прогноз, события, RMS-метрики..."
+              placeholder="Спросите B2B-аналитика: загрузка, прокси-ADR, прокси-RevPAR, события, сравнение районов..."
               className="flex-1 bg-[hsl(var(--input))] border border-[hsl(var(--border))] rounded-xl px-4 py-3 text-[hsl(var(--foreground))] placeholder:text-[hsl(var(--muted-foreground))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))] focus:border-transparent transition-all"
             />
             <Button
@@ -357,7 +364,7 @@ function EmptyState({ onQuestion, isLoading }: { onQuestion: (text: string) => v
       </div>
       <h3 className="text-lg font-semibold mb-2">Чем могу помочь?</h3>
       <p className="text-sm text-[hsl(var(--muted-foreground))] max-w-md mb-6">
-        Запросите RMS-метрики, прогноз спроса, влияние событий или сравнительную аналитику районов.
+        Запросите RMS-метрики, динамику загрузки, измеренный эффект событий или сравнение районов. Прогноз — по прямому запросу и с оговоркой о точности.
       </p>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 w-full max-w-2xl">

@@ -96,7 +96,8 @@ export type DistrictData = {
   occupancy: number
   freeRooms: number
   totalRooms: number
-  avgPrice: number
+  /** Медиана минимальной цены номера — единственная статистика прокси-ADR в системе. */
+  medianPrice: number
   hotelsCount?: number
   confidence?: 'high' | 'medium' | 'low'
 }
@@ -142,7 +143,7 @@ export type WeatherForecast = {
 export type HotelsByDistrict = {
   district: string
   count: number
-  avg_price: number | null
+  median_price: number | null
   avg_rating: number | null
 }
 
@@ -314,17 +315,10 @@ export type HotelSegmentBenchmarkResponse = {
   hotel_metrics: { occupancy: number | null; min_price: number | null }
   segment_metrics: { n: number; avg_occupancy: number | null; avg_price: number | null }
   n_in_segment: number
-}
-
-export type ForecastValidationResponse = {
-  district: string
-  days_back: number
-  samples: number
-  rmse: number | null
-  mae: number | null
-  mae_per_day: number[]
-  forecasted: Array<{ date: string; occupancy: number }>
-  actual: Array<{ date: string; occupancy: number }>
+  /** Дата снимка самого объекта. Может отставать от окна сегмента на недели. */
+  as_of: string | null
+  /** Окно, за которое посчитан сегмент, в днях. */
+  segment_window_days: number
 }
 
 export type EventEffectEntry = {
@@ -354,7 +348,11 @@ export type EventsEffect = {
 export type MapHotel = {
   id: string; name: string; city: string; district: string
   lat: number; lon: number; rating: number | null; min_price: number | null
-  rooms_num: number; free_rooms: number; occupancy: number
+  rooms_num: number; free_rooms: number
+  /** Загрузка самого объекта: 100*(rooms-free)/rooms. null, если число номеров неизвестно. */
+  occupancy: number | null
+  /** Средняя загрузка района объекта — для сравнения, не для подписи объекта. */
+  district_occupancy: number | null
   max_capacity: number
 }
 
@@ -456,7 +454,15 @@ export const api = {
     min_price: number | null
   }[]>(`/api/hotels/${encodeURIComponent(id)}/statistics`),
 
-  getEvents: () => request<Event[]>('/api/events'),
+  getEvents: (params?: { date_from?: string; date_to?: string; source?: string; limit?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.date_from) qs.set('date_from', params.date_from)
+    if (params?.date_to) qs.set('date_to', params.date_to)
+    if (params?.source) qs.set('source', params.source)
+    if (params?.limit) qs.set('limit', String(params.limit))
+    const tail = qs.toString() ? `?${qs.toString()}` : ''
+    return request<Event[]>(`/api/events${tail}`)
+  },
 
   query: (text: string, sessionId?: string) => request<QueryResponse>('/api/query', {
     method: 'POST',
@@ -625,11 +631,6 @@ export const api = {
 
   getHotelSegmentBenchmark: (hotelId: string) =>
     request<HotelSegmentBenchmarkResponse>(`/api/hotels/${encodeURIComponent(hotelId)}/segment-benchmark`),
-
-  getForecastValidation: (district: string, daysBack = 14) => {
-    const params = new URLSearchParams({ days_back: String(daysBack) })
-    return request<ForecastValidationResponse>(`/api/forecast/${encodeURIComponent(district)}/validation?${params}`)
-  },
 
   getHotelValidation: (hotelId: string, testDays = 14) => {
     const params = new URLSearchParams({ test_days: String(testDays) })

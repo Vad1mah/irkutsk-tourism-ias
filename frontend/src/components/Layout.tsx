@@ -118,14 +118,14 @@ const analyticalNavItems: NavItemConfig[] = [
     to: '/forecast',
     icon: TrendingUp,
     label: 'Прогноз спроса',
-    description: 'Среднее по 3 моделям + факторы',
+    description: 'Взвешенное среднее 2 моделей + факторы',
     badge: 'ML',
   },
   {
     to: '/events',
     icon: PartyPopper,
-    label: 'События и спрос',
-    description: 'Влияние событий на загрузку',
+    label: 'События',
+    description: 'Календарь событий региона',
   },
   {
     to: '/chat',

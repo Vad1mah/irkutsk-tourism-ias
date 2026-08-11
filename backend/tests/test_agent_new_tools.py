@@ -485,10 +485,10 @@ class TestNewToolsRegistration:
         ]:
             assert expected in names, f"{expected} не зарегистрирован в ALL_TOOLS"
 
-    def test_all_tools_count_12(self):
+    def test_all_tools_count(self):
         from app.services.main_agent import ALL_TOOLS
 
-        assert len(ALL_TOOLS) == 12
+        assert len(ALL_TOOLS) == 13
 
     def test_tools_by_name_has_all_new(self):
         from app.services.main_agent import TOOLS_BY_NAME

@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from app.constants import SEGMENT_WINDOW_DAYS
 from app.db.models import Event, Forecast, Hotel, HotelStatistic
 from app.db.session import async_session
 from app.models.schemas import Hotel as HotelSchema
@@ -305,6 +306,9 @@ class DBService:
 
         Дополнительно: clip percent в [0, 100] перед расчётом (защита от outliers парсера,
         когда available_rooms_percent может выйти за границы из-за rooms_num != sum(rooms.free)).
+
+        Ключ avg_price содержит медиану min_price за день — единственную статистику
+        прокси-ADR в системе (совпадает с revenue-summary и price-distribution).
         """
         async with async_session() as s:
             q_text = """
@@ -335,7 +339,8 @@ class DBService:
                     -- occupied_rooms = rooms_num * (1 - available_pct/100) = rooms_num - rooms_num*available_pct/100
                     100.0 * SUM(rooms_num - rooms_num * available_pct / 100.0)
                         / NULLIF(SUM(rooms_num), 0) AS avg_occupancy,
-                    AVG(min_price) FILTER (WHERE min_price > 0) AS avg_price,
+                    percentile_cont(0.5) WITHIN GROUP (ORDER BY min_price)
+                        FILTER (WHERE min_price > 0) AS avg_price,
                     SUM(rooms_num) AS total_rooms,
                     SUM(max_capacity) AS total_capacity
                 FROM clean
@@ -356,7 +361,17 @@ class DBService:
             ]
 
     async def get_monthly_statistics(self, year: int | None = None) -> list[dict]:
-        """Месячная агрегация. Phase 6: weighted occupancy (как в get_occupancy_by_district)."""
+        """Месячная агрегация: room-night weighted occupancy и медиана min_price.
+
+        Args:
+            year: Год фильтрации; None — все годы.
+
+        Returns:
+            Список словарей по паре (год, месяц) с ключами date_str, avg_occupancy,
+            avg_price (медиана min_price), total_rooms, free_rooms, records_count
+            (строк статистики) и days_count (различных дат наблюдения в месяце —
+            именно он определяет достоверность месячной оценки).
+        """
         async with async_session() as s:
             q_text = """
                 WITH clean AS (
@@ -380,10 +395,12 @@ class DBService:
                     EXTRACT(MONTH FROM date)::int AS month,
                     100.0 * SUM(rooms_num - rooms_num * available_pct / 100.0)
                         / NULLIF(SUM(rooms_num), 0) AS avg_occupancy,
-                    AVG(min_price) FILTER (WHERE min_price > 0) AS avg_price,
+                    percentile_cont(0.5) WITHIN GROUP (ORDER BY min_price)
+                        FILTER (WHERE min_price > 0) AS avg_price,
                     SUM(rooms_num) AS total_rooms,
                     SUM(free_rooms_amount) AS free_rooms,
-                    COUNT(*) AS records_count
+                    COUNT(*) AS records_count,
+                    COUNT(DISTINCT date) AS days_count
                 FROM clean
                 GROUP BY 1, 2 ORDER BY 1, 2
             """
@@ -396,6 +413,7 @@ class DBService:
                     "total_rooms": int(r.total_rooms or 0),
                     "free_rooms": int(r.free_rooms or 0),
                     "records_count": int(r.records_count or 0),
+                    "days_count": int(r.days_count or 0),
                 }
                 for r in result
             ]
@@ -895,6 +913,13 @@ class DBService:
             }
 
     async def get_districts_statistics(self) -> list[dict]:
+        """Срез по районам на последнюю доступную дату статистики.
+
+        Returns:
+            Список словарей с ключами district, hotels_count, total_rooms,
+            free_rooms, avg_occupancy (room-night weighted), median_price
+            (медиана min_price — прокси-ADR) и as_of_date.
+        """
         async with async_session() as s:
             q = text(f"""
                 SELECT
@@ -902,7 +927,6 @@ class DBService:
                     {_weighted_occ_sql("hs")} AS avg_occupancy,
                     SUM(hs.free_rooms_amount) AS free_rooms,
                     SUM(hs.rooms_num) AS total_rooms,
-                    AVG(NULLIF(hs.min_price, 0)) AS avg_price,
                     percentile_cont(0.5) WITHIN GROUP (ORDER BY hs.min_price)
                         FILTER (WHERE hs.min_price > 0) AS median_price,
                     MAX(hs.date) AS as_of_date,
@@ -921,10 +945,7 @@ class DBService:
                     "total_rooms": int(row.total_rooms or 0),
                     "free_rooms": int(row.free_rooms or 0),
                     "avg_occupancy": round(float(row.avg_occupancy or 0), 1),
-                    "avg_price": round(float(row.avg_price or 0)),
                     "as_of_date": row.as_of_date.isoformat() if row.as_of_date else None,
-                    # ADR-proxy = медиана min_price (устойчивее к рекламным выбросам,
-                    # согласовано с compare-districts / price-distribution).
                     "median_price": round(float(row.median_price or 0)),
                 }
                 for row in result
@@ -1030,17 +1051,30 @@ class DBService:
     ) -> list[dict]:
         """Агрегаты по районам в произвольном диапазоне дат.
 
-        Усреднение Occupancy и avg_price выполняется по всем снимкам периода;
-        free_rooms/total_rooms берутся как средние per-day, чтобы цифры не
-        умножались на длину окна."""
+        Occupancy — room-night weighted по всем снимкам периода, median_price —
+        медиана min_price за период. total_rooms/free_rooms приводятся к одному
+        дню (сумма номеров, делённая на число дат наблюдения), чтобы номерной
+        фонд не умножался на длину окна.
+
+        Args:
+            date_from: Начало периода включительно.
+            date_to: Конец периода включительно.
+
+        Returns:
+            Список словарей с ключами district, hotels_count, total_rooms,
+            free_rooms, avg_occupancy, median_price.
+        """
         async with async_session() as s:
             q = text(f"""
                 SELECT
                     h.district,
                     {_weighted_occ_sql("hs")} AS avg_occupancy,
-                    AVG(hs.free_rooms_amount) AS free_rooms_avg,
-                    AVG(hs.rooms_num) AS total_rooms_avg,
-                    AVG(hs.min_price) AS avg_price,
+                    SUM(hs.free_rooms_amount)::float
+                        / NULLIF(COUNT(DISTINCT hs.date), 0) AS free_rooms_per_day,
+                    SUM(hs.rooms_num)::float
+                        / NULLIF(COUNT(DISTINCT hs.date), 0) AS total_rooms_per_day,
+                    percentile_cont(0.5) WITHIN GROUP (ORDER BY hs.min_price)
+                        FILTER (WHERE hs.min_price > 0) AS median_price,
                     COUNT(DISTINCT h.id) AS hotels_count
                 FROM hotels h
                 JOIN hotel_statistics hs ON h.id = hs.id
@@ -1053,10 +1087,10 @@ class DBService:
                 {
                     "district": row.district or "Неизвестный",
                     "hotels_count": int(row.hotels_count),
-                    "total_rooms": int(round(row.total_rooms_avg or 0)),
-                    "free_rooms": int(round(row.free_rooms_avg or 0)),
+                    "total_rooms": int(round(row.total_rooms_per_day or 0)),
+                    "free_rooms": int(round(row.free_rooms_per_day or 0)),
                     "avg_occupancy": round(float(row.avg_occupancy or 0), 1),
-                    "avg_price": round(float(row.avg_price or 0)),
+                    "median_price": round(float(row.median_price or 0)),
                 }
                 for row in result
             ]
@@ -1410,7 +1444,7 @@ class DBService:
         """Возвращает все min_price из hotel_statistics за последние N дней по району.
 
         Args:
-            district: Район Иркутской области.
+            district: Район Байкальского макрорегиона.
             days: Глубина выборки в днях.
 
         Returns:
@@ -1452,7 +1486,7 @@ class DBService:
         Это не RMS Pickup, а наблюдаемая дельта загрузки — отсюда префикс proxy_.
 
         Args:
-            district: Район Иркутской области.
+            district: Район Байкальского макрорегиона.
             days_ahead: Сколько последних дат с данными вернуть.
             lookback_days: Горизонт сравнения (occupancy(d) против occupancy(d−lookback)).
 
@@ -1663,11 +1697,16 @@ class DBService:
     async def get_hotel_latest_stats(self, hotel_id: str) -> dict:
         """Последняя запись статистики для конкретного отеля.
 
+        Загрузка объекта считается из его собственного номерного фонда:
+        100 * (rooms_num - free_rooms_amount) / rooms_num. Без rooms_num
+        загрузка неопределима и возвращается как None.
+
         Args:
             hotel_id: ID отеля.
 
         Returns:
-            Словарь с ключами date, rooms_num, occupancy, min_price. Пустой dict при ошибке.
+            Словарь с ключами date, rooms_num, free_rooms, occupancy, min_price.
+            Пустой dict, если записей нет или запрос не удался.
         """
         if not self.is_connected:
             return {}
@@ -1681,10 +1720,13 @@ class DBService:
                 )).scalar_one_or_none()
                 if not row:
                     return {}
+                rooms = row.rooms_num or 0
+                free = min(max(row.free_rooms_amount or 0, 0), rooms)
                 return {
                     "date": row.date.isoformat() if row.date else None,
                     "rooms_num": row.rooms_num,
-                    "occupancy": round(100 - (row.available_rooms_percent or 0), 2),
+                    "free_rooms": row.free_rooms_amount,
+                    "occupancy": round(100.0 * (rooms - free) / rooms, 1) if rooms else None,
                     "min_price": row.min_price,
                 }
         except Exception as exc:
@@ -1700,16 +1742,20 @@ class DBService:
     ) -> dict:
         """Средние метрики по сегменту «район × размерная категория».
 
+        Сегмент собирается из последних снимков объектов за окно
+        SEGMENT_WINDOW_DAYS дней; сам отель из выборки исключается.
+
         Args:
-            district: Район Иркутской области.
+            district: Район Байкальского макрорегиона.
             size_bucket: "mini" (≤15), "mid" (16-50) или "large" (51+).
             exclude_hotel_id: ID отеля, который следует исключить из расчёта (self-exclusion).
 
         Returns:
-            Словарь с ключами n, avg_occupancy, avg_price.
+            Словарь с ключами n, avg_occupancy, avg_price, window_days.
         """
+        empty = {"n": 0, "avg_occupancy": None, "avg_price": None, "window_days": SEGMENT_WINDOW_DAYS}
         if not self.is_connected or not district:
-            return {"n": 0, "avg_occupancy": None, "avg_price": None}
+            return empty
         bounds = {"mini": (0, 15), "mid": (16, 50), "large": (51, 10_000)}.get(size_bucket, (0, 10_000))
         try:
             async with async_session() as s:
@@ -1718,6 +1764,7 @@ class DBService:
                     "min_r": bounds[0],
                     "max_r": bounds[1],
                     "exclude_id": exclude_hotel_id,
+                    "window_days": SEGMENT_WINDOW_DAYS,
                 }
                 row = (await s.execute(text(f"""
                     WITH latest AS (
@@ -1727,7 +1774,8 @@ class DBService:
                         JOIN hotel_statistics hs ON hs.id = h.id
                         WHERE h.district = :district
                           AND hs.rooms_num BETWEEN :min_r AND :max_r
-                          AND hs.date >= (SELECT MAX(date) FROM hotel_statistics) - INTERVAL '14 days'
+                          AND hs.date >= (SELECT MAX(date) FROM hotel_statistics)
+                                         - CAST(:window_days AS INTEGER)
                           AND (CAST(:exclude_id AS TEXT) IS NULL OR h.id <> CAST(:exclude_id AS TEXT))
                         ORDER BY h.id, hs.date DESC
                     )
@@ -1737,15 +1785,16 @@ class DBService:
                     FROM latest
                 """), params)).first()
                 if not row:
-                    return {"n": 0, "avg_occupancy": None, "avg_price": None}
+                    return empty
                 return {
                     "n": int(row[0] or 0),
                     "avg_occupancy": round(float(row[1] or 0), 2) if row[1] is not None else None,
                     "avg_price": int(row[2] or 0) if row[2] is not None else None,
+                    "window_days": SEGMENT_WINDOW_DAYS,
                 }
         except Exception as exc:
             logger.error("compute_segment_metrics: %s", exc)
-            return {"n": 0, "avg_occupancy": None, "avg_price": None}
+            return empty
 
     async def create_tables(self) -> None:
         """Create tables if they don't exist. For schema changes use Alembic:

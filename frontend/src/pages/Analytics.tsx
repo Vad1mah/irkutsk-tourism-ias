@@ -3,9 +3,11 @@ import { useQuery } from '@tanstack/react-query'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import {
   api,
+  type RevenueSummary,
   type RevenueSummaryDistrict,
   type WeekdayHeatmapCell,
   type EventsEffect,
+  type EventEffectEntry,
   type SegmentsResponse,
   type PriceDistributionResponse,
   type DistrictSegmentsResponse,
@@ -27,6 +29,12 @@ import { localizeConfidence, localizeAccommodationType, localizeSizeBucket } fro
 import { RECHARTS_TOOLTIP_PROPS, BAR_CURSOR_TRANSPARENT } from '../utils/chartTheme'
 
 type Tab = 'regions' | 'seasonality' | 'events' | 'segments'
+
+/** Сколько типов размещения показывает график структуры. */
+const TOP_ACCOMMODATION_TYPES = 10
+
+/** Потолок строк на файл в /api/analytics/export — выгрузка режется по самым свежим датам. */
+const EXPORT_ROW_LIMIT = 10000
 
 const TAB_LABELS: Record<Tab, string> = {
   regions: 'Регионы',
@@ -216,7 +224,7 @@ function Analytics() {
           )}
 
           {/* Methodology footer */}
-          <MethodologyFooter />
+          <MethodologyFooter asOfDate={revenueSummary.as_of_date ?? null} />
         </>
       )}
     </div>
@@ -232,7 +240,7 @@ function RegionsTab({
   setSelectedDistrict,
   navigate,
 }: {
-  revenueSummary: { by_district: RevenueSummaryDistrict[]; methodology: string }
+  revenueSummary: RevenueSummary
   districtKpi: RevenueSummaryDistrict | null
   selectedDistrict: string
   setSelectedDistrict: (d: string) => void
@@ -247,15 +255,16 @@ function RegionsTab({
   })
 
   const list = revenueSummary.by_district
-  const totalRev = list.reduce((s, d) => s + (d.revpar || 0) * (d.hotels_count || 0), 0)
-  const totalHotels = list.reduce((s, d) => s + (d.hotels_count || 0), 0)
-  const regionAvgRevpar = totalHotels > 0 ? totalRev / totalHotels : 0
+  const snapshotDate = _formatIsoDate(revenueSummary.as_of_date)
+  // Региональный RevPAR берём из API: он взвешен по номерному фонду района,
+  // как и написано в строке методологии под карточками.
+  const regionAvgRevpar = revenueSummary.revpar || 0
 
   const sorted = [...list].sort((a, b) => (b.revpar || 0) - (a.revpar || 0))
   const filteredSorted = showOnlyReliable ? sorted.filter(d => d.confidence !== 'low') : sorted
 
-  // Top-5 districts by RevPAR for mini bar chart
-  const top5 = sorted.filter(d => (d.revpar || 0) > 0).slice(0, 5)
+  // Top-5 districts by RevPAR — из того же набора, что и таблица под графиком
+  const top5 = filteredSorted.filter(d => (d.revpar || 0) > 0).slice(0, 5)
 
   return (
     <div className="space-y-6">
@@ -269,30 +278,32 @@ function RegionsTab({
             title="Загрузка"
             value={districtKpi ? `${districtKpi.occupancy}%` : '—'}
             icon={Activity}
-            description="Средняя по району"
+            description="Взвешена по номерному фонду"
             accent="primary"
+            tooltip="Загрузка района = 100 × занятые номера / все номера объектов, приславших снимок. Это не среднее по объектам: отель на 100 номеров влияет на район сильнее, чем гостевой дом на 5."
           />
           <KPICard
-            title="ADR"
+            title="Прокси-ADR"
             value={districtKpi?.adr ? `${districtKpi.adr.toLocaleString('ru-RU')}₽` : '—'}
             icon={DollarSign}
-            description="Средний тариф номера"
+            description={`Медиана мин. цены на ${snapshotDate}`}
             accent="accent"
-            tooltip="ADR (Average Daily Rate) — средний тариф номера за сутки. Считаем по медиане минимальных цен на сайтах бронирования. Реальный тариф обычно на 15–30% выше — мы видим только рекламируемую цену."
+            tooltip="Прокси-ADR — медиана минимальной цены номера по объектам района на дату среза. Это не ADR отеля из PMS: видна только рекламируемая на сайтах бронирования цена, реальный средний тариф обычно на 15–30% выше."
           />
           <KPICard
             title="RevPAR"
             value={districtKpi?.revpar ? `${districtKpi.revpar.toLocaleString('ru-RU')}₽` : '—'}
             icon={TrendingUp}
-            description="Выручка на доступный номер"
+            description="Прокси-ADR × Загрузка"
             accent="success"
-            tooltip="RevPAR (Revenue per Available Room) — выручка с доступного номера = ADR × Загрузка. Главный показатель в гостиничном бизнесе: учитывает и цену, и заполняемость. Используем для сравнения районов и трендов."
+            tooltip="RevPAR (Revenue per Available Room) — выручка с доступного номера = прокси-ADR × Загрузка. Наследует прокси-природу цены: это оценка по рекламируемым тарифам, а не выручка по факту."
           />
           <KPICard
             title="Объектов"
             value={districtKpi ? String(districtKpi.hotels_count) : '—'}
             icon={Building2}
-            description={districtKpi ? `Достоверность: ${localizeConfidence(districtKpi.confidence)}` : ''}
+            description={districtKpi ? `Со снимком за ${snapshotDate} · ${localizeConfidence(districtKpi.confidence)}` : ''}
+            tooltip={`Объекты района, приславшие суточный снимок за ${snapshotDate}. В справочнике объектов больше — часть не отчитывается каждый день, полный список выгружается кнопкой «CSV — реестр». Достоверность: высокая — от 10 объектов, средняя — 3–9, низкая — 2 и меньше.`}
           />
         </div>
         <p className="text-xs text-[hsl(var(--muted-foreground))] mt-2 flex items-start gap-1.5">
@@ -308,10 +319,12 @@ function RegionsTab({
             <div className="flex items-center gap-2">
               <TrendingUp className="w-5 h-5 text-[hsl(var(--success))]" />
               <CardTitle className="text-base">Топ-5 районов по RevPAR</CardTitle>
-              <MethodologyTooltip text="RevPAR (Revenue per Available Room) — выручка на доступный номер: ADR × Загрузка. Главный показатель в гостиничном бизнесе: учитывает и цену, и заполняемость." />
+              <MethodologyTooltip text="RevPAR (Revenue per Available Room) — выручка на доступный номер: прокси-ADR × Загрузка. Главный показатель в гостиничном бизнесе: учитывает и цену, и заполняемость." />
             </div>
             <p className="text-xs text-[hsl(var(--muted-foreground))]">
               Чем выше столбец, тем больше выручки приносит каждый номер района за сутки.
+              Набор районов — тот же, что и в таблице ниже: при снятом фильтре достоверности
+              в топ попадают и районы с двумя-тремя объектами.
             </p>
           </CardHeader>
           <CardContent>
@@ -345,7 +358,7 @@ function RegionsTab({
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2">
               <TrendingUp className="w-5 h-5 text-[hsl(var(--success))]" />
-              <CardTitle className="text-base">RMS-сводка по районам региона</CardTitle>
+              <CardTitle className="text-base">RMS-сводка по районам макрорегиона</CardTitle>
             </div>
             <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
               <input
@@ -358,7 +371,9 @@ function RegionsTab({
             </label>
           </div>
           <p className="text-sm text-[hsl(var(--muted-foreground))]">
-            RMS-метрики по районам. Колонка «Δ к региону» показывает отклонение RevPAR от средневзвешенного по региону.
+            Байкальский макрорегион: Иркутская область и прибайкальские районы Бурятии —
+            рынок вокруг озера не делится по границе субъектов. Колонка «Δ к региону»
+            показывает отклонение RevPAR от средневзвешенного по макрорегиону.
           </p>
         </CardHeader>
         <CardContent>
@@ -367,25 +382,35 @@ function RegionsTab({
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wider text-[hsl(var(--muted-foreground))] border-b border-[hsl(var(--border))]">
                   <th className="py-2 pr-3">Район</th>
-                  <th className="py-2 pr-3 text-right">Объектов</th>
+                  <th className="py-2 pr-3 text-right">
+                    <span className="inline-flex items-center gap-1 justify-end">
+                      Объектов
+                      <MethodologyTooltip text={`Объекты, приславшие суточный снимок за ${snapshotDate}. В справочнике района объектов больше, а в разбивке под строкой — объекты со снимком за 14 дней: это три разных окна, а не расхождение данных.`} />
+                    </span>
+                  </th>
                   <th className="py-2 pr-3 text-right">Загрузка</th>
-                  <th className="py-2 pr-3 text-right">ADR</th>
+                  <th className="py-2 pr-3 text-right">
+                    <span className="inline-flex items-center gap-1 justify-end">
+                      Прокси-ADR
+                      <MethodologyTooltip text="Медиана минимальной цены номера по объектам района на дату среза. Реальный тариф выше: видна только рекламируемая цена." />
+                    </span>
+                  </th>
                   <th className="py-2 pr-3 text-right">
                     <span className="inline-flex items-center gap-1 justify-end">
                       RevPAR
-                      <MethodologyTooltip text="RevPAR = ADR × Загрузка. Выручка с одного доступного номера за сутки." />
+                      <MethodologyTooltip text="RevPAR = прокси-ADR × Загрузка. Выручка с одного доступного номера за сутки." />
                     </span>
                   </th>
                   <th className="py-2 pr-3 text-right">
                     <span className="inline-flex items-center gap-1 justify-end">
                       Δ к региону
-                      <MethodologyTooltip text="Отклонение RevPAR района от средневзвешенного по региону. Зелёный — выше региона, красный — ниже." />
+                      <MethodologyTooltip text="Отклонение RevPAR района от RevPAR макрорегиона, взвешенного по номерному фонду. Зелёный — выше макрорегиона, красный — ниже." />
                     </span>
                   </th>
                   <th className="py-2 text-center">
                     <span className="inline-flex items-center gap-1 justify-center">
                       Достоверность
-                      <MethodologyTooltip text="Высокая — ≥5 объектов с данными за период, средняя — 2–4 объекта, низкая — ≤1 объект." />
+                      <MethodologyTooltip text="Считается по числу объектов со снимком на дату среза: высокая — от 10 объектов, средняя — 3–9, низкая — 2 и меньше. На двух объектах «средняя по району» — это метрика одного отеля, выданная за рынок." />
                     </span>
                   </th>
                 </tr>
@@ -418,7 +443,7 @@ function RegionsTab({
                         </td>
                         <td className="py-2 text-center">
                           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs ${isHi ? 'bg-[hsl(var(--success)/0.15)] text-[hsl(var(--success))]' : isMid ? 'bg-[hsl(var(--primary)/0.15)] text-[hsl(var(--primary))]' : 'bg-[hsl(var(--muted-foreground)/0.15)] text-[hsl(var(--muted-foreground))]'}`}>
-                            {isHi ? `${d.hotels_count}+ объектов` : isMid ? `${d.hotels_count} объектов` : `${d.hotels_count ?? 0} (мало)`}
+                            {isHi || isMid ? `${d.hotels_count} объектов` : `${d.hotels_count ?? 0} (мало)`}
                           </span>
                         </td>
                       </tr>
@@ -448,11 +473,13 @@ function RegionsTab({
               <tfoot>
                 <tr className="text-xs text-[hsl(var(--muted-foreground))]">
                   <td colSpan={7} className="pt-3">
-                    Средневзвешенный RevPAR по региону:{' '}
+                    RevPAR по макрорегиону, взвешенный по номерному фонду:{' '}
                     <span className="font-semibold text-[hsl(var(--foreground))]">
                       {Math.round(regionAvgRevpar).toLocaleString('ru-RU')} ₽
                     </span>
-                    . Клик по строке раскрывает разбивку по типам размещения.
+                    {' '}— считается по всем районам, включая скрытые фильтром достоверности,
+                    поэтому сумма видимых строк с ним не сходится.
+                    Клик по строке раскрывает разбивку по типам размещения.
                   </td>
                 </tr>
               </tfoot>
@@ -464,7 +491,7 @@ function RegionsTab({
       {/* Quick navigation */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: 'Прогноз спроса', desc: 'Среднее по 3 моделям', icon: TrendingUp, path: `/forecast?district=${encodeURIComponent(selectedDistrict)}` },
+          { label: 'Прогноз спроса', desc: 'Взвешенное среднее двух моделей', icon: TrendingUp, path: `/forecast?district=${encodeURIComponent(selectedDistrict)}` },
           { label: 'События и спрос', desc: 'Календарь и влияние', icon: Calendar, path: '/events' },
           { label: 'Региональная карта', desc: 'Объекты на карте', icon: MapPin, path: '/map' },
           { label: 'О системе', desc: 'Методология', icon: Info, path: '/about' },
@@ -509,7 +536,7 @@ function SeasonalityTab({
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2">
               <Activity className="w-5 h-5 text-[hsl(var(--primary))]" />
-              <CardTitle className="text-base">Динамика бронирований по дням</CardTitle>
+              <CardTitle className="text-base">Занятые номера и их суточное изменение</CardTitle>
             </div>
             {pickup?.summary && (
               <span className="inline-flex items-center gap-1">
@@ -519,12 +546,15 @@ function SeasonalityTab({
                 >
                   {pickup.summary.trend}
                 </Badge>
-                <MethodologyTooltip text="Сравнение последних 3 дней с первыми 3 в окне 30 дней. «Ускорение» — рост бронирований более чем на 20%. «Замедление» — спад более чем на 20%. Иначе — «стабильно»." />
+                <MethodologyTooltip text="Сравниваются средние по первым и последним трём суткам окна, у которых изменение не равно нулю; порог — 20%. Знак базы при этом не учитывается, поэтому вывод сверяется со средним изменением за сутки в карточках ниже." />
               </span>
             )}
           </div>
           <p className="text-sm text-[hsl(var(--muted-foreground))]">
-            Изменение бронирований за сутки. Зелёные столбики — клиенты бронируют, красные — отменяют или съезжают. Линия — накопленное количество бронирований за последние 30 дней.
+            Линия — сколько номеров района занято в этот день, столбик — изменение этой
+            величины за сутки. Окно: {pickup?.period ? `${_formatIsoDate(pickup.period.start)} — ${_formatIsoDate(pickup.period.end)}` : 'последние 30 дней'}.
+            Состав объектов, приславших снимок, в разные дни разный, поэтому часть суточного
+            изменения — это приход и уход объектов из выборки, а не брони и отмены.
           </p>
         </CardHeader>
         <CardContent>
@@ -547,12 +577,12 @@ function SeasonalityTab({
                   cursor={BAR_CURSOR_TRANSPARENT}
                 />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar yAxisId="pickup" dataKey="pickup" name="Δ бронирований за день" fill="hsl(var(--accent))" />
+                <Bar yAxisId="pickup" dataKey="pickup" name="Δ занятых номеров за сутки" fill="hsl(var(--accent))" />
                 <Line
                   yAxisId="booked"
                   type="monotone"
                   dataKey="booked"
-                  name="Накопленные бронирования"
+                  name="Занято номеров"
                   stroke="hsl(var(--primary))"
                   strokeWidth={2}
                   dot={false}
@@ -568,16 +598,12 @@ function SeasonalityTab({
           {pickup?.summary && (pickup.points?.length ?? 0) > 0 && (
             <>
               <div className="grid grid-cols-3 gap-3 mt-3 pt-3 border-t border-[hsl(var(--border))]">
-                <PickupStat label="Ср. изменение/день" value={`${pickup.summary.avg_pickup > 0 ? '+' : ''}${pickup.summary.avg_pickup}`} />
-                <PickupStat label="Лучший день" value={`+${pickup.summary.max_pickup}`} />
-                <PickupStat label="Худший день" value={`${pickup.summary.min_pickup}`} />
+                <PickupStat label="Ср. Δ (дни с изменением)" value={_signedNumber(pickup.summary.avg_pickup)} />
+                <PickupStat label="Максимум за сутки" value={_signedNumber(pickup.summary.max_pickup)} />
+                <PickupStat label="Минимум за сутки" value={_signedNumber(pickup.summary.min_pickup)} />
               </div>
               <p className="text-xs text-[hsl(var(--muted-foreground))] mt-2">
-                {pickup.summary.trend === 'ускорение'
-                  ? `Спрос ускоряется: за последние 3 дня бронируют в среднем активнее, чем в начале окна. Рекомендуем удерживать текущие тарифы.`
-                  : pickup.summary.trend === 'замедление'
-                    ? `Спрос ослабевает: бронирований сейчас меньше, чем в начале окна. Рассмотрите промо или снижение тарифа на нечувствительные даты.`
-                    : `Спрос стабилен: значимых сдвигов в темпе бронирований за окно не зафиксировано.`}
+                {_pickupTrendNote(pickup.summary.trend, pickup.summary.avg_pickup)}
               </p>
             </>
           )}
@@ -594,8 +620,12 @@ function SeasonalityTab({
           <p className="text-sm text-[hsl(var(--muted-foreground))]">
             Сезонные и недельные паттерны спроса по дням недели и месяцам.{' '}
             <span className="inline-flex items-center gap-1">
-              <HatchIcon /> — ячейки с менее чем 5 наблюдениями (недостаточно данных).
-            </span>
+              <HatchIcon /> — ячейки, где меньше 5 наблюдений (недостаточно данных).
+            </span>{' '}
+            Наблюдение — это объект за один день, а не календарная дата: ячейка может
+            набрать сотню наблюдений с одной-единственной недели. Данные за
+            24.06.2025 – 25.10.2025 (123 дня) не собирались, эти месяцы опираются
+            на остаток истории.
           </p>
         </CardHeader>
         <CardContent>
@@ -652,7 +682,7 @@ function EventsTab({
                       <th className="py-2 pr-3 text-right">95% интервал</th>
                       <th className="py-2 pr-3 text-right">
                         Эпизодов
-                        <MethodologyTooltip text="Неразрывные серии событийных дней. Месячный фестиваль — это один случай, а не тридцать: оценка по нему не становится надёжнее оттого, что он длился месяц." />
+                        <MethodologyTooltip text="Неразрывные серии событийных дней. Месячный фестиваль — это один случай, а не тридцать: оценка по нему не становится надёжнее оттого, что он длился месяц. Серия считается по дням, для которых есть снимок загрузки: день без снимка внутри фестиваля разрывает его на два эпизода." />
                       </th>
                       <th className="py-2">Вывод</th>
                     </tr>
@@ -661,7 +691,7 @@ function EventsTab({
                     {[eventsEffect.overall, ...eventsEffect.by_district].map((row, i) => (
                       <tr key={i} className="border-b border-[hsl(var(--border))]">
                         <td className="py-2 pr-3 whitespace-nowrap font-medium">
-                          {row.district ?? 'Все районы'}
+                          {row.district ?? 'Все районы (пул)'}
                         </td>
                         <td className="py-2 pr-3 text-right tabular-nums">
                           {row.identifiable && row.effect_pp != null
@@ -675,11 +705,7 @@ function EventsTab({
                         </td>
                         <td className="py-2 pr-3 text-right tabular-nums">{row.episodes ?? '—'}</td>
                         <td className="py-2 text-[hsl(var(--muted-foreground))]">
-                          {!row.identifiable
-                            ? (row.reason ?? 'оценка невозможна')
-                            : row.detected
-                              ? 'эффект обнаружен'
-                              : 'эффект не обнаружен'}
+                          {_eventEffectVerdict(row)}
                         </td>
                       </tr>
                     ))}
@@ -687,11 +713,14 @@ function EventsTab({
                 </table>
               </div>
               <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                Период данных: {eventsEffect.period.from ?? '—'} — {eventsEffect.period.to ?? '—'}.
+                Период данных: {_formatIsoDate(eventsEffect.period.from)} — {_formatIsoDate(eventsEffect.period.to)}
+                {' '}(внутри него нет данных за 24.06.2025 – 25.10.2025, 123 дня).
                 Район показывается с оценкой, только если в нём набралось не меньше{' '}
                 {eventsEffect.min_episodes} независимых эпизодов. Ниже этого порога отделить
                 событие от сезона нельзя: фестиваль, который каждый год ставят на пик спроса,
-                неотличим от самого пика.
+                неотличим от самого пика. Строка «Все районы» — общий пул: порог применён
+                к сумме эпизодов, и в неё входят районы, которые по отдельности порог
+                не проходят, поэтому переносить её вывод на конкретный район нельзя.
               </p>
               <Button variant="secondary" size="sm" onClick={() => navigate('/events')}>
                 Календарь событий
@@ -710,6 +739,16 @@ function EventsTab({
 
 // ─── Tab: Сегменты ────────────────────────────────────────────────────────────
 
+type AccommodationTypeStructure = {
+  rows: { type: string; count: number }[]
+  /** Объектов во всём справочнике. */
+  total: number
+  /** Объектов, попавших в показанный топ типов. */
+  shown: number
+  /** Сколько всего различных типов размещения в данных. */
+  kinds: number
+}
+
 function SegmentsTab({
   segments,
   loadSegments,
@@ -723,13 +762,19 @@ function SegmentsTab({
   loadPriceDist: boolean
   selectedDistrict: string
 }) {
-  // Bar chart data by accommodation_type
-  const accTypeData = useMemo(() => {
-    if (!segments) return []
-    return Object.entries(segments.by_accommodation_type)
-      .map(([type, v]) => ({ type: localizeAccommodationType(type), count: v.count, avg_price: v.avg_price ?? 0 }))
+  // Bar chart data by accommodation_type — топ-10 типов из справочника
+  const typeStructure = useMemo<AccommodationTypeStructure>(() => {
+    if (!segments) return { rows: [], total: 0, shown: 0, kinds: 0 }
+    const all = Object.entries(segments.by_accommodation_type)
+      .map(([type, v]) => ({ type: localizeAccommodationType(type), count: v.count }))
       .sort((a, b) => b.count - a.count)
-      .slice(0, 10)
+    const rows = all.slice(0, TOP_ACCOMMODATION_TYPES)
+    return {
+      rows,
+      total: all.reduce((s, r) => s + r.count, 0),
+      shown: rows.reduce((s, r) => s + r.count, 0),
+      kinds: all.length,
+    }
   }, [segments])
 
   // Size bucket KPI cards
@@ -740,9 +785,11 @@ function SegmentsTab({
       label: localizeSizeBucket(bucket),
       count: v.count,
       avg_occupancy: v.avg_occupancy,
-      avg_price: v.avg_price,
     }))
   }, [segments])
+
+  const sizeTotal = sizeBuckets.reduce((s, b) => s + b.count, 0)
+  const sizeThresholds = segments?.size_thresholds
 
   // Price distribution percentile bar data
   const pDistData = useMemo(() => {
@@ -763,43 +810,39 @@ function SegmentsTab({
         <CardHeader className="pb-2">
           <div className="flex items-center gap-2">
             <Building2 className="w-5 h-5 text-[hsl(var(--primary))]" />
-            <CardTitle className="text-base">Структура по типу размещения</CardTitle>
+            <CardTitle className="text-base">Структура по типу размещения — весь макрорегион</CardTitle>
             <MethodologyTooltip text="Распределение объектов по типу: отель, гостевой дом, хостел, апартаменты, база отдыха, шале, кемпинг и др. Тип берётся из 101hotels live-каталога и из OSM Overpass с привязкой по координатам (радиус 0.5 км)." />
           </div>
           <p className="text-sm text-[hsl(var(--muted-foreground))]">
-            Количество объектов в районе и средняя цена за номер по каждому типу.
+            Топ-{TOP_ACCOMMODATION_TYPES} типов по числу объектов в справочнике всего
+            макрорегиона. Выбранный в шапке район на этот блок не влияет — разрез по району
+            открывается кликом по строке района на вкладке «Регионы».
           </p>
         </CardHeader>
         <CardContent>
           {loadSegments ? (
             <div className="h-56 skeleton rounded-xl" />
-          ) : accTypeData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={Math.max(220, accTypeData.length * 36)}>
-              <BarChart data={accTypeData} layout="vertical" margin={{ left: 8, right: 16, top: 4, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
-                <XAxis xAxisId="count" type="number" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
-                <XAxis
-                  xAxisId="price"
-                  type="number"
-                  orientation="top"
-                  tick={{ fontSize: 10 }}
-                  axisLine={false}
-                  tickLine={false}
-                  tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k ₽`}
-                />
-                <YAxis dataKey="type" type="category" width={140} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} interval={0} />
-                <Tooltip
-                  {...RECHARTS_TOOLTIP_PROPS}
-                  cursor={BAR_CURSOR_TRANSPARENT}
-                  formatter={(v: number, name: string) =>
-                    name === 'avg_price' ? [`${v.toLocaleString('ru-RU')} ₽`, 'Ср. цена'] : [v, 'Объектов']
-                  }
-                />
-                <Legend wrapperStyle={{ fontSize: 11 }} formatter={(v) => v === 'count' ? 'Объектов' : 'Ср. цена (₽)'} />
-                <Bar xAxisId="count" dataKey="count" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
-                <Bar xAxisId="price" dataKey="avg_price" fill="hsl(var(--accent))" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+          ) : typeStructure.rows.length > 0 ? (
+            <>
+              <ResponsiveContainer width="100%" height={Math.max(220, typeStructure.rows.length * 36)}>
+                <BarChart data={typeStructure.rows} layout="vertical" margin={{ left: 8, right: 16, top: 4, bottom: 4 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
+                  <XAxis type="number" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
+                  <YAxis dataKey="type" type="category" width={140} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} interval={0} />
+                  <Tooltip
+                    {...RECHARTS_TOOLTIP_PROPS}
+                    cursor={BAR_CURSOR_TRANSPARENT}
+                    formatter={(v: number) => [v, 'Объектов']}
+                  />
+                  <Bar dataKey="count" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+              <p className="text-xs text-[hsl(var(--muted-foreground))] mt-2">
+                На графике {typeStructure.shown} объектов из {typeStructure.total} в справочнике;
+                {' '}остальные {typeStructure.total - typeStructure.shown} — редкие типы
+                (всего типов {typeStructure.kinds}).
+              </p>
+            </>
           ) : (
             <p className="text-sm text-[hsl(var(--muted-foreground))] py-8 text-center">Нет данных по сегментам.</p>
           )}
@@ -810,8 +853,16 @@ function SegmentsTab({
       {sizeBuckets.length > 0 && (
         <div>
           <p className="text-xs uppercase tracking-wider text-[hsl(var(--muted-foreground))] mb-2 inline-flex items-center gap-1.5">
-            <span>KPI по размеру объекта</span>
-            <MethodologyTooltip text="Размер определяется по числу номеров: «Мини» — до 15 номеров, «Средние» — 16–50, «Крупные» — 51 и больше. Если число номеров не указано в источнике, объект попадает в «Мини»." />
+            <span>KPI по размеру объекта — весь макрорегион</span>
+            <MethodologyTooltip
+              text={`Размер определяется по числу номеров: «Мини» — до ${sizeThresholds?.mini_max ?? 15} номеров, «Средние» — до ${sizeThresholds?.mid_max ?? 50}, «Крупные» — больше. Объекты без указанного числа номеров в разбивку не входят вовсе. Загрузка сегмента взвешена по номерному фонду.`}
+            />
+          </p>
+          <p className="text-xs text-[hsl(var(--muted-foreground))] mb-2">
+            {sizeTotal} объектов со снимком за 14 дней и заполненным числом номеров
+            {typeStructure.total > sizeTotal
+              ? ` — на ${typeStructure.total - sizeTotal} меньше, чем в структуре по типам выше: там весь справочник.`
+              : '.'}
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {sizeBuckets.map(b => (
@@ -823,15 +874,9 @@ function SegmentsTab({
                     <span className="font-medium text-[hsl(var(--foreground))]">{b.count}</span>
                   </div>
                   <div className="flex justify-between text-xs text-[hsl(var(--muted-foreground))]">
-                    <span>Ср. загрузка</span>
+                    <span>Загрузка</span>
                     <span className="font-medium text-[hsl(var(--foreground))]">
                       {b.avg_occupancy != null ? `${b.avg_occupancy.toFixed(1)}%` : '—'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-xs text-[hsl(var(--muted-foreground))]">
-                    <span>Ср. цена</span>
-                    <span className="font-medium text-[hsl(var(--foreground))]">
-                      {b.avg_price != null ? `${b.avg_price.toLocaleString('ru-RU')}₽` : '—'}
                     </span>
                   </div>
                 </div>
@@ -849,7 +894,10 @@ function SegmentsTab({
             <CardTitle className="text-base">Распределение цен — {selectedDistrict}</CardTitle>
           </div>
           <p className="text-sm text-[hsl(var(--muted-foreground))]">
-            Распределение минимальных цен за номер по объектам района за 30 дней. Каждый столбец — граница: например, «10%» означает, что 10% объектов дешевле этой цены, а 90% — дороже.
+            Распределение минимальных цен за номер по району за {priceDistribution?.days ?? 30} дней.
+            Единица выборки — наблюдение «объект × день», а не объект: чем чаще объект попадал
+            в парсинг, тем больше его вес. Столбец — граница: «10%» означает, что 10% наблюдений
+            дешевле этой цены, а 90% — дороже.
           </p>
         </CardHeader>
         <CardContent>
@@ -883,10 +931,14 @@ function SegmentsTab({
               </ResponsiveContainer>
               {priceDistribution && (
                 <div className="flex flex-wrap gap-3 mt-2 text-xs text-[hsl(var(--muted-foreground))]">
-                  <span>Выборка: {priceDistribution.samples} наблюдений</span>
+                  <span>Выборка: {priceDistribution.samples} наблюдений «объект × день»</span>
                   <span>Период: {priceDistribution.days} дней</span>
                   {priceDistribution.p50 != null && (
-                    <span>Медиана: <span className="font-semibold text-[hsl(var(--foreground))]">{priceDistribution.p50.toLocaleString('ru-RU')}₽</span></span>
+                    <span>
+                      Медиана за период:{' '}
+                      <span className="font-semibold text-[hsl(var(--foreground))]">{priceDistribution.p50.toLocaleString('ru-RU')}₽</span>
+                      {' '}(прокси-ADR на вкладке «Регионы» считается на дату среза, поэтому отличается)
+                    </span>
                   )}
                 </div>
               )}
@@ -904,7 +956,7 @@ function SegmentsTab({
 
 // ─── Methodology footer ───────────────────────────────────────────────────────
 
-function MethodologyFooter() {
+function MethodologyFooter({ asOfDate }: { asOfDate: string | null }) {
   return (
     <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.3)] p-4 space-y-1.5">
       <div className="flex items-center gap-2 mb-2">
@@ -912,16 +964,26 @@ function MethodologyFooter() {
         <p className="text-xs font-semibold uppercase tracking-wider text-[hsl(var(--muted-foreground))]">Методология</p>
       </div>
       <p className="text-xs text-[hsl(var(--muted-foreground))]">
-        <span className="font-medium text-[hsl(var(--foreground))]">RevPAR</span> = ADR × Загрузка.
-        Прокси-ADR — медиана минимальной цены за номер по объектам района за выбранный период.
+        <span className="font-medium text-[hsl(var(--foreground))]">RevPAR</span> = прокси-ADR × Загрузка.
+        Прокси-ADR — медиана минимальной цены за номер по объектам района на дату среза
+        ({_formatIsoDate(asOfDate)}). Перцентили цен на вкладке «Сегменты» считаются за 30 дней,
+        поэтому их медиана отличается от прокси-ADR на этот день.
       </p>
       <p className="text-xs text-[hsl(var(--muted-foreground))]">
         <span className="font-medium text-[hsl(var(--foreground))]">Достоверность:</span>{' '}
-        высокая — ≥5 объектов с данными; средняя — 2–4 объекта; низкая — ≤1 объект.
+        высокая — от 10 объектов со снимком на дату среза; средняя — 3–9 объектов;
+        низкая — 2 и меньше.
       </p>
       <p className="text-xs text-[hsl(var(--muted-foreground))]">
-        <span className="font-medium text-[hsl(var(--foreground))]">События (с поправкой на сезонность):</span>{' '}
-        базовая линия — медиана загрузки по похожим дням недели в окне ±3 нед. относительно даты события, исключая дни других мероприятий.
+        <span className="font-medium text-[hsl(var(--foreground))]">События:</span>{' '}
+        панельная регрессия загрузки с собственной константой на каждую пару «район × календарный
+        месяц»: день события сравнивается с обычными днями того же месяца в том же районе.
+        Форма сезонной кривой не моделируется.
+      </p>
+      <p className="text-xs text-[hsl(var(--muted-foreground))]">
+        <span className="font-medium text-[hsl(var(--foreground))]">География:</span>{' '}
+        Байкальский макрорегион — Иркутская область и прибайкальские районы Республики Бурятия.
+        Пробел в данных: 24.06.2025 – 25.10.2025 (123 дня), парсеры не работали.
       </p>
     </div>
   )
@@ -1101,25 +1163,31 @@ function WeekdayHeatmapComponent({ heatmap }: { heatmap: { data: WeekdayHeatmapC
 
 function ExportButtons({ district }: { district: string }) {
   return (
-    <div className="flex flex-wrap gap-2">
-      <a href={api.exportUrl('occupancy', district)} download>
-        <Button variant="secondary" size="sm">
-          <Download size={14} />
-          CSV — загрузка
-        </Button>
-      </a>
-      <a href={api.exportUrl('events')} download>
-        <Button variant="secondary" size="sm">
-          <Download size={14} />
-          CSV — события
-        </Button>
-      </a>
-      <a href={api.exportUrl('hotels', district)} download>
-        <Button variant="secondary" size="sm">
-          <Download size={14} />
-          CSV — реестр
-        </Button>
-      </a>
+    <div className="flex flex-col items-start sm:items-end gap-1.5">
+      <div className="flex flex-wrap gap-2">
+        <a href={api.exportUrl('occupancy', district)} download>
+          <Button variant="secondary" size="sm">
+            <Download size={14} />
+            CSV — суточная загрузка
+          </Button>
+        </a>
+        <a href={api.exportUrl('events')} download>
+          <Button variant="secondary" size="sm">
+            <Download size={14} />
+            CSV — события
+          </Button>
+        </a>
+        <a href={api.exportUrl('hotels', district)} download>
+          <Button variant="secondary" size="sm">
+            <Download size={14} />
+            CSV — реестр объектов
+          </Button>
+        </a>
+      </div>
+      <p className="text-xs text-[hsl(var(--muted-foreground))]">
+        В файл попадает не больше {EXPORT_ROW_LIMIT.toLocaleString('ru-RU')} строк, самых свежих по дате:
+        по суточной загрузке крупного района это лишь последние месяцы, а не вся история.
+      </p>
     </div>
   )
 }
@@ -1143,11 +1211,11 @@ const _PCT_AXIS: Record<string, string> = {
 }
 
 const _PCT_TOOLTIP: Record<string, string> = {
-  p10: '10% самых дешёвых объектов',
-  p25: '25% дешевле',
-  p50: 'Медиана — середина рынка',
-  p75: '25% дороже',
-  p90: '10% самых дорогих объектов',
+  p10: '10% наблюдений дешевле',
+  p25: '25% наблюдений дешевле',
+  p50: 'Медиана наблюдений',
+  p75: '25% наблюдений дороже',
+  p90: '10% наблюдений дороже',
 }
 
 function _pctLabel(v: string): string {
@@ -1156,6 +1224,57 @@ function _pctLabel(v: string): string {
 
 function _pctTooltipLabel(v: string): string {
   return _PCT_TOOLTIP[v] ?? v
+}
+
+/** ISO-дата (YYYY-MM-DD) в привычный DD.MM.YYYY; пустое значение — прочерк. */
+function _formatIsoDate(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const [y, m, d] = iso.split('-')
+  return y && m && d ? `${d}.${m}.${y}` : iso
+}
+
+/** Число со знаком: у нуля знака нет. */
+function _signedNumber(v: number): string {
+  return v > 0 ? `+${v}` : String(v)
+}
+
+/**
+ * Текст под карточками темпа бронирований.
+ *
+ * Бэкенд определяет тренд множительным сравнением краёв окна, поэтому при
+ * отрицательной базе «ускорением» может оказаться ухудшение. Направление
+ * объявляется, только когда краевое сравнение и среднее изменение сходятся.
+ */
+function _pickupTrendNote(trend: string, avgPickup: number): string {
+  if (trend === 'недостаточно данных') {
+    return 'Дневных снимков в окне слишком мало, чтобы оценить темп: направление не определяется.'
+  }
+  if (trend === 'ускорение' && avgPickup > 0) {
+    return 'Занятых номеров прибавляется быстрее, чем в начале окна, и среднее изменение за сутки положительное.'
+  }
+  if (trend === 'замедление' && avgPickup < 0) {
+    return 'Занятых номеров прибавляется медленнее, чем в начале окна, и среднее изменение за сутки отрицательное.'
+  }
+  if (trend === 'ускорение' || trend === 'замедление') {
+    return 'Направление неоднозначно: сравнение краёв окна и среднее изменение за сутки расходятся в знаке.'
+  }
+  return 'Значимых сдвигов в темпе бронирований за окно не зафиксировано.'
+}
+
+/** Вердикт по строке событийного эффекта: интервал и перестановочный тест могут расходиться. */
+function _eventEffectVerdict(row: EventEffectEntry): string {
+  if (!row.identifiable) return row.reason ?? 'оценка невозможна'
+  const placeboP = row.placebo_p ?? null
+  if (row.detected) {
+    if (placeboP == null) return 'эффект обнаружен'
+    return placeboP < 0.05
+      ? 'эффект обнаружен, перестановочный тест согласен'
+      : 'эффект обнаружен, но перестановочный тест его не подтверждает'
+  }
+  if (placeboP != null && placeboP < 0.05) {
+    return `неоднозначно: интервал накрывает ноль, но перестановочный тест значим (p = ${placeboP.toFixed(3)})`
+  }
+  return 'эффект не обнаружен'
 }
 
 function DistrictDrillDown({
@@ -1184,8 +1303,9 @@ function DistrictDrillDown({
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="text-xs text-[hsl(var(--muted-foreground))]">
           <span className="font-medium text-[hsl(var(--foreground))]">{data.total_objects} объектов</span>
-          {' '}в районе <span className="font-medium text-[hsl(var(--foreground))]">{data.district}</span>.
-          Метрики — по последнему снимку каждого отеля.
+          {' '}района <span className="font-medium text-[hsl(var(--foreground))]">{data.district}</span>
+          {' '}со снимком за последние 14 дней — окно шире, чем у колонки «Объектов» в строке выше
+          (там только дата среза). Метрики — по последнему снимку каждого объекта.
         </div>
         {!isFilterDistrict && (
           <button
@@ -1254,6 +1374,11 @@ function DistrictDrillDown({
           </table>
         </div>
       </div>
+
+      <p className="text-xs text-[hsl(var(--muted-foreground))] italic">
+        RevPAR сегмента считается от среднего минимального тарифа, а не от медианы, поэтому
+        с районным RevPAR в строке выше он сходиться не обязан.
+      </p>
     </div>
   )
 }

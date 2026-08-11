@@ -204,8 +204,8 @@ async def get_correlation_data(
         }
     
     # Агрегируем по месяцам
-    monthly_stats = defaultdict(lambda: {"occupancy": [], "price": [], "events": 0})
-    
+    monthly_stats = defaultdict(lambda: {"occupancy": [], "price": [], "events": 0, "days": 0})
+
     for row in stats:
         date_str = row.get("date_str", "")
         if len(date_str) >= 7:  # "2025-01" -> month = "01"
@@ -217,6 +217,7 @@ async def get_correlation_data(
                     continue
                 monthly_stats[month]["occupancy"].append(row.get("avg_occupancy", 0) or 0)
                 monthly_stats[month]["price"].append(row.get("avg_price", 0) or 0)
+                monthly_stats[month]["days"] += row.get("days_count", 0) or 0
             except (ValueError, IndexError):
                 continue
     
@@ -238,12 +239,14 @@ async def get_correlation_data(
     missing_periods = []  # Пропущенные периоды
 
     for month in range(1, 13):
-        month_data = monthly_stats.get(month, {"occupancy": [], "price": [], "events": 0})
+        month_data = monthly_stats.get(month, {"occupancy": [], "price": [], "events": 0, "days": 0})
         occupancies = month_data["occupancy"]
         prices = month_data["price"]
 
-        samples = len(occupancies)
-        avg_occ = round(sum(occupancies) / samples, 1) if occupancies else 0
+        # Достоверность месяца определяет число ДАТ наблюдения, а не число лет,
+        # в которые этот месяц попал: 7 дней октября 2025 — не «октябрь».
+        samples = month_data["days"]
+        avg_occ = round(sum(occupancies) / len(occupancies), 1) if occupancies else 0
         avg_price = round(sum(prices) / len(prices)) if prices else 0
 
         has_data = samples > 0
@@ -272,13 +275,17 @@ async def get_correlation_data(
             missing_periods.append({
                 "month": _get_month_name(month),
                 "monthIndex": month,
-                "reason": "Парсер был неактивен" if year == 2025 and month in [7, 8, 9] else "Нет данных",
+                "reason": (
+                    "Пробел данных 24.06.2025 – 25.10.2025 (123 дня)"
+                    if year == 2025 and month in (7, 8, 9)
+                    else "Нет данных"
+                ),
             })
         elif is_gap:
             missing_periods.append({
                 "month": _get_month_name(month),
                 "monthIndex": month,
-                "reason": f"Малая выборка ({samples} записей)",
+                "reason": f"Малая выборка ({samples} дат наблюдения)",
             })
 
     # Расчёт корреляции Пирсона только по месяцам с достаточной выборкой
@@ -304,10 +311,12 @@ async def get_correlation_data(
         if denom_occ * denom_evt > 0:
             correlation = round(numerator / (denom_occ * denom_evt), 2)
 
-    # Пик и минимум (только из месяцев с достаточными данными)
+    # Пик и минимум — только из месяцев с достоверной выборкой: месяц, покрытый
+    # одной-двумя датами, не может объявляться пиком сезона.
     valid_months = [m for m in months_data if not m["is_gap"] and m["occupancy"] > 0]
-    peak_month = max(valid_months, key=lambda x: x["occupancy"])["month"] if valid_months else None
-    low_month = min(valid_months, key=lambda x: x["occupancy"])["month"] if valid_months else None
+    confident_months = [m for m in valid_months if m["confidence"] == "high"]
+    peak_month = max(confident_months, key=lambda x: x["occupancy"])["month"] if confident_months else None
+    low_month = min(confident_months, key=lambda x: x["occupancy"])["month"] if confident_months else None
 
     avg_occupancy = round(sum(m["occupancy"] for m in valid_months) / len(valid_months), 1) if valid_months else None
 
@@ -335,11 +344,14 @@ async def get_districts_data(
 ) -> list[dict[str, Any]]:
     """
     Получить статистику по районам из БД.
-    Фильтруем только туристически значимые районы Байкала.
+    Фильтруем только туристически значимые районы Байкальского макрорегиона.
 
-    Если переданы date_from и date_to — Occupancy и avg_price считаются как
-    среднее по снимкам в этом окне; rooms_num/free_rooms — как среднее
-    значение per-day. Без параметров — поведение по умолчанию: последний срез.
+    Если переданы date_from и date_to — occupancy считается по всем снимкам окна,
+    medianPrice — как медиана min_price за окно, totalRooms/freeRooms приводятся
+    к одному дню. Без параметров — последний доступный срез.
+
+    Районы, где объектов меньше DISTRICT_SAMPLE_MIN, не возвращаются: «средняя
+    загрузка» по 1-3 объектам — это загрузка одного отеля, выданная за рынок.
     """
     period_key = (
         f"{date_from.isoformat()}:{date_to.isoformat()}"
@@ -361,24 +373,26 @@ async def get_districts_data(
         # Текущий срез — последний доступный снимок (поведение по умолчанию)
         districts = await data.get_districts_statistics()
 
-    # Если нет статистики — берём хотя бы количество отелей
+    # Нет статистики за окно — отдаём только состав справочника. Загрузка и цена
+    # при этом None: отсутствие снимков не равно нулевой загрузке и нулевой цене.
     if not districts:
-        districts_basic = await data.get_hotels_by_district()
         result = [
             {
                 "district": row.get("district"),
-                "occupancy": 0,
-                "freeRooms": 0,
-                "totalRooms": 0,
-                "avgPrice": 0,
+                "occupancy": None,
+                "freeRooms": None,
+                "totalRooms": None,
+                "medianPrice": None,
                 "hotelsCount": row.get("hotels_count", 0) or 0,
             }
-            for row in districts_basic 
-            if row.get("district") and row.get("district") in TOURIST_DISTRICTS
+            for row in await data.get_hotels_by_district()
+            if row.get("district")
+            and row.get("district") in TOURIST_DISTRICTS
+            and (row.get("hotels_count", 0) or 0) >= DISTRICT_SAMPLE_MIN
         ]
         await cache.set(cache_key, result, ttl=120)
         return result
-    
+
     result = []
     for row in districts:
         district = row.get("district")
@@ -389,11 +403,9 @@ async def get_districts_data(
         total_rooms = row.get("total_rooms", 0) or 0
         free_rooms = row.get("free_rooms", 0) or 0
         avg_occupancy = row.get("avg_occupancy", 0) or 0
-        avg_price = row.get("avg_price", 0) or 0
-        
+        median_price = row.get("median_price", 0) or 0
+
         count = row.get("hotels_count", 0) or 0
-        # Район с выборкой меньше порога не показываем: «средняя загрузка» по
-        # 1-3 объектам — это загрузка одного отеля, выданная за рынок района.
         if count < DISTRICT_SAMPLE_MIN:
             continue
         result.append({
@@ -401,7 +413,7 @@ async def get_districts_data(
             "occupancy": round(avg_occupancy, 1),
             "freeRooms": int(free_rooms),
             "totalRooms": int(total_rooms),
-            "avgPrice": round(avg_price),
+            "medianPrice": round(median_price),
             "hotelsCount": count,
             "confidence": "high" if count >= DISTRICT_SAMPLE_HIGH else "medium",
         })
@@ -545,12 +557,12 @@ async def get_kpi(data: DataServiceDep, cache: CacheServiceDep) -> KPIResponse:
     total_rooms = int(metrics.get("total_rooms", 0) or 0)
     free_rooms = int(metrics.get("free_rooms", 0) or 0)
     avg_occupancy = round(float(metrics.get("avg_occupancy", 0) or 0), 1)
-    # Средняя цена: взвешиваем медиану/средние районов по числу номеров, иначе
-    # малый район искажает «среднюю цену региона».
+    # Прокси-ADR региона: медианы районов, взвешенные по номерному фонду, иначе
+    # малый район искажает ценовой уровень региона.
     avg_price = None
     if districts:
-        num = sum((d.get("avg_price") or 0) * (d.get("total_rooms") or 0) for d in districts)
-        den = sum((d.get("total_rooms") or 0) for d in districts if d.get("avg_price"))
+        num = sum((d.get("median_price") or 0) * (d.get("total_rooms") or 0) for d in districts)
+        den = sum((d.get("total_rooms") or 0) for d in districts if d.get("median_price"))
         avg_price = round(num / den) if den else None
 
     stale = _staleness(metrics.get("as_of_date"))
@@ -719,7 +731,7 @@ async def get_hotels_by_city(data: DataServiceDep) -> list[CityHotels]:
 async def get_hotels_by_district(data: DataServiceDep) -> list[dict[str, Any]]:
     """
     Получить распределение отелей по районам с ценами.
-    Возвращает: district, count, avg_price, avg_rating
+    Возвращает: district, count, median_price (медиана min_price), avg_rating
     """
     if not data.is_connected:
         raise HTTPException(503, "БД не подключена")
@@ -732,11 +744,11 @@ async def get_hotels_by_district(data: DataServiceDep) -> list[dict[str, Any]]:
     
     # Создаём словарь цен по районам
     price_lookup = {
-        row.get("district"): row.get("avg_price", 0) or 0
+        row.get("district"): row.get("median_price", 0) or 0
         for row in (district_stats or [])
         if row.get("district")
     }
-    
+
     result = []
     for row in district_counts:
         district = row.get("district")
@@ -745,7 +757,7 @@ async def get_hotels_by_district(data: DataServiceDep) -> list[dict[str, Any]]:
         result.append({
             "district": district,
             "count": row.get("hotels_count", 0) or 0,
-            "avg_price": price_lookup.get(district, None),
+            "median_price": price_lookup.get(district, None),
             "avg_rating": row.get("avg_rating"),
         })
     
@@ -1139,7 +1151,7 @@ async def get_trip_summary(
         for d in districts_stats:
             if d.get("district") == district:
                 available_rooms = d.get("free_rooms", 0) or 0
-                avg_price = d.get("avg_price") or None
+                avg_price = d.get("median_price") or None
                 break
     except Exception as e:
         logger.error(f"District stats failed: {e}")
@@ -1273,11 +1285,15 @@ async def analytics_hotels_map(
         description="Дата среза (YYYY-MM-DD). Без параметра — последний доступный снимок.",
     ),
 ) -> dict[str, Any]:
-    """Данные для карты: отели с координатами + загрузка по районам.
+    """Данные для карты: отели с координатами, их загрузка и загрузка их районов.
 
-    При указанном `date` rooms_num/free_rooms/occupancy берутся на эту дату
-    (или ближайшую предшествующую). При отсутствии параметра — текущий
-    последний срез (поведение по умолчанию)."""
+    `occupancy` — загрузка самого объекта, 100*(rooms-free)/rooms, либо None,
+    если номерной фонд объекта неизвестен. `district_occupancy` — room-night
+    weighted среднее по району, для сравнения объекта с рынком.
+
+    При указанном `date` берётся снимок ровно за эту дату, объекты без снимка
+    выпадают из выборки. Без параметра — последний доступный срез. Итоговые
+    total_rooms/free_rooms — суммы по показанным на карте объектам."""
     if not data.is_connected:
         raise HTTPException(503, "Database unavailable")
     cache_key = f"hotels_map:{district or 'all'}:{snapshot_date.isoformat() if snapshot_date else 'latest'}"
@@ -1328,30 +1344,30 @@ async def analytics_hotels_map(
             if not (hs.get("rooms_num") or 0) and not (hs.get("free_rooms") or 0):
                 continue
         hs = hs or {}
-        d_occ = (occ_by_district.get(h.district) or {}).get("avg_occupancy", 0) or 0
+        rooms = hs.get("rooms_num", 0) or 0
+        free = min(max(hs.get("free_rooms", 0) or 0, 0), rooms)
+        d_occ = (occ_by_district.get(h.district) or {}).get("avg_occupancy")
 
+        total_rooms += rooms
+        free_rooms += free
         hotels.append({
             "id": h.id, "name": h.name, "city": h.city or "",
             "district": h.district or "", "lat": float(h.lat), "lon": float(h.lon),
             "rating": float(h.rating) if h.rating is not None else None,
             "min_price": float(h.min_price) if h.min_price is not None else None,
-            "rooms_num": hs.get("rooms_num", 0) or 0,
+            "rooms_num": rooms,
             "free_rooms": hs.get("free_rooms", 0) or 0,
-            "occupancy": round(float(d_occ), 1),
+            # Загрузка самого объекта из его же номерного фонда. Без rooms_num
+            # она неопределима — районное среднее подставлять нельзя.
+            "occupancy": round(100.0 * (rooms - free) / rooms, 1) if rooms else None,
+            "district_occupancy": round(float(d_occ), 1) if d_occ is not None else None,
             "max_capacity": hs.get("max_capacity", 0) or 0,
         })
-
-    for d in (districts_stats or []):
-        if district and d.get("district") != district:
-            continue
-        if d.get("district") in TOURIST_DISTRICTS:
-            total_rooms += d.get("total_rooms", 0) or 0
-            free_rooms += d.get("free_rooms", 0) or 0
 
     response: dict[str, Any] = {
         "hotels": hotels, "total_hotels": len(hotels),
         "total_rooms": total_rooms, "free_rooms": free_rooms,
-        "avg_occupancy": round(100 - free_rooms / total_rooms * 100, 1) if total_rooms else 0,
+        "avg_occupancy": round(100.0 * (total_rooms - free_rooms) / total_rooms, 1) if total_rooms else 0,
     }
     await cache.set(cache_key, response, ttl=300)
     return response
@@ -1417,7 +1433,7 @@ async def get_price_recommendation(
     current_occ = 0
     for d in districts_stats:
         if d.get("district") == district:
-            current_price = d.get("avg_price", 0) or 0
+            current_price = d.get("median_price", 0) or 0
             current_occ = d.get("avg_occupancy", 0) or 0
             break
 
@@ -1472,7 +1488,7 @@ async def get_price_recommendation(
 
     response = {
         "district": district,
-        "current_avg_price": current_price,
+        "current_median_price": current_price,
         "current_occupancy": current_occ,
         "forecast_occupancy": forecast_occ,
         "adjustments": adjustments,
@@ -1571,7 +1587,7 @@ async def get_weekday_heatmap(
         "weekdays": _WEEKDAYS_RU,
         "months": _MONTHS_RU,
         "methodology": (
-            "Среднее значение Occupancy = (100 - available_rooms_percent), "
+            "Загрузка взвешена по номерному фонду: 100 × SUM(занятые номера) / SUM(всего номеров), "
             "сгруппировано по (ISO день недели 1..7, месяц 1..12). Источник — hotel_statistics."
         ),
     }
@@ -1754,7 +1770,7 @@ async def get_revenue_summary(
 ) -> dict[str, Any]:
     """Сводка RMS-метрик: ADR, Occupancy, RevPAR агрегированно и по районам.
 
-    RevPAR = ADR × (Occupancy / 100). ADR оценивается как средняя min_price
+    RevPAR = ADR × (Occupancy / 100). ADR оценивается как медиана min_price
     отелей района (proxy, т. к. полная revenue-модель требует tax-данных от
     отельеров через интеграцию с PMS).
     """
@@ -1779,9 +1795,7 @@ async def get_revenue_summary(
         if d_name not in TOURIST_DISTRICTS:
             continue
         occ = float(d.get("avg_occupancy") or 0)
-        # ADR-proxy = медиана min_price района (устойчивее к выбросам, единый метод
-        # с compare-districts/price-distribution).
-        adr = float(d.get("median_price") or d.get("avg_price") or 0)
+        adr = float(d.get("median_price") or 0)
         revpar = round(adr * occ / 100, 0) if adr and occ else 0
         count = int(d.get("hotels_count") or 0)
         rooms = float(d.get("total_rooms") or 0)
@@ -1792,7 +1806,7 @@ async def get_revenue_summary(
             "adr": round(adr),
             "revpar": revpar,
             "hotels_count": count,
-            "confidence": "high" if count >= 10 else "medium" if count >= 3 else "low",
+            "confidence": "high" if count >= DISTRICT_SAMPLE_HIGH else "medium" if count >= 3 else "low",
         })
         if rooms > 0:
             w_occ_num += occ * rooms
@@ -1953,7 +1967,7 @@ async def occupancy_timeseries(
     Временной ряд загрузки по районам за последние N дней.
 
     Args:
-        district: Район Иркутской области.
+        district: Район Байкальского макрорегиона.
         days: Глубина истории (1–365 дней).
 
     Returns:

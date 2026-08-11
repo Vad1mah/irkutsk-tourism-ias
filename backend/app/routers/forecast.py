@@ -22,12 +22,16 @@ from app.dependencies import (
     CacheServiceDep,
 )
 from app.executor import run_sync
-from app.services.cache_service import build_ensemble_cache_key
+from app.services.cache_service import build_ensemble_cache_key, compute_ensemble_data_hash
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/forecast", tags=["forecast"])
 
 FORECAST_CACHE_TTL = 1800  # 30 минут
+# Ответ, в котором отработали не все модели ансамбля, живёт в кэше пять минут: столько же
+# он будет расходиться с таблицей метрик после починки упавшей модели. Не ноль — иначе во
+# время аварии каждый запрос заново обучает ML, а это уже клало хост.
+FORECAST_DEGRADED_CACHE_TTL = 300
 
 _compare_locks: dict[str, asyncio.Lock] = {}
 _compare_results: dict[str, tuple[float, Any]] = {}
@@ -236,12 +240,6 @@ async def get_ensemble_forecast(
     - weighted_average: Взвешенное по качеству
     - best_model: Лучшая модель
     """
-    cache_key = build_ensemble_cache_key(district=district, days=days_ahead, method=method)
-    cached = await cache_svc.get(cache_key)
-    if cached:
-        logger.info(f"Ensemble forecast cache hit: {district}")
-        return cached
-
     history = []
     weather_data = {}
     events_data = []
@@ -261,6 +259,19 @@ async def get_ensemble_forecast(
     weather_data, events_data = await _get_weather_and_events(
         history, days_ahead, weather_svc, data_svc, district=district
     )
+
+    expected_models = ensemble_svc.model_names
+    cache_key = build_ensemble_cache_key(
+        district=district,
+        days=days_ahead,
+        data_hash=compute_ensemble_data_hash(history, weather_data, events_data),
+        models=expected_models,
+        method=method,
+    )
+    cached = await cache_svc.get(cache_key)
+    if cached:
+        logger.info(f"Ensemble forecast cache hit: {district}")
+        return cached
 
     try:
         result = await ensemble_svc.forecast_ensemble_async(
@@ -317,7 +328,17 @@ async def get_ensemble_forecast(
         },
     }
 
-    await cache_svc.set(cache_key, response, ttl=FORECAST_CACHE_TTL)
+    models_ran = sorted(name for name, points in result.get("models", {}).items() if points)
+    if models_ran == expected_models:
+        ttl = FORECAST_CACHE_TTL
+    else:
+        ttl = FORECAST_DEGRADED_CACHE_TTL
+        logger.warning(
+            "Ensemble вырожден: отработали %s из %s, кэш на %s с",
+            models_ran or "нет моделей", expected_models, ttl,
+        )
+
+    await cache_svc.set(cache_key, response, ttl=ttl)
     return response
 
 
@@ -334,10 +355,8 @@ async def compare_all_models(
     """
     Сравнить все модели на тестовых данных.
 
-    Возвращает метрики качества (RMSE, MAE) для:
-    - Prophet
-    - XGBoost
-    - Ensemble
+    Возвращает метрики качества (RMSE, MAE) для Prophet, XGBoost и ансамбля —
+    взвешенного среднего этих двух моделей.
     """
     cache_key = cache_svc.cache_key("forecast:compare", district, test_days)
     cached = await cache_svc.get(cache_key)
@@ -401,8 +420,6 @@ async def compare_all_models(
             "district": district,
             "history_points": len(history),
             "test_days": test_days,
-            # best_model лежит и внутри metrics (исключён из перечня моделей в
-            # compare_models), но фронт-тип ждёт его на верхнем уровне — дублируем.
             "best_model": metrics.get("best_model", "") if isinstance(metrics, dict) else "",
             "metrics": metrics,
             "feature_importance": feature_importance,
@@ -638,22 +655,37 @@ async def forecast_validation(
 HOTEL_VALIDATION_CACHE_TTL = 1800  # 30 минут
 
 
-def _backtest_metrics(forecasted: list[float], actual: list[float]) -> dict[str, float]:
-    """RMSE/MAE/R²/MAPE из пары списков (одинаковая длина)."""
+def _backtest_metrics(forecasted: list[float], actual: list[float]) -> dict[str, float | None]:
+    """RMSE/MAE/R²/MAPE из пары списков (одинаковая длина).
+
+    R² не определён, когда факт на тестовом окне постоянен (дисперсии нет),
+    MAPE — когда объект всё окно стоял пустым (делить не на что). В обоих
+    случаях возвращается None: ноль на их месте читался бы как идеальная
+    точность.
+
+    Args:
+        forecasted: Прогнозные значения загрузки.
+        actual: Фактические значения загрузки за те же даты.
+
+    Returns:
+        Словарь rmse/mae/r2/mape; None у метрик, которые не определены.
+    """
     import math
 
     n = len(forecasted)
     if n == 0:
-        return {"rmse": 0.0, "mae": 0.0, "r2": 0.0, "mape": 0.0}
+        return {"rmse": None, "mae": None, "r2": None, "mape": None}
     rmse = math.sqrt(sum((f - a) ** 2 for f, a in zip(forecasted, actual)) / n)
     mae = sum(abs(f - a) for f, a in zip(forecasted, actual)) / n
     mean_actual = sum(actual) / n
     ss_tot = sum((a - mean_actual) ** 2 for a in actual)
     ss_res = sum((a - f) ** 2 for f, a in zip(forecasted, actual))
-    r2 = (1.0 - ss_res / ss_tot) if ss_tot > 0 else 0.0
-    # MAPE с защитой от нулей: исключаем точки где actual = 0
+    r2 = (1.0 - ss_res / ss_tot) if ss_tot > 0 else None
     mape_pairs = [(f, a) for f, a in zip(forecasted, actual) if a >= 1.0]
-    mape = (sum(abs(f - a) / a for f, a in mape_pairs) / len(mape_pairs) * 100.0) if mape_pairs else 0.0
+    mape = (
+        sum(abs(f - a) / a for f, a in mape_pairs) / len(mape_pairs) * 100.0
+        if mape_pairs else None
+    )
     return {"rmse": rmse, "mae": mae, "r2": r2, "mape": mape}
 
 
@@ -749,15 +781,19 @@ async def _hotel_backtest_validation(
     actual_vals = [actual_map[d] for d in paired_dates]
     metrics = _backtest_metrics(forecasted_vals, actual_vals)
 
+    def _round(name: str, digits: int) -> float | None:
+        value = metrics[name]
+        return round(value, digits) if value is not None else None
+
     return HotelValidationResponse(
         hotel_id=hotel_id,
         history_points=len(history),
         test_days=test_days,
         samples=len(paired_dates),
-        rmse=round(metrics["rmse"], 2),
-        mae=round(metrics["mae"], 2),
-        r2=round(metrics["r2"], 3),
-        mape=round(metrics["mape"], 1),
+        rmse=_round("rmse", 2),
+        mae=_round("mae", 2),
+        r2=_round("r2", 3),
+        mape=_round("mape", 1),
         forecasted=[ValidationPoint(date=d.isoformat(), occupancy=round(v, 1)) for d, v in zip(paired_dates, forecasted_vals)],
         actual=[ValidationPoint(date=d.isoformat(), occupancy=round(v, 1)) for d, v in zip(paired_dates, actual_vals)],
     )
