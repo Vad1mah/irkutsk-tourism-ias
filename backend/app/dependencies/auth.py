@@ -1,7 +1,7 @@
 """Аутентификация и авторизация."""
 import hmac
 import logging
-from fastapi import Depends, HTTPException, Header, status
+from fastapi import HTTPException, Header, status
 
 from app.config import settings
 

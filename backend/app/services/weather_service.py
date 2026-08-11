@@ -2,7 +2,7 @@
 import asyncio
 import aiohttp
 import time
-from datetime import date, timedelta
+from datetime import date
 import logging
 
 logger = logging.getLogger(__name__)

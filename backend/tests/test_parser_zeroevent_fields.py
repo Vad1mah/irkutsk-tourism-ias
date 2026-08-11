@@ -1,6 +1,5 @@
 """Unit-тесты на price_min extractor."""
 
-import pytest
 
 
 def test_extract_price_min_from_text_rubles():

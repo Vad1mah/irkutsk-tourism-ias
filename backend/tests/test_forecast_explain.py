@@ -1,7 +1,7 @@
 """Endpoint /api/forecast/explain должен возвращать осмысленный ответ даже при сбое LLM."""
 import asyncio
 import pytest
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch
 
 
 @pytest.mark.asyncio

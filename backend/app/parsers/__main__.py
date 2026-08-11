@@ -11,17 +11,13 @@ import argparse
 import asyncio
 import logging
 import sys
-from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from app.config import settings
 from app.parsers import (
     fetch_all_events,
     parse_and_save_hotels,
-    get_major_events_2025_2026,
-    get_school_holidays_2025_2026,
 )
 
 logging.basicConfig(
@@ -140,7 +136,7 @@ async def run_all():
     # Погода
     results["weather"] = await run_weather_parser()
 
-    logger.info(f"=== Все парсеры завершены ===")
+    logger.info("=== Все парсеры завершены ===")
     for name, result in results.items():
         if isinstance(result, dict) and "error" in result:
             logger.warning(f"  {name}: ОШИБКА - {result['error']}")

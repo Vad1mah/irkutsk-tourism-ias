@@ -1,6 +1,5 @@
 """Test image_url extraction for 101hotels parser."""
 
-import pytest
 
 
 def test_101hotels_extract_image_url_from_photos():

@@ -4,9 +4,7 @@
     cd backend
     pytest tests/test_agent_tools.py -v
 """
-import pytest
 from datetime import date
-from unittest.mock import AsyncMock, patch, MagicMock
 
 
 class TestAllToolsRegistration:

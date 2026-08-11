@@ -1,7 +1,6 @@
 """Unit-тесты на извлечение полей age_restriction и full description из JSON-LD."""
 from datetime import time
 
-import pytest
 
 
 def _make_jsonld_event(name="Концерт",

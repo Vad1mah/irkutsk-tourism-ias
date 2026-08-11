@@ -8,7 +8,6 @@
 Если парсер возвращает 0 событий - это сигнал что что-то сломалось.
 """
 
-import asyncio
 import logging
 from datetime import datetime, timedelta
 from collections.abc import Callable

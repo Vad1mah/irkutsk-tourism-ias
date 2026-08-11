@@ -11,7 +11,6 @@ import httpx
 import os
 import sys
 import io
-from datetime import date
 
 # Fix Windows encoding
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')

@@ -21,7 +21,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import datetime
 from typing import Any
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")

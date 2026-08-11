@@ -6,7 +6,6 @@
 ВАЖНО: Данные по загрузке отелей НЕ собирались июнь-сентябрь 2025.
 Поэтому события летнего сезона не влияют на обучение моделей.
 """
-from datetime import date
 from typing import Any
 import hashlib
 
@@ -192,7 +191,7 @@ def get_school_holidays_2025_2026() -> list[dict[str, Any]]:
         result.append({
             "id": event_id,
             "title": h["title"],
-            "description": f"Школьные каникулы — пик семейного туризма",
+            "description": "Школьные каникулы — пик семейного туризма",
             "date_start": h["date_start"],
             "date_end": h["date_end"],
             "event_type": h["event_type"],
