@@ -524,9 +524,11 @@ function MapPage() {
       )}
 
       {/* Row 2: Map (full block height) + Filters (h-full) */}
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-3 lg:h-[520px]">
+      {/* grid-rows-[520px] делает трек definite: h-full детей резолвится строго,
+          без циркулярности auto-трека с пиксельной фиксацией размера ymaps */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-3 lg:grid-rows-[520px] lg:h-[520px]">
         {/* Map — занимает весь блок целиком, легенда оверлеем */}
-        <Card variant="glass" className="h-full">
+        <Card variant="glass" padding="none" className="h-full overflow-hidden">
           <CardContent className="p-0 overflow-hidden rounded-2xl relative h-full">
             <YandexMap hotels={filteredPins} height="100%" />
             {/* Overlay-легенда поверх карты (нижний край), полупрозрачный фон */}
