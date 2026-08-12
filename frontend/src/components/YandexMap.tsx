@@ -82,10 +82,34 @@ function _balloonBody(h: HotelPin): string {
   `
 }
 
+/** После выхода из fullscreen корневой <ymaps> сохраняет inline-размер экрана
+ *  (например height:1080px) — карточка карты раздувается, следующий ряд наезжает
+ *  на карту. Сброс обязан идти на корне (первом ребёнке обёртки): getElement()
+ *  отдаёт внутренний узел, а fitToViewport() меряет родителя, которого раздувает
+ *  как раз корень — без сброса пересчёт возвращает тот же размер. */
+function _fitAfterFullscreenExit(map: ymaps.Map): void {
+  window.setTimeout(() => {
+    const root = map.container.getParentElement()?.firstElementChild as HTMLElement | null
+    // Пиксельный размер держат два уровня: корень и его первый ребёнок; второй
+    // через min-content auto-ряда грида распирает всю колонку — сброс нужен обоим.
+    for (let el = root; el; el = el.firstElementChild as HTMLElement | null) {
+      if (el.tagName.toLowerCase() !== 'ymaps' || !el.getAttribute('style')) break
+      el.style.width = '100%'
+      el.style.height = '100%'
+    }
+    map.container.fitToViewport()
+  }, 100)
+}
+
 export function YandexMap({ hotels, center = DEFAULT_CENTER, zoom = 7, height = 520, pinnedHotelId, onHotelClick, onHotelHover }: Props) {
   return (
     <YMaps query={{ apikey: APIKEY, lang: 'ru_RU' }}>
       <Map
+        instanceRef={(map: ymaps.Map | null) => {
+          // 'fullscreenexit' контейнера ymaps срабатывает и в browser-, и в
+          // CSS-fallback-режиме; DOM-событие fullscreenchange во втором — нет.
+          if (map) map.container.events.add('fullscreenexit', () => _fitAfterFullscreenExit(map))
+        }}
         defaultState={{ center, zoom, controls: ['zoomControl', 'typeSelector'] }}
         width="100%"
         height={height}

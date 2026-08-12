@@ -137,6 +137,15 @@ function Home() {
         allDates.set(p.date, { date: p.date, factual: undefined, forecast: p.occupancy, lower: p.lower, upper: p.upper })
       }
     }
+    // Ось всегда резервирует окно прогноза, чтобы «Сегодня» не упиралась в правый край
+    for (let i = 1; i <= FORECAST_HORIZON; i++) {
+      const d = new Date()
+      d.setDate(d.getDate() + i)
+      const iso = d.toLocaleDateString('sv-SE')
+      if (!allDates.has(iso)) {
+        allDates.set(iso, { date: iso, factual: undefined, forecast: undefined, lower: undefined, upper: undefined })
+      }
+    }
     return { series: Array.from(allDates.values()).sort((a, b) => a.date.localeCompare(b.date)), today }
   }, [occupancyTimeseries, forecastSeries])
 

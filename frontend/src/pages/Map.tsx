@@ -566,7 +566,7 @@ function MapPage() {
               <CardTitle className="text-sm">Фильтры</CardTitle>
             </div>
           </CardHeader>
-          <CardContent className="space-y-3 px-3 pb-3 flex flex-col flex-1 min-h-0">
+          <CardContent className="space-y-3 px-3 pb-3 flex flex-col flex-1 min-h-0 overflow-y-auto">
             {/* Карта */}
             <div className="space-y-2">
               <p className="text-[11px] uppercase tracking-wider text-[hsl(var(--muted-foreground))] font-semibold">Карта и KPI</p>
